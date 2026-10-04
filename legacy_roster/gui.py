@@ -9,7 +9,7 @@ import sys
 import threading
 import traceback
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 
 try:
     import customtkinter as ctk
@@ -759,6 +759,16 @@ class App:
 def main():
     ctk.set_appearance_mode('dark')
     root = ctk.CTk(fg_color=T.BG)
+    if T.missing_files():
+        root.withdraw()
+        messagebox.showerror(
+            "Legacy Roster Updater",
+            "Some of this program's files are missing from Windows' temporary folder. An antivirus "
+            "or a cleaning program may have removed them.\n\n"
+            "Close this message and start NHLLegacyRosterUpdater.exe again. If it keeps happening, "
+            "allow NHLLegacyRosterUpdater.exe in your antivirus.", parent=root)
+        root.destroy()
+        return
     T.load_fonts(root)
     icon = os.path.join(T.DATA, 'app.ico')
     if os.name == 'nt' and os.path.exists(icon):

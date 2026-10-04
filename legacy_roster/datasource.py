@@ -9,6 +9,7 @@ import gzip
 import hashlib
 import json
 import os
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -22,6 +23,8 @@ from .matching import match, norm
 # overridden with the LEGACY_ROSTER_PACK_URL environment variable.
 PACK_URL = ""
 BUNDLED_PACK = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'datapack.json.gz')
+# Mozilla's list of trusted certificates (certifi's cacert.pem), put into the exe by build.ps1; not in git
+CA_BUNDLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'cacert.pem')
 # the newest data pack layout this program understands; a pack with a higher number was made for
 # a newer version of the program and is ignored (raise it only together with the code that reads it)
 PACK_FORMAT = 1
@@ -42,17 +45,53 @@ class Offline(Exception):
     """A download failed and there is nothing cached to fall back on."""
 
 
+class NotSafe(Offline):
+    """A site's certificate could not be checked, so nothing was downloaded from it."""
+
+
+_tls = None
+
+
+def tls_context():
+    """Windows' own trusted certificates plus Mozilla's list when the program carries it.
+
+    Windows fetches some root certificates only when one of its own programs needs them, so a PC
+    can lack the one a site uses (search.d3.nhle.com: Let's Encrypt) while browsers, which bring
+    their own lists, work fine. Python then reports a missing or expired certificate."""
+    global _tls
+    if _tls is None:
+        ctx = ssl.create_default_context()
+        if os.path.exists(CA_BUNDLE):
+            try:
+                ctx.load_verify_locations(CA_BUNDLE)
+            except (OSError, ssl.SSLError):
+                pass
+        _tls = ctx
+    return _tls
+
+
 def http_get(url, timeout=30, retries=3):
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (NHLLegacyRosterUpdater)'})
     for attempt in range(retries + 1):
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with urllib.request.urlopen(req, timeout=timeout, context=tls_context()) as r:
                 return r.read()
         except urllib.error.HTTPError as err:
             if err.code == 404 or attempt == retries:
                 raise
             time.sleep(2 + 4 * attempt)       # rate limited or a hiccup: back off politely
-        except (urllib.error.URLError, OSError):
+        except urllib.error.URLError as err:
+            if isinstance(err.reason, ssl.SSLCertVerificationError):     # trying again will not help
+                why = getattr(err.reason, 'verify_message', '') or 'certificate check failed'
+                raise NotSafe(
+                    f"Could not connect safely to {urllib.parse.urlsplit(url).hostname} ({why}). "
+                    "Check that the date and time on your PC are right, then try again. "
+                    "An antivirus that checks web traffic can also cause this: "
+                    "turn its web or HTTPS scanning off for a moment and try again.") from err
+            if attempt == retries:
+                raise
+            time.sleep(1 + 2 * attempt)
+        except OSError:
             if attempt == retries:
                 raise
             time.sleep(1 + 2 * attempt)

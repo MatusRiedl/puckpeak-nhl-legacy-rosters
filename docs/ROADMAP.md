@@ -1,6 +1,11 @@
 # Status and roadmap
 
-State on 2026-10-04, version 0.6.0. Update this file when something here changes.
+State on 2026-10-04, version 0.7.0. Update this file when something here changes.
+
+0.7.0 fixes two problems a tester had with 0.6.0: downloads from the NHL player search failed with
+a certificate error (the exe now carries its own list of trusted certificates), and the window
+crashed when files it unpacks at start had been removed (it now says so). Nothing new goes into
+the save, so the in-game checks below are unchanged.
 
 0.6.0 in one breath:
 - **No roster needed:** the game's own roster, read from the player's disc, can be updated

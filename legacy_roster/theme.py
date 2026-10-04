@@ -88,6 +88,15 @@ def screen_height(widget):
     return int(pixels / scaling(widget))
 
 
+NEEDED = ('logo_100.png', 'logo_125.png', 'logo_150.png', 'logo_200.png', 'datapack.json.gz')
+
+
+def missing_files():
+    """The program's own files that are not there. The exe unpacks them into Windows' temporary
+    folder at every start; an antivirus or a cleaning program can remove them from there."""
+    return [name for name in NEEDED if not os.path.exists(os.path.join(DATA, name))]
+
+
 def logo(master):
     """The Puck Peak header logo in the size that suits the screen's scaling."""
     wanted = scaling(master) * 100

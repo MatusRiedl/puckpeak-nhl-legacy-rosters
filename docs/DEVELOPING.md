@@ -206,7 +206,9 @@ that structure.
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
-Creates `.venv` if needed, installs PyInstaller, CustomTkinter and Pillow there, and writes
+Creates `.venv` if needed, installs PyInstaller, CustomTkinter, Pillow and certifi there (certifi's
+`cacert.pem` goes into the exe as `legacy_roster\data\cacert.pem`, see "Things that are not
+obvious"), and writes
 `dist\NHLLegacyRosterUpdater.exe` (window, with `--collect-all customtkinter`) and
 `dist\NHLLegacyRosterUpdater-cli.exe` (without Tk). Both carry Pillow for "Photos and logos";
 its image readers are named with `--hidden-import` because Pillow loads them by name.
@@ -219,6 +221,7 @@ with a message). `build/` and `dist/` are git-ignored.
 |---|---|
 | What did an update change? | the report CSV (`%LOCALAPPDATA%\NHLLegacyRosterUpdater\reports\`), or the window's "List of changes" |
 | The window says "Something went wrong" | `%LOCALAPPDATA%\NHLLegacyRosterUpdater\logs\error.log` (traceback) |
+| "Could not connect safely" / `CERTIFICATE_VERIFY_FAILED` | the PC's date and time, antivirus HTTPS scanning, and whether the exe carries `cacert.pem` ("Things that are not obvious") |
 | The safety check failed | the problems in the details panel / CLI output; `verify.py` explains each check |
 | A table's contents | `python -m legacy_roster export --rpcs3 <exe> --source <folder> --out tables` (CSV, real column names) |
 | The game crashes or ignores a roster | RPCS3's `log\RPCS3.log`: search `ShowSaveDataList` (what was loaded), `Access violation` (crash), `sys_fs_open(path=` (files opened). RPCS3 keeps the log open: read it with shared access |
@@ -275,6 +278,15 @@ with a message). `build/` and `dist/` are git-ignored.
 - **Engine messages are an interface** for the progress bar (`progress.py`).
 - **CustomTkinter**: `bind()` on a CTk widget binds its inner parts; use `tk.Frame.bind` for the
   widget's own size event. Scaling below 100 % makes 1-pixel outlines disappear.
-- **One-file exe** unpacks itself on every start (about 3 s) and is unsigned (SmartScreen).
+- **One-file exe** unpacks itself on every start (about 3 s) and is unsigned (SmartScreen). It
+  unpacks into Windows' temporary folder (`%TEMP%\_MEI...`), where an antivirus or a cleaning
+  program can remove files (a player's `couldn't open ...\_MEI...\logo_100.png`, fixed in 0.7.0). The window
+  checks its own files at start (`theme.missing_files`) and asks the player to start it again.
+- **Certificates**: Python checks sites against Windows' own list, which Windows fills only when
+  its own programs need a root. A player's PC lacked the Let's Encrypt root of search.d3.nhle.com
+  (`CERTIFICATE_VERIFY_FAILED ... certificate has expired`, fixed in 0.7.0) while api-web.nhle.com (Google)
+  worked. The exe carries Mozilla's list too (`datasource.tls_context`, `CA_BUNDLE`, added by
+  `build.ps1`; not in git, so from source only Windows' list is used). A check that still fails
+  becomes `NotSafe`: a plain message about the PC's clock and antivirus web scanning.
 - `work/` is the reference lab: original scripts, the golden output of the old scripts and the
   base roster backups. Read it, do not change it.

@@ -41,7 +41,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    copy of the savedata folder, or `tools/window_shot.py` (it makes a fake RPCS3).
 6. **No git commit or push, and nothing published, without the owner's explicit go-ahead.**
    The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters (0.6.0
-   committed, pushed and released on 2026-10-04 with the owner's go-ahead). Every further commit,
+   and 0.7.0 committed, pushed and released on 2026-10-04 with the owner's go-ahead). Every further commit,
    push or release needs the go-ahead again. Before pushing, check that no base roster (`work/`),
    photo pack, EA file, personal path or user name goes in.
 7. **The base roster is not ours to ship** (another modder's work on EA data). It stays out of
@@ -130,6 +130,15 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+Version 0.7.0 (2026-10-04): fixes for two problems a tester had with 0.6.0 (nothing new goes into
+the save):
+- **Certificates:** the exe carries Mozilla's list of trusted certificates (certifi's
+  `cacert.pem`, added by `build.ps1`) besides Windows' own, which lacked search.d3.nhle.com's
+  Let's Encrypt root on the tester's PC. A check that still fails gives a plain message
+  (`datasource.NotSafe`: PC clock, antivirus web scanning).
+- **Missing files at start:** the window checks its unpacked files (`theme.missing_files`) and asks
+  the player to start it again instead of crashing (an antivirus or cleaner removed them).
 
 Version 0.6.0 (2026-10-04), built after the owner's checks of 0.5.0 (passed in the game:
 photos, logos and team names; Save for EU + NA; the refilled national teams):

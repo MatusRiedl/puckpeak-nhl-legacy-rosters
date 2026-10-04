@@ -17,15 +17,18 @@ $py = Join-Path $root '.venv\Scripts\python.exe'
 if (-not (Test-Path $py)) {
     python -m venv .venv
 }
-# customtkinter draws the window; Pillow makes the photos and logos (and the brand assets, make_assets.py)
-& $py -m pip install --quiet --upgrade pip pyinstaller "customtkinter>=6.0,<7" "pillow>=11.2"
-if ($LASTEXITCODE -ne 0) { throw "could not install PyInstaller, customtkinter and Pillow" }
+# customtkinter draws the window; Pillow makes the photos and logos (and the brand assets, make_assets.py);
+# certifi brings Mozilla's list of trusted certificates (Windows' own list can lack the one a site uses)
+& $py -m pip install --quiet --upgrade pip pyinstaller "customtkinter>=6.0,<7" "pillow>=11.2" certifi
+if ($LASTEXITCODE -ne 0) { throw "could not install PyInstaller, customtkinter, Pillow and certifi" }
 
 $version = (& $py -c "import legacy_roster; print(legacy_roster.__version__)").Trim()
+$cacert = (& $py -c "import certifi; print(certifi.where())").Trim()
 $data = Join-Path $root 'legacy_roster\data'
 $common = @(
     '--noconfirm', '--clean', '--onefile',
     '--add-data', "$data;legacy_roster\data",
+    '--add-data', "$cacert;legacy_roster\data",           # datasource.CA_BUNDLE
     '--icon', (Join-Path $data 'app.ico'),
     # photos and logos: Pillow finds its file readers by name at run time, so name the ones used
     '--hidden-import', 'PIL.PngImagePlugin', '--hidden-import', 'PIL.JpegImagePlugin',

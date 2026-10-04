@@ -178,6 +178,10 @@ team, with a search box. The same list is saved as a spreadsheet file next to it
 - **New players** who are not in the game's database get a generic face and no commentary name.
   Players EA does not rate keep the ratings they had, or get an estimate.
 - **No internet?** Start it with `--offline` on the command line; it uses the data it shipped with.
+- **"Could not connect safely"?** Check that the date and time on your PC are right. An antivirus
+  that checks web traffic can also cause it: turn its web or HTTPS scanning off for a moment.
+- **"Some of this program's files are missing"?** An antivirus or a cleaning program removed them
+  while the program started. Start it again, and allow `NHLLegacyRosterUpdater.exe` in your antivirus.
 - **Real PS3 console:** saves there are signed. Copy the new save over and re-sign it with a save
   tool such as Apollo. This is untested.
 
