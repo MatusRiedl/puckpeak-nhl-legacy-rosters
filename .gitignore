@@ -1,0 +1,29 @@
+# Game saves and game data: never commit (EA content and other modders' work)
+SYS-DATA
+PARAM.SFO
+ICON0.PNG
+*.iso
+*.big
+
+# Private lab folder: original scripts, base rosters, scraped caches, CSV dumps of the base
+work/
+
+# Maintainer caches (re-created by tools/build_datapack.py)
+tools/cache/
+
+# The photo pack: a release file (tools/build_photopack.py), shipped inside the photo exe only
+legacy_roster/data/photopack.zip
+legacy_roster/data/photopack.zip.tmp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Build output
+build/
+dist/
+
+# Local editor settings
+.vscode/

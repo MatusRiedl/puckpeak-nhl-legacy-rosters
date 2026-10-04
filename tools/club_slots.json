@@ -1,0 +1,236 @@
+{
+  "_about": "Which real club goes into which team slot of the game, per league. The game has a fixed set of slots (no team can be added, no slot can change league), so a league with more clubs than slots leaves some out. 'source' is the club's name in the league's data feed; 'art' is the game's art abbreviation of the slot (logo and jersey stay those of the slot's original club, so keep it unless you know the game has art for another one). A league that spans several of the game's leagues (CHL) lists them under 'parts', each with its own league_id and feed. A club's logo comes from its feed when the feed has one, else from its English Wikipedia article (tools/providers/wiki_logo.py): 'wiki' names the article when it is not the club's full name, 'logo' gives a link directly.",
+  "liiga": {
+    "label": "Liiga",
+    "league_id": 3,
+    "country": "FIN",
+    "slots": {
+      "76": {"source": "Ässät", "full": "Porin Ässät", "short": "Ässät", "abbr": "ÄSS", "art": "ASS"},
+      "77": {"source": "K-Espoo", "full": "Kiekko-Espoo", "short": "Espoo", "abbr": "KES", "art": "BLU"},
+      "78": {"source": "HPK", "full": "HPK Hämeenlinna", "short": "HPK", "abbr": "HPK", "art": "HPK"},
+      "79": {"source": "HIFK", "full": "Helsingin IFK", "short": "HIFK", "abbr": "IFK", "art": "IFK", "wiki": "HIFK (ice hockey)"},
+      "80": {"source": "Ilves", "full": "Tampereen Ilves", "short": "Ilves", "abbr": "ILV", "art": "ILV"},
+      "81": {"source": "JYP", "full": "JYP Jyväskylä", "short": "JYP", "abbr": "JYP", "art": "JYP"},
+      "82": {"source": "KalPa", "full": "KalPa Kuopio", "short": "KalPa", "abbr": "KAL", "art": "KAL"},
+      "83": {"source": "Kärpät", "full": "Oulun Kärpät", "short": "Kärpät", "abbr": "KÄR", "art": "KAR"},
+      "84": {"source": "KooKoo", "full": "KooKoo Kouvola", "short": "Kouvola", "abbr": "KOU", "art": "KOU", "wiki": "KooKoo (ice hockey)"},
+      "85": {"source": "Lukko", "full": "Rauman Lukko", "short": "Lukko", "abbr": "LUK", "art": "LUK"},
+      "86": {"source": "Pelicans", "full": "Pelicans Lahti", "short": "Pelicans", "abbr": "PEL", "art": "PEL"},
+      "87": {"source": "SaiPa", "full": "SaiPa Lappeenranta", "short": "SaiPa", "abbr": "SAI", "art": "SAI"},
+      "88": {"source": "Tappara", "full": "Tampereen Tappara", "short": "Tappara", "abbr": "TAP", "art": "TAP"},
+      "89": {"source": "TPS", "full": "TPS Turku", "short": "TPS", "abbr": "TPS", "art": "TPS", "wiki": "HC TPS"},
+      "90": {"source": "Sport", "full": "Vaasan Sport", "short": "Vaasa", "abbr": "VAA", "art": "VAA"}
+    }
+  },
+  "extraliga": {
+    "label": "Extraliga",
+    "league_id": 5,
+    "country": "CZE",
+    "slots": {
+      "105": {"source": "/klub/hc-kometa-brno/22", "full": "HC Kometa Brno", "short": "Brno", "abbr": "BRNO", "art": "BRNO"},
+      "106": {"source": "/klub/mountfield-hk/1711", "full": "Mountfield HK", "short": "Hradec Kralove", "abbr": "MHK", "art": "CBE"},
+      "107": {"source": "/klub/rytiri-kladno/828", "full": "Rytíři Kladno", "short": "Kladno", "abbr": "KLA", "art": "CHOM"},
+      "108": {"source": "/klub/hc-energie-karlovy-vary/5", "full": "HC Energie Karlovy Vary", "short": "Karlovy Vary", "abbr": "KVA", "art": "KVA"},
+      "109": {"source": "/klub/bili-tygri-liberec/18", "full": "Bílí Tygři Liberec", "short": "Liberec", "abbr": "LBC", "art": "LBC"},
+      "110": {"source": "/klub/hc-verva-litvinov/823", "full": "HC Verva Litvínov", "short": "Litvinov", "abbr": "LIT", "art": "LIT"},
+      "111": {"source": "/klub/bk-mlada-boleslav/89", "full": "BK Mladá Boleslav", "short": "Mlada Boleslav", "abbr": "MBL", "art": "MBL"},
+      "112": {"source": "/klub/hc-olomouc/24", "full": "HC Olomouc", "short": "Olomouc", "abbr": "OLO", "art": "OLO"},
+      "113": {"source": "/klub/hc-dynamo-pardubice/12", "full": "HC Dynamo Pardubice", "short": "Pardubice", "abbr": "PCE", "art": "PCE"},
+      "114": {"source": "/klub/hc-skoda-plzen/917", "full": "HC Škoda Plzeň", "short": "Plzen", "abbr": "PLZ", "art": "PLZ"},
+      "115": {"source": "/klub/hc-sparta-praha/8", "full": "HC Sparta Praha", "short": "Sparta Praha", "abbr": "SPA", "art": "SPA"},
+      "116": {"source": "/klub/hc-ocelari-trinec/11", "full": "HC Oceláři Třinec", "short": "Trinec", "abbr": "TRI", "art": "TRI"},
+      "117": {"source": "/klub/hc-vitkovice-ridera/7", "full": "HC Vítkovice Ridera", "short": "Vitkovice", "abbr": "VIT", "art": "VIT"},
+      "118": {"source": "/klub/banes-motor-c-budejovice/1721", "full": "Motor České Budějovice", "short": "C. Budejovice", "abbr": "CEB", "art": "ZLN"}
+    }
+  },
+  "shl": {
+    "label": "SHL",
+    "league_id": 2,
+    "country": "SWE",
+    "slots": {
+      "62": {"source": "Brynäs IF", "full": "Brynäs IF", "short": "Brynäs", "abbr": "BIF", "art": "BIF"},
+      "63": {"source": "Djurgårdens IF", "full": "Djurgårdens IF", "short": "Djurgården", "abbr": "DIF", "art": "DIF"},
+      "64": {"source": "Färjestad BK", "full": "Färjestad BK", "short": "Färjestad", "abbr": "FBK", "art": "FBK"},
+      "65": {"source": "Frölunda HC", "full": "Frölunda HC", "short": "Frölunda", "abbr": "FHC", "art": "VF"},
+      "66": {"source": "HV71", "full": "HV71", "short": "HV71", "abbr": "HV71", "art": "HV"},
+      "67": {"source": "Björklöven", "full": "IF Björklöven", "short": "Björklöven", "abbr": "IFB", "art": "KRLS"},
+      "68": {"source": "Linköping HC", "full": "Linköping HC", "short": "Linköping", "abbr": "LHC", "art": "LHC"},
+      "69": {"source": "Luleå Hockey", "full": "Luleå Hockey", "short": "Luleå", "abbr": "LHF", "art": "LHF"},
+      "70": {"source": "Malmö Redhawks", "full": "Malmö Redhawks", "short": "Malmö", "abbr": "MIF", "art": "MALM"},
+      "71": {"source": "Timrå IK", "full": "Timrå IK", "short": "Timrå", "abbr": "TIK", "art": "MOD"},
+      "72": {"source": "Örebro Hockey", "full": "Örebro Hockey", "short": "Örebro", "abbr": "OHK", "art": "ORE"},
+      "73": {"source": "Rögle BK", "full": "Rögle BK", "short": "Rögle", "abbr": "RBK", "art": "ROG"},
+      "74": {"source": "Skellefteå AIK", "full": "Skellefteå AIK", "short": "Skellefteå", "abbr": "SAIK", "art": "SKE"},
+      "75": {"source": "Växjö Lakers", "full": "Växjö Lakers", "short": "Växjö", "abbr": "VLH", "art": "VXJ"}
+    }
+  },
+  "del": {
+    "label": "DEL",
+    "league_id": 4,
+    "country": "DEU",
+    "slots": {
+      "91": {"source": "augsburger-panther", "full": "Augsburger Panther", "short": "Augsburg", "abbr": "AEV", "art": "AUG"},
+      "92": {"source": "eisbaeren-berlin", "full": "Eisbären Berlin", "short": "Berlin", "abbr": "EBB", "art": "EBB"},
+      "93": {"source": "loewen-frankfurt", "full": "Löwen Frankfurt", "short": "Frankfurt", "abbr": "FRA", "art": "DEG"},
+      "94": {"source": "pinguins-bremerhaven", "full": "Pinguins Bremerhaven", "short": "Bremerhaven", "abbr": "BHV", "art": "HHF", "wiki": "Fischtown Pinguins"},
+      "95": {"source": "erc-ingolstadt", "full": "ERC Ingolstadt", "short": "Ingolstadt", "abbr": "ING", "art": "ING"},
+      "96": {"source": "iserlohn-roosters", "full": "Iserlohn Roosters", "short": "Iserlohn", "abbr": "IEC", "art": "IEC"},
+      "97": {"source": "koelner-haie", "full": "Kölner Haie", "short": "Köln", "abbr": "KEC", "art": "KEC"},
+      "98": {"source": "krefeld-pinguine", "full": "Krefeld Pinguine", "short": "Krefeld", "abbr": "KEV", "art": "KEV"},
+      "99": {"source": "adler-mannheim", "full": "Adler Mannheim", "short": "Mannheim", "abbr": "MAN", "art": "MAN"},
+      "100": {"source": "ehc-red-bull-muenchen", "full": "EHC Red Bull München", "short": "München", "abbr": "RBM", "art": "EHC"},
+      "101": {"source": "nuernberg-ice-tigers", "full": "Nürnberg Ice Tigers", "short": "Nürnberg", "abbr": "NIT", "art": "NIT"},
+      "102": {"source": "schwenninger-wild-wings", "full": "Schwenninger Wild Wings", "short": "Schwenningen", "abbr": "SWW", "art": "SCHW"},
+      "103": {"source": "straubing-tigers", "full": "Straubing Tigers", "short": "Straubing", "abbr": "STR", "art": "STR"},
+      "104": {"source": "grizzlys-wolfsburg", "full": "Grizzlys Wolfsburg", "short": "Wolfsburg", "abbr": "WOB", "art": "WOF"}
+    }
+  },
+  "nl": {
+    "label": "National League",
+    "league_id": 6,
+    "country": "CHE",
+    "slots": {
+      "119": {"source": "HC Ambri-Piotta", "full": "HC Ambri-Piotta", "short": "Ambri-Piotta", "abbr": "HCAP", "art": "HCAP"},
+      "120": {"source": "SC Bern", "full": "SC Bern", "short": "Bern", "abbr": "SCB", "art": "BERN"},
+      "121": {"source": "EHC Biel-Bienne", "full": "EHC Biel-Bienne", "short": "Biel", "abbr": "EHCB", "art": "BIEL"},
+      "122": {"source": "HC Davos", "full": "HC Davos", "short": "Davos", "abbr": "HCD", "art": "HCD"},
+      "123": {"source": "Fribourg-Gottéron", "full": "HC Fribourg-Gottéron", "short": "Fribourg", "abbr": "HCFG", "art": "FRI"},
+      "124": {"source": "Genève-Servette HC", "full": "Genève-Servette HC", "short": "Genève", "abbr": "GSHC", "art": "GEN"},
+      "125": {"source": "EHC Kloten", "full": "EHC Kloten", "short": "Kloten", "abbr": "EHCK", "art": "KLOT"},
+      "126": {"source": "Lausanne HC", "full": "Lausanne HC", "short": "Lausanne", "abbr": "LHC", "art": "LAU"},
+      "127": {"source": "HC Lugano", "full": "HC Lugano", "short": "Lugano", "abbr": "HCL", "art": "HCL"},
+      "128": {"source": "SCL Tigers", "full": "SCL Tigers", "short": "Langnau", "abbr": "SCL", "art": "SCL"},
+      "129": {"source": "EV Zug", "full": "EV Zug", "short": "Zug", "abbr": "EVZ", "art": "ZUG"},
+      "130": {"source": "ZSC Lions", "full": "ZSC Lions", "short": "Zürich", "abbr": "ZSC", "art": "ZSC"}
+    }
+  },
+  "norway": {
+    "label": "Norway",
+    "league_id": 7,
+    "country": "NOR",
+    "slots": {
+      "131": {"source": "Stavanger Oilers", "full": "Stavanger Oilers", "short": "Stavanger", "abbr": "OIL", "art": "STAV"},
+      "132": {"source": "Vålerenga Ishockey", "full": "Vålerenga Ishockey", "short": "Vålerenga", "abbr": "VIF", "art": "VALE"}
+    }
+  },
+  "ahl": {
+    "label": "AHL",
+    "league_id": 1,
+    "country": null,
+    "slots": {
+      "32": {"source": "Utica Comets", "full": "Utica Comets", "short": "Utica", "abbr": "UTC", "art": "UTI"},
+      "33": {"source": "Bakersfield Condors", "full": "Bakersfield Condors", "short": "Bakersfield", "abbr": "BAK", "art": "BAKE"},
+      "34": {"source": "Belleville Senators", "full": "Belleville Senators", "short": "Belleville", "abbr": "BEL", "art": "BELL"},
+      "35": {"source": "Hamilton Hammers", "full": "Hamilton Hammers", "short": "Hamilton", "abbr": "HAM", "art": "BRP"},
+      "36": {"source": "Charlotte Checkers", "full": "Charlotte Checkers", "short": "Charlotte", "abbr": "CLT", "art": "CHR"},
+      "37": {"source": "Colorado Eagles", "full": "Colorado Eagles", "short": "Colorado", "abbr": "COL", "art": "COLE"},
+      "38": {"source": "Grand Rapids Griffins", "full": "Grand Rapids Griffins", "short": "Grand Rapids", "abbr": "GR", "art": "GRR"},
+      "39": {"source": "Hartford Wolf Pack", "full": "Hartford Wolf Pack", "short": "Hartford", "abbr": "HFD", "art": "HAR"},
+      "40": {"source": "Hershey Bears", "full": "Hershey Bears", "short": "Hershey", "abbr": "HER", "art": "HER"},
+      "41": {"source": "Iowa Wild", "full": "Iowa Wild", "short": "Iowa", "abbr": "IA", "art": "IOW"},
+      "42": {"source": "Cleveland Monsters", "full": "Cleveland Monsters", "short": "Cleveland", "abbr": "CLE", "art": "CLE"},
+      "43": {"source": "Lehigh Valley Phantoms", "full": "Lehigh Valley Phantoms", "short": "Lehigh Valley", "abbr": "LV", "art": "LEH"},
+      "44": {"source": "Manitoba Moose", "full": "Manitoba Moose", "short": "Manitoba", "abbr": "MB", "art": "MTB"},
+      "45": {"source": "Milwaukee Admirals", "full": "Milwaukee Admirals", "short": "Milwaukee", "abbr": "MIL", "art": "MIL"},
+      "46": {"source": "Ontario Reign", "full": "Ontario Reign", "short": "Ontario", "abbr": "ONT", "art": "ONT"},
+      "47": {"source": "Springfield Thunderbirds", "full": "Springfield Thunderbirds", "short": "Springfield", "abbr": "SPR", "art": "SPR"},
+      "48": {"source": "Providence Bruins", "full": "Providence Bruins", "short": "Providence", "abbr": "PRO", "art": "PRO"},
+      "49": {"source": "Rochester Americans", "full": "Rochester Americans", "short": "Rochester", "abbr": "ROC", "art": "ROC"},
+      "50": {"source": "Rockford IceHogs", "full": "Rockford IceHogs", "short": "Rockford", "abbr": "RFD", "art": "RCK"},
+      "51": {"source": "Laval Rocket", "full": "Laval Rocket", "short": "Laval", "abbr": "LAV", "art": "LAV"},
+      "52": {"source": "Chicago Wolves", "full": "Chicago Wolves", "short": "Chicago", "abbr": "CHI", "art": "CHW"},
+      "53": {"source": "San Diego Gulls", "full": "San Diego Gulls", "short": "San Diego", "abbr": "SD", "art": "SD"},
+      "54": {"source": "San Jose Barracuda", "full": "San Jose Barracuda", "short": "San Jose", "abbr": "SJ", "art": "SJA"},
+      "55": {"source": "Tucson Roadrunners", "full": "Tucson Roadrunners", "short": "Tucson", "abbr": "TUC", "art": "TUC"},
+      "56": {"source": "Calgary Wranglers", "full": "Calgary Wranglers", "short": "Calgary", "abbr": "CGY", "art": "CLG"},
+      "57": {"source": "Syracuse Crunch", "full": "Syracuse Crunch", "short": "Syracuse", "abbr": "SYR", "art": "SYR"},
+      "58": {"source": "Texas Stars", "full": "Texas Stars", "short": "Texas", "abbr": "TEX", "art": "TEX"},
+      "59": {"source": "Toronto Marlies", "full": "Toronto Marlies", "short": "Toronto", "abbr": "TOR", "art": "TOA"},
+      "60": {"source": "Abbotsford Canucks", "full": "Abbotsford Canucks", "short": "Abbotsford", "abbr": "ABB", "art": "ABB"},
+      "61": {"source": "Wilkes-Barre/Scranton Penguins", "full": "Wilkes-Barre/Scranton Penguins", "short": "W-B/Scranton", "abbr": "WBS", "art": "WBS"},
+      "234": {"source": "Coachella Valley Firebirds", "full": "Coachella Valley Firebirds", "short": "Coachella Valley", "abbr": "CV", "art": "CVF", "league_id": 13},
+      "235": {"source": "Henderson Silver Knights", "full": "Henderson Silver Knights", "short": "Henderson", "abbr": "HSK", "art": "HSK", "league_id": 13}
+    }
+  },
+  "chl": {
+    "label": "CHL",
+    "country": null,
+    "parts": {
+      "ohl": {
+        "league_id": 9,
+        "slots": {
+          "154": {"source": "Barrie Colts", "full": "Barrie Colts", "short": "Barrie", "abbr": "BAR", "art": "BARR"},
+          "155": {"source": "Erie Otters", "full": "Erie Otters", "short": "Erie", "abbr": "ER", "art": "ERIE"},
+          "156": {"source": "Flint Firebirds", "full": "Flint Firebirds", "short": "Flint", "abbr": "FLNT", "art": "FLNT"},
+          "157": {"source": "Guelph Storm", "full": "Guelph Storm", "short": "Guelph", "abbr": "GUE", "art": "GUEL"},
+          "158": {"source": "Brantford Bulldogs", "full": "Brantford Bulldogs", "short": "Brantford", "abbr": "BFD", "art": "BBD"},
+          "159": {"source": "Kingston Frontenacs", "full": "Kingston Frontenacs", "short": "Kingston", "abbr": "KGN", "art": "KING"},
+          "160": {"source": "Kitchener Rangers", "full": "Kitchener Rangers", "short": "Kitchener", "abbr": "KIT", "art": "KITC"},
+          "161": {"source": "London Knights", "full": "London Knights", "short": "London", "abbr": "LDN", "art": "LOND"},
+          "162": {"source": "Brampton Steelheads", "full": "Brampton Steelheads", "short": "Brampton", "abbr": "BRAM", "art": "MISS"},
+          "163": {"source": "Niagara IceDogs", "full": "Niagara IceDogs", "short": "Niagara", "abbr": "NIAG", "art": "NIAG"},
+          "164": {"source": "North Bay Battalion", "full": "North Bay Battalion", "short": "North Bay", "abbr": "NB", "art": "NBAY"},
+          "165": {"source": "Oshawa Generals", "full": "Oshawa Generals", "short": "Oshawa", "abbr": "OSH", "art": "OSHA"},
+          "166": {"source": "Ottawa 67's", "full": "Ottawa 67's", "short": "Ottawa", "abbr": "OTT", "art": "OTTO"},
+          "167": {"source": "Owen Sound Attack", "full": "Owen Sound Attack", "short": "Owen Sound", "abbr": "OS", "art": "OWEN"},
+          "168": {"source": "Peterborough Petes", "full": "Peterborough Petes", "short": "Peterborough", "abbr": "PBO", "art": "PETE"},
+          "169": {"source": "Saginaw Spirit", "full": "Saginaw Spirit", "short": "Saginaw", "abbr": "SAG", "art": "SAGI"},
+          "170": {"source": "Sarnia Sting", "full": "Sarnia Sting", "short": "Sarnia", "abbr": "SAR", "art": "SARN"},
+          "171": {"source": "Soo Greyhounds", "full": "Soo Greyhounds", "short": "Soo", "abbr": "SOO", "art": "SOO"},
+          "172": {"source": "Sudbury Wolves", "full": "Sudbury Wolves", "short": "Sudbury", "abbr": "SBY", "art": "SUDB"},
+          "173": {"source": "Windsor Spitfires", "full": "Windsor Spitfires", "short": "Windsor", "abbr": "WSR", "art": "WIND"}
+        }
+      },
+      "qmjhl": {
+        "league_id": 10,
+        "slots": {
+          "174": {"source": "Newfoundland, Regiment", "full": "Newfoundland Regiment", "short": "Newfoundland", "abbr": "NFL", "art": "NFR"},
+          "175": {"source": "Baie-Comeau, Drakkar", "full": "Baie-Comeau Drakkar", "short": "Baie-Comeau", "abbr": "BAC", "art": "BAIE"},
+          "176": {"source": "Blainville-Boisbriand, Armada", "full": "Blainville-Boisbriand Armada", "short": "Blainville-Boisbriand", "abbr": "BLB", "art": "BOIS"},
+          "177": {"source": "Cape Breton, Eagles", "full": "Cape Breton Eagles", "short": "Cape Breton", "abbr": "CAP", "art": "CAPE"},
+          "178": {"source": "Charlottetown, Islanders", "full": "Charlottetown Islanders", "short": "Charlottetown", "abbr": "CHA", "art": "CHAR"},
+          "179": {"source": "Chicoutimi, Saguenéens", "full": "Chicoutimi Saguenéens", "short": "Chicoutimi", "abbr": "CHI", "art": "CHIC"},
+          "180": {"source": "Drummondville, Voltigeurs", "full": "Drummondville Voltigeurs", "short": "Drummondville", "abbr": "DRU", "art": "DRUM"},
+          "181": {"source": "Gatineau, Olympiques", "full": "Gatineau Olympiques", "short": "Gatineau", "abbr": "GAT", "art": "GATI"},
+          "182": {"source": "Halifax, Mooseheads", "full": "Halifax Mooseheads", "short": "Halifax", "abbr": "HAL", "art": "HLFX"},
+          "183": {"source": "Moncton, Wildcats", "full": "Moncton Wildcats", "short": "Moncton", "abbr": "MON", "art": "MONC"},
+          "184": {"source": "Québec, Remparts", "full": "Québec Remparts", "short": "Québec", "abbr": "QUE", "art": "QUEB"},
+          "185": {"source": "Rimouski, Océanic", "full": "Rimouski Océanic", "short": "Rimouski", "abbr": "RIM", "art": "RIMO"},
+          "186": {"source": "Rouyn-Noranda, Huskies", "full": "Rouyn-Noranda Huskies", "short": "Rouyn-Noranda", "abbr": "ROU", "art": "ROUY"},
+          "187": {"source": "Saint John, Sea Dogs", "full": "Saint John Sea Dogs", "short": "Saint John", "abbr": "SNB", "art": "STJN"},
+          "188": {"source": "Shawinigan, Cataractes", "full": "Shawinigan Cataractes", "short": "Shawinigan", "abbr": "SHA", "art": "SHAW"},
+          "189": {"source": "Sherbrooke, Phœnix", "full": "Sherbrooke Phoenix", "short": "Sherbrooke", "abbr": "SHE", "art": "SHER"},
+          "190": {"source": "Val-d'Or, Foreurs", "full": "Val-d'Or Foreurs", "short": "Val-d'Or", "abbr": "VDO", "art": "VDOR"},
+          "191": {"source": "Victoriaville, Tigres", "full": "Victoriaville Tigres", "short": "Victoriaville", "abbr": "VIC", "art": "VICT"}
+        }
+      },
+      "whl": {
+        "league_id": 11,
+        "slots": {
+          "192": {"source": "Brandon Wheat Kings", "full": "Brandon Wheat Kings", "short": "Brandon", "abbr": "BDN", "art": "BRAN"},
+          "193": {"source": "Calgary Hitmen", "full": "Calgary Hitmen", "short": "Calgary", "abbr": "CGY", "art": "CALW"},
+          "194": {"source": "Edmonton Oil Kings", "full": "Edmonton Oil Kings", "short": "Edmonton", "abbr": "EDM", "art": "EDMW"},
+          "195": {"source": "Everett Silvertips", "full": "Everett Silvertips", "short": "Everett", "abbr": "EVT", "art": "EVER"},
+          "196": {"source": "Kamloops Blazers", "full": "Kamloops Blazers", "short": "Kamloops", "abbr": "KAM", "art": "KAML"},
+          "197": {"source": "Kelowna Rockets", "full": "Kelowna Rockets", "short": "Kelowna", "abbr": "KEL", "art": "KELW"},
+          "198": {"source": "Wenatchee Wild", "full": "Wenatchee Wild", "short": "Wenatchee", "abbr": "WEN", "art": "WW"},
+          "199": {"source": "Lethbridge Hurricanes", "full": "Lethbridge Hurricanes", "short": "Lethbridge", "abbr": "LET", "art": "LETH"},
+          "200": {"source": "Medicine Hat Tigers", "full": "Medicine Hat Tigers", "short": "Medicine Hat", "abbr": "MH", "art": "MEDH"},
+          "201": {"source": "Moose Jaw Warriors", "full": "Moose Jaw Warriors", "short": "Moose Jaw", "abbr": "MJ", "art": "MJAW"},
+          "202": {"source": "Portland Winterhawks", "full": "Portland Winterhawks", "short": "Portland", "abbr": "POR", "art": "PORW"},
+          "203": {"source": "Prince Albert Raiders", "full": "Prince Albert Raiders", "short": "Prince Albert", "abbr": "PA", "art": "PALB"},
+          "204": {"source": "Prince George Cougars", "full": "Prince George Cougars", "short": "Prince George", "abbr": "PG", "art": "PGEO"},
+          "205": {"source": "Red Deer Rebels", "full": "Red Deer Rebels", "short": "Red Deer", "abbr": "RD", "art": "REDD"},
+          "206": {"source": "Regina Pats", "full": "Regina Pats", "short": "Regina", "abbr": "REG", "art": "REGI"},
+          "207": {"source": "Saskatoon Blades", "full": "Saskatoon Blades", "short": "Saskatoon", "abbr": "SAS", "art": "SASK"},
+          "208": {"source": "Seattle Thunderbirds", "full": "Seattle Thunderbirds", "short": "Seattle", "abbr": "SEA", "art": "SEAT"},
+          "209": {"source": "Spokane Chiefs", "full": "Spokane Chiefs", "short": "Spokane", "abbr": "SPO", "art": "SPOK"},
+          "210": {"source": "Swift Current Broncos", "full": "Swift Current Broncos", "short": "Swift Current", "abbr": "SC", "art": "SWFT"},
+          "211": {"source": "Tri-City Americans", "full": "Tri-City Americans", "short": "Tri-City", "abbr": "TC", "art": "TRIC"},
+          "212": {"source": "Vancouver Giants", "full": "Vancouver Giants", "short": "Vancouver", "abbr": "VAN", "art": "VANW"},
+          "213": {"source": "Victoria Royals", "full": "Victoria Royals", "short": "Victoria", "abbr": "VIC", "art": "VIC"}
+        }
+      }
+    }
+  }
+}
