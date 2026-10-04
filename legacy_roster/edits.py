@@ -5,7 +5,8 @@ its last step, after the downloaded data, so a correction survives every later u
 about people, not records: each one names a player by plain name and birthdate (`person_key`), so
 it finds him in any later roster whichever record he has there.
 
-    edits.json  {"version": 1, "players": {who: edit}}
+    edits.json  {"version": 1, "players": {who: edit}, "teams": {slot: team edit}}
+    team edit   {"full", "city", "abbr", "logo": "file:<path>"}   (apply_teams)
     edit        {"label": "Connor McDavid",              shown in the editor's list
                  "was": {"first", "last", "birth"},         his name before a rename (see restore())
                  "set": {"first", "last", "num", "pos" (C/L/R/D/G), "shoots" (L/R),
@@ -13,6 +14,7 @@ it finds him in any later roster whichever record he has there.
                  "ratings": {"Passing": 90, ...},           EA attribute names (schema.EA_SKATER / EA_GOALIE)
                  "ovr": 75,                                 a new player without ratings: all attributes at this level
                  "team": <slot> or "FA",                    move, sign or release
+                 "photo": "file:<path>",                    a picture of the player's own
                  "new": true}                               a player the game does not have: created
 
 Rules the game enforces are kept: at most 40 a team, numbers unique on a team, goalies stay
@@ -35,21 +37,75 @@ def path():
     return datasource.app_dir('edits.json')
 
 
-def load(file=None):
+def _load_all(file=None):
     try:
         with open(file or path(), encoding='utf-8') as f:
             data = json.load(f)
-        return data.get('players', {}) if data.get('version') == VERSION else {}
+        return data if data.get('version') == VERSION else {}
     except (OSError, ValueError, AttributeError):
         return {}
 
 
-def save(players, file=None):
+def load(file=None):
+    """The player edits: {who: edit}."""
+    return _load_all(file).get('players', {})
+
+
+def load_teams(file=None):
+    """The team edits: {slot (as text): {"full", "city", "abbr", "logo": "file:<path>"}}."""
+    return _load_all(file).get('teams', {})
+
+
+def save(players=None, file=None, teams=None):
+    """Store the edits; the part not given (players or teams) stays as it was."""
     target = file or path()
+    data = _load_all(target)
+    out = {'version': VERSION, 'players': data.get('players', {}) if players is None else players,
+           'teams': data.get('teams', {}) if teams is None else teams}
     tmp = target + '.tmp'
     with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump({'version': VERSION, 'players': players}, f, ensure_ascii=False, indent=1, sort_keys=True)
+        json.dump(out, f, ensure_ascii=False, indent=1, sort_keys=True)
     os.replace(tmp, target)
+
+
+def keep_picture(source):
+    """A copy of a picture the player chose, kept with the program's files (the original may be
+    moved or deleted later). Returns the 'file:' link edits and photos use."""
+    import hashlib
+    import shutil
+    with open(source, 'rb') as f:
+        digest = hashlib.sha1(f.read()).hexdigest()[:16]
+    target = datasource.app_dir('art', 'mine', digest + os.path.splitext(source)[1].lower())
+    if not os.path.exists(target):
+        shutil.copyfile(source, target)
+    return 'file:' + target
+
+
+def apply_teams(b, teams, say=None):
+    """The player's own team names and logos (Roster editor). The menus show the names through
+    the game's text file, written with photos and logos (art/portraits.names, loc.py)."""
+    T = b.R.T
+    for key in sorted(teams, key=int):
+        slot, e = int(key), teams[key]
+        if not 0 <= slot < T.cur_rec:
+            continue
+        for field, part in (('fullname', 'full'), ('shortname', 'city'), ('abbrname', 'abbr')):
+            if e.get(part):
+                limit = T.field(field).bits // 8 - 1
+                text = e[part]
+                while len(text.encode('utf-8')) > limit:
+                    text = text[:-1]
+                if field == 'shortname':
+                    L.set_city(T, slot, text)       # a custom team's city is a key (layout.city_key)
+                else:
+                    T.set(slot, field, text)
+        if any(e.get(p) for p in ('full', 'city', 'abbr')):
+            b.team_names[slot] = True
+        if e.get('logo'):
+            b.logos[slot] = e['logo']
+        b.log.append(['edits', 'team edited', b.R.team_name(slot), ', '.join(sorted(e)), ''])
+    if teams and say:
+        say(f"My edits: {len(teams)} teams")
 
 
 def birth_of(P, prow):
@@ -136,6 +192,8 @@ def apply(b, edits, say=None):
             skipped += 1
             continue
         b.edited[1].add(prow)
+        if e.get('photo'):                  # a picture of the player's own, installed with photos and logos
+            b.photos[prow] = e['photo']
         problems = _set_fields(b, prow, e.get('set') or {}, changed)
         _set_ratings(b, prow, e.get('ratings') or {}, e.get('ovr') if e.get('new') else None)
         if 'team' in e:

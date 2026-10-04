@@ -15,6 +15,12 @@ hockey card, `13xx` Build Your AI).
 `PARAM.SFO`: `SAVEDATA_DIRECTORY` must equal the folder name; `SUB_TITLE` (up to 127 bytes) is
 the roster name shown in the load list; `DETAIL` is `Rosters`. RPCS3 saves are not signed.
 
+**EU and NA.** The European version is `BLES02153`, the North American `BLUS31540`. Their saves'
+`PARAM.SFO` differ only in `TITLE` ("NHL™ Legacy Edition" / "NHL® Legacy Edition") and the folder
+name (`PARAMS` is empty in RPCS3 saves). Both read the same `SYS-DATA`: the community shares one
+roster file for both, dropped into `BLES021530200` or `BLUS315400200`. Both discs hold the same
+`cache.big`, `nocache.big` and `cacheboot.big` contents (same entry counts, same 8 text files).
+
 ## 2. SYS-DATA wrapper
 
 Big-endian unless noted. File length = `0x2C` + section size (2,456,120 bytes for rosters).
@@ -101,9 +107,10 @@ record. The line slots are named: `l1lw l1c l1rw l1ld l1rd` ... `l4rw`, `pp1*`, 
 7. **Hard limits.** No team can be added (the team table is full and team ids are 8-bit) and no
    team can change league. Only existing slots can be refilled.
 
-## 6. The 2025-26 community roster
+## 6. The community rosters
 
-The updater works on this roster family; its conventions differ from the stock EA roster.
+The updater works on this roster family (the 2025-26 roster "ROSTER2526" and its successors); its
+conventions differ from the stock EA roster.
 
 - 32 NHL teams: slot 22 (the old Arizona slot) holds Utah, the two All-Star slots 30 and 31
   hold Seattle and Vegas. Custom teams 222-233 are copies of twelve NHL teams with current
@@ -123,6 +130,39 @@ The updater works on this roster family; its conventions differ from the stock E
   are listed under the custom teams, not the NHL (owner, 2026-10-03). AHL abbreviations
   (`abbrname`) were stale in the base (Utica `ALB`); the AHL step writes current ones.
 - National-team goalies have second player records of their own (same name and birthdate).
+- **The community's 2026-27 roster** (shared as one SYS-DATA, October 2026) keeps the same layout,
+  with these differences:
+  - slots 22/30/31 are named Utah Mammoth, Seattle Kraken, Vegas Golden Knights, with a few more
+    team fields changed (colours, `Nzao`, `aDub`; the update leaves them as they are);
+  - the custom copies 222–233 are out of step with their NHL teams (14–25 of ~25 players shared;
+    Ben Hutton only on the Golden Knights copy);
+  - France, Germany, Italy, Latvia, Slovakia and Switzerland are empty; Czech Republic and
+    Denmark dress 20 but hold no line slot (the community ships it so; the update deals lines);
+  - 6,770 player records (25 more), 52 free agents;
+  - slot 67 is named "Karlskrona Hockey" with no players.
+
+**The game's own roster** (`db/nhlng.db` on the disc; `stock.py`, 0.6.0). Facts measured on the NA
+disc (the EU one has the same archives):
+- **Tables.** The database has 134 tables. All 39 of a roster save are among them, with the same
+  record lengths and field definitions. A roster save differs only in these points:
+  - it holds those 39, in its own order (`stock.ROSTER_MAX`);
+  - each table has room to grow: the save's maximum is the disc's count plus room (cPbu 5,632 →
+    7,988, ulGe 5,532 → 10,879, caBZ 6,087 → 9,955);
+  - every table header has byte 7 = 6 (disc 2);
+  - the player-link table `caBZ` carries one index: header byte 0x1D = 1, then 16 bytes after its
+    records, `prCe` 01 01 00 00 00 00 00 02 00 00 00 01;
+  - the database ends with four `DB` bytes;
+  - the wrapper is `PS3RosterFile`, version 4, compressed, counter 1, section 2,456,120 − 0x2C.
+- **Layout.** Every club slot has its real 2014-15 club with players. Slots 30/31 hold the All-Star
+  teams (49 players, all also on their own teams). Custom slots 222–251 are "Custom Team 00–29",
+  switched off (`active` 0) and empty. The 21 national teams have squads; there are 340 free
+  agents. Birth years are year − 1900; there are no blank records.
+- **Player ids** (`game_id`) are 14 bits, and the disc already uses ids up to 16,343. New records
+  take free ids in the gaps.
+- **A PARAM.SFO** for a version that has no save to copy: `savedata.roster_sfo` makes one from
+  scratch that is byte-identical to the game's own (14 keys, `*ICON0.PNG`/`*SYS-DATA` flags 0/1,
+  `RPCS3_BLIST`, `DETAIL` "Rosters", …). The icon is the disc's `PS3_GAME/ICON0.PNG`.
+- **Not proven yet:** that the game loads a roster made this way (`cli stock-test`, ROADMAP).
 
 **Table capacities** (current / maximum records in a roster save):
 
@@ -134,6 +174,7 @@ The updater works on this roster family; its conventions differ from the stock E
 | `caBZ` links | 3,611 | 9,955 | |
 | `QEoV` free agents | 17 | 1,767 | |
 | `ttOk` teams | 252 | 252 | full |
+| `caBZ` / `vaHq` | | | `vaHq` (draft picks) points at player links too (`playerindex`); links nothing uses are dropped by `Builder.finish` |
 | `vaHq` draft picks | 1,260 | 1,260 | full: 6 years × 30 teams × 7 rounds |
 | `xieT` salary extras | 30 | 30 | one per NHL team 0–29 |
 | `ihmS` / `byED` NHL schedule / future schedule | 1,231 | 1,291 | see section 8 |
@@ -194,6 +235,13 @@ More details:
   - Logos are drawn over the whole canvas with transparency. `t` has a white edge and a soft
     shadow; `d` is a small `t`; `c` is the logo enlarged and cut off on the right; `w` is a big
     zoomed piece faded to a circle; `s` is a banner in the team's colours with part of the logo.
+  - `r` (256×512, `teamlogosreflection`, NHL art ids 0–29 on the disc) is the logo in the upper
+    half (about 190×180 px around y 125) standing on a faint mirror image of itself that fades out
+    within about 50 px; the rest is transparent. This is the picture of the favourite-team
+    carousel ("Choose Your Favorite Team" on a new profile, owner's screenshot 2026-10-04: Utah's
+    name with the disc's `r22`, the Coyotes). The carousel is sorted by city, so Utah sits where
+    Arizona was. The updater writes `r` for the 32 NHL slots since 0.6.0 (Seattle and Vegas, 30/31,
+    from `r0` as template).
 - **Portrait ids.**
   - The disc's ids run 1–12,401 in three folders.
   - The community roster gives 134 players ids from 12,402 to 13,826, so a loose-file portrait pack of
@@ -206,13 +254,47 @@ More details:
   Team Rosters screen shows the dynasty variant `d`). A missing loose file falls back to the
   silhouette. Nothing needs a mipmap.
 - **Team names are not read from the save for most teams.** Slot 107 was "Kladno" in the save; the
-  game still showed "Chomutov". Custom teams show their `shortname` as a key into a city list
-  (`LAS_VEGAS` shows "Las Vegas"). The game looks for `fe/loc/nhl_eng_us.db` on `dev_hdd0` before
-  the disc's (RPCS3 log), so names can be fixed there: a later step.
+  game still showed "Chomutov". The game takes them from its text file (below). Custom teams show
+  the text whose key is their `shortname` (`LAS_VEGAS` shows "Las Vegas"; a shortname with no text,
+  like "2026 Prospects 2", shows nothing). In the game (owner, 2026-10-04) texts the update added
+  under "2026 PROSPECTS 2" and "Coachella Valley" for custom teams with those shortnames still
+  showed nothing, while every changed text of an existing key showed (Utah, Timrå). The keys that
+  work are all in the game's style (capitals, digits, underscores); since 0.5.0 custom shortnames
+  are written that way (`2026_PROSPECTS_2`, `COACHELLA_VALLEY`) and added keys keep their case.
+  Waiting for the in-game check.
 - **Code.** Reading and writing: `legacy_roster/art/` (`disc.py` reads the player's own disc image or
   folder, `bigf.py`, `refpack.py`, `dds.py`). Photos and logos: `portraits.py` (ids in the roster),
   `images.py` (Pillow: cut-out, head finding, logo styles), `install.py` (download, write, back up,
   remove). The one-off in-game experiment is `lab.py` (`cli art-test`).
+
+### The text file (`fe/loc/nhl_<language>.db`)
+
+On the disc in `cacheboot.big`, one per language (`eng_us`, `fre_fr`, `ger_de`, `swe_se`, `fin_fi`,
+`cze_cz`, `rus_ru`; `lng_lg` is the language list). The game reads a loose copy from
+`dev_hdd0/game/<TITLEID>/USRDIR/fe/loc/` first (RPCS3 log). Code: `legacy_roster/art/loc.py`, which
+rebuilds every language file of the disc byte for byte.
+
+- **Layout.** A "DB" with one table `LanguageStrings` (`GJCv`): `hashid` (`jKhj`, 32 bits),
+  `stringid` (`VhAs`, type 13) and `sourcetext` (`bYbZ`, type 14), 16-byte records sorted by hash.
+  Types 13/14 are Huffman-compressed strings stored after the records.
+- **Huffman tree.** Node *n* is the 2-byte entries 2*n* (bit 0) and 2*n*+1 (bit 1). An entry (k, 0)
+  goes to node k, an entry (0, c) is byte c. Node 0 is the root; the English tree is 660 bytes.
+- **Strings.** Each one sits at its record's offset (from the start of the tree), with a length
+  prefix of 1 byte (key) or 2 bytes (text) in bytes, then the bits, most significant first, in
+  bits // 8 + 1 bytes. Offset 0xFFFFFFFF means no string.
+- **After the strings.** Zero bytes to a multiple of 8, then the CRC-32/MPEG-2 of the table from
+  0x28 on (the same chain rule as the saves). Table header +0x10 = where the strings end.
+- **Key hash.** `hashid` = `zlib.crc32(key.upper(), 0xFFFFFFFF) ^ 0xFFFFFFFF` for every key the game
+  builds at run time (team and city keys). About 45 % of the fixed keys (11,717 in English) have
+  other hashes that no rule tried explains (CRC-32 variants, FNV, djb2, sdbm, any case); those are
+  looked up by their stored hash. The meta file declares `hashid` a signed 32-bit key with an index
+  sorted on it; the records are sorted unsigned and the game copes. Stored keys keep their own case
+  (`NHLTeamName_MOD`, `NHLTEAMNAME_CHOM`, `ChangeDay`); the Kings copy's shortname
+  `NhlCityName_13` has no findable text (the disc's `NHLCityName_13` entry is one of the odd hashes).
+- **Team keys.** For a team with art code X the game asks for `NHLTeamName_X` (full name),
+  `NHLCityName_X` (city: the Team Rosters header), `TXT_NICKNAME_X`, `TXT_NICKNAME_ALT_X` and
+  `X_XLA_TEAM_X` (abbreviation). NHL slot 22 has art `PHX`, slots 30/31 `EAS`/`WES`. The disc
+  already has some clubs the base roster does not use (`KLA` Kladno).
 
 ## 8. Schedules
 

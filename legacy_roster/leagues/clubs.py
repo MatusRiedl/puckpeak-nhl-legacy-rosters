@@ -94,7 +94,7 @@ def update_league(b, key, league, say):
     was_pool = {slot: ((T.get(slot, 'JkmY'), T.get(slot, 'RPbr')) if pools.is_pool(R, slot) else None) for slot in slots}
     for t in teams:
         T.set(t['slot'], 'JkmY', t['full'])
-        T.set(t['slot'], 'ITNQ', t['short'])
+        L.set_city(T, t['slot'], t['short'])        # custom slots (Coachella, Henderson): a key, see layout
         T.set(t['slot'], 'nnsx', t['abbr'])
         T.set(t['slot'], 'RPbr', t['art'])
         if t.get('logo'):
@@ -357,7 +357,7 @@ def _feed_position(b, row, p, live, name):
     if any(b.U.get(e, 'BSXd') in L.NATIONAL for e in live.get(b.P.get(row, 'zIBw'), [])):
         return
     b.set_position(row, want)
-    b.log.append([p['team'], 'position changed', name, f"{'C LW RW D G'.split()[cur]} to {'C LW RW D G'.split()[want]}", ''])
+    b.log.append([p['team'], 'position changed', name, f"{L.POS_NAME[cur]} to {L.POS_NAME[want]}", ''])
 
 
 def affiliates(R):

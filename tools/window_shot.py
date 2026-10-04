@@ -13,7 +13,10 @@ states:
     details    done, with the details panel open
     failed     a made-up failure banner
     editor           the Roster editor tab on the base roster, Edmonton and its first player picked
-    editor-preview   the same after "Preview update" (a real offline update, in memory)
+    editor-preview   the same in "To be" (a real offline update, in memory)
+
+The pretend RPCS3 has the base roster, an earlier update of it, and a copy saved for the NA
+version, so the EU / NA tags and "Save for" show.
 
 options:
     --scale F           multiplies the screen's own scaling, to see another one: 0.5 on a 200 % screen
@@ -22,6 +25,8 @@ options:
     --screen-lines N    pretend the screen is N lines tall (window units): 768 = small laptop
     --show-path TEXT    path shown in step 1, so a public picture does not show a real user name
     --all               switch on every league before a done/details update
+    --disc PATH         your own game disc image (read only): the editor's card then shows the players'
+                        pictures instead of saying where the game is
 
 The window paints itself into the picture (PrintWindow), so it comes out right even when the
 screen is locked or covered. Windows only; needs Pillow (in .venv).
@@ -41,8 +46,9 @@ sys.path.insert(0, ROOT)
 BASE = os.environ.get('LEGACY_ROSTER_BASE') or os.path.join(ROOT, 'work', 'backup', 'BLES021530202')
 
 
-def pretend_rpcs3(folder):
-    """An RPCS3 folder with the base roster and one earlier update of it."""
+def pretend_rpcs3(folder, disc=None):
+    """An RPCS3 folder with the base roster, one earlier update of it and a copy for the NA version
+    (`disc`: a game disc image both versions are said to be on)."""
     from legacy_roster import savedata
     sd = os.path.join(folder, 'rpcs3', 'dev_hdd0', 'home', '00000001', 'savedata')
     shutil.copytree(BASE, os.path.join(sd, os.path.basename(BASE)))
@@ -50,8 +56,13 @@ def pretend_rpcs3(folder):
     open(exe, 'wb').close()
     base = savedata.list_rosters(sd)[0]
     with open(base.sys_data, 'rb') as f:
-        savedata.install(sd, base, f.read(),
-                         savedata.default_name(datetime.datetime.now() - datetime.timedelta(days=1)))
+        data = f.read()
+    savedata.install(sd, base, data, savedata.default_name(datetime.datetime.now() - datetime.timedelta(days=1)))
+    savedata.install(sd, base, data, "Community roster NA", title_id='BLUS31540')
+    if disc:
+        os.makedirs(os.path.join(folder, 'rpcs3', 'config'))
+        with open(os.path.join(folder, 'rpcs3', 'config', 'games.yml'), 'w', encoding='utf-8') as f:
+            f.write(''.join(f'{t}: "{os.path.abspath(disc)}"\n' for t in savedata.GAMES))
     return exe
 
 
@@ -106,6 +117,7 @@ def main():
     ap.add_argument('--screen-lines', type=int)
     ap.add_argument('--show-path')
     ap.add_argument('--all', action='store_true')
+    ap.add_argument('--disc')
     args = ap.parse_args()
     if not os.path.exists(os.path.join(BASE, 'SYS-DATA')):
         sys.exit("no base roster save: set LEGACY_ROSTER_BASE to a roster save folder (see docs/DEVELOPING.md)")
@@ -121,7 +133,7 @@ def main():
         from legacy_roster import layout as L
         from legacy_roster import theme as T
 
-        exe = pretend_rpcs3(work)
+        exe = pretend_rpcs3(work, args.disc)
         gui.load_settings = lambda: {} if args.state == 'none' else {'rpcs3': exe}
         gui.save_settings = lambda values: None
         savedata.running_rpcs3 = lambda: None         # a running RPCS3 on this PC must not be picked up
@@ -143,6 +155,9 @@ def main():
                 time.sleep(0.02)
 
         pump(1.0)
+        deadline = time.time() + 60
+        while app.scanning and time.time() < deadline:     # the rosters are read in the background
+            pump(0.1)
         if args.state == 'updating':
             app.busy = True
             app.refresh_state()
@@ -154,6 +169,8 @@ def main():
             if args.all:
                 for var in app.steps.values():
                     var.set(True)
+            if not args.disc:                        # the pretend RPCS3 has no game to make pictures from
+                app.photos.set(False)
             app.select(os.path.basename(BASE))
             app.start()
             deadline = time.time() + 600
@@ -175,14 +192,16 @@ def main():
                 pump(0.5)
             wait()
             if args.state == 'editor-preview':
-                ed.preview()
+                from legacy_roster.editor.view import TO_BE
+                ed.mode_switch.set(TO_BE)
+                ed.set_mode(TO_BE)                   # what a click on "To be" does
                 wait()
             edm = str(L.API_TO_SLOT['EDM'])
             ed.team_tree.selection_set(edm)
             pump(0.5)
             first = ed.table.get_children()[0]
             ed.table.selection_set(first)
-            pump(0.5)
+            pump(2.5)                                # the picture is made in the background
         elif args.state == 'failed':
             app.failed("The new roster failed the safety checks, so nothing was saved",
                        ["Anaheim Ducks dresses 19 players (4 C, 4 LW, 3 RW, 6 D, 2 G); "

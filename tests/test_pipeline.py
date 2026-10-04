@@ -127,6 +127,41 @@ def test_steps_can_be_run_on_their_own(base_bytes, data):
     assert nothing.data == base_bytes
 
 
+def test_nhl_players_get_the_position_nhl_com_lists(built, data):
+    R = Roster(built.data)
+    people = match(R, [dict(p) for p in data.nhl_players])
+    for p in people:
+        if p['pos'] != 'G':
+            assert R.P.get(p['row'], 'position') == L.POS_CODE[p['pos']], (p['first'], p['last'])
+    smith = [p for p in people if (p['first'], p['last'], p['team']) == ('Cole', 'Smith', 'CHI')]
+    if smith:                                       # the owner's report: Chicago had one right wing too few
+        assert R.P.get(smith[0]['row'], 'position') == 2
+        assert any(r[1] == 'position changed' and r[2] == 'Cole Smith' for r in built.builder.log)
+
+
+def test_wingers_play_their_own_side_on_the_nhl_lines(built):
+    R = Roster(built.data)
+    U, P = R.U, R.P
+    right, possible = 0, 0
+    for team in range(32):
+        ents = [e for e in range(U.cur_rec) if U.get(e, 'team') == team]
+        pos = {e: P.get(R.p_by_id[R.link_to_pid[U.get(e, 'playerindex')]], 'position') for e in ents}
+        possible += sum(min(4, list(pos.values()).count(side)) for side in (1, 2))
+        for k in range(1, 5):
+            for slot, want in ((f"l{k}lw", 1), (f"l{k}rw", 2)):
+                right += pos[next(e for e in ents if U.get(e, slot))] == want
+    assert right >= possible * 0.85                 # a much better winger may still cross over
+    chicago = [e for e in range(U.cur_rec) if U.get(e, 'team') == 6]
+    rw = [e for e in chicago if P.get(R.p_by_id[R.link_to_pid[U.get(e, 'playerindex')]], 'position') == 2]
+    assert len(rw) >= 3 and all(U.get(e, 'rosterstatus') for e in rw)
+
+
+def test_generic_line_builder_puts_wingers_on_their_side():
+    assert lines.wing_side({schema.SLOT_TAG['l2lw'], schema.SLOT_TAG['pp1rw']}) == 1
+    assert lines.wing_side({schema.SLOT_TAG['pp1rw']}) == 2
+    assert lines.wing_side({schema.SLOT_TAG['l1c']}) is None
+
+
 def test_generic_line_builder_follows_the_stock_rules(base_bytes):
     R = Roster(base_bytes)
     b = Builder(R, Data())
@@ -165,12 +200,55 @@ def test_verify_reports_what_it_is_given(built, base_bytes, data):
     assert verify(b'not a save', src)[0][0].startswith("the save cannot be read back")
 
 
-def test_the_stock_layout_is_refused_with_an_explanation(base_bytes):
+def community_style(base_bytes):
+    """The base roster changed the way the community's 2026-27 roster is: the Ducks copy (225) out
+    of step with Anaheim (half its players gone, a free agent on it), Italy and France emptied,
+    Czech Republic dressed but without line slots."""
+    R = Roster(base_bytes)
+    U = R.U
+    flags = [n for n, f in U.fields.items() if f.bits == 1 and n != 'jZSh']
+    ducks = [i for i in range(U.cur_rec) if U.get(i, 'BSXd') == 225]
+    U.set(ducks[0], 'TWSX', R.Q.get(0, 'TWSX'))           # someone who is only on the copy
+    gone = ducks[1:13] + [i for i in range(U.cur_rec) if U.get(i, 'BSXd') in (139, 142)]
+    for i in range(U.cur_rec):
+        if U.get(i, 'BSXd') == 136:
+            for f in flags:
+                U.set(i, f, 0)
+    for i in sorted(gone, reverse=True):
+        U.delete_record(i)
+    return R.f.build()
+
+
+def test_a_community_roster_with_unfinished_teams_is_updated(base_bytes, data):
+    src = community_style(base_bytes)
+    L.check_base(Roster(src))                              # recognised by the copy's name
+    res = pipeline.build(src, data)
+    assert res.problems == []
+    R = Roster(res.data)
+    assert roster_of(R, 225) == roster_of(R, 0)
+    for team in (136, 139, 142):                           # Czech lines dealt; Italy, France refilled (IIHF)
+        assert res.info['teams'][team]['dressed'] == 20 and res.info['teams'][team]['slots'] == 71, team
+    fa = {R.link_to_pid.get(R.Q.get(i, 'TWSX')) for i in range(R.Q.cur_rec)}
+    alone = Roster(src).link_to_pid[Roster(src).Q.get(0, 'TWSX')]
+    assert alone in fa and not [i for i in range(R.U.cur_rec) if R.link_to_pid.get(R.U.get(i, 'TWSX')) == alone]
+    assert pipeline.build(res.data, data).data == res.data
+
+
+def test_a_country_without_enough_players_keeps_its_empty_squad(base_bytes, data):
+    no_iihf = Data(nhl_players=data.nhl_players, ea_ratings=data.ea_ratings, iihf={}, season_year=data.season_year)
+    res = pipeline.build(community_style(base_bytes), no_iihf, steps=['national'])
+    assert res.problems == []
+    assert res.info['teams'][142]['players'] == 0          # Italy: no IIHF roster, too few Italians in the save
+    assert any("left empty" in line and "Italy" in line for line in res.summary())
+
+
+def test_a_roster_with_some_copies_missing_is_refused_with_an_explanation(base_bytes):
     R = Roster(base_bytes)
     for e in [e for e in range(R.U.cur_rec) if R.U.get(e, 'team') == 229][::-1]:
-        R.U.delete_record(e)                        # no Utah copy: what the stock EA roster looks like
-    with pytest.raises(L.LayoutError, match="stock EA roster"):
+        R.U.delete_record(e)                        # no Utah copy: neither the community's nor the game's layout
+    with pytest.raises(L.LayoutError, match="custom copies"):
         pipeline.build(R.f.build(), Data())
+    assert L.check_base(Roster(base_bytes)) == L.COMMUNITY
 
 
 def test_overall_only_players_land_on_their_overall(built, pack):

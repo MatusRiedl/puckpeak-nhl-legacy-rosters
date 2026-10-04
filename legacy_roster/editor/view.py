@@ -4,11 +4,14 @@
     middle  the team's players (sortable; coloured by what changed)
     right   the selected player's card: basics, team, ratings; Apply / Undo my edit
 
-"As is" is the chosen roster save, "To be" what the update makes of it (Preview update runs it in
-memory). Both show the player's own edits (edits.py), which are kept on this PC and applied to
-every later update as well. Save as new roster writes what is shown as a new save after the same
-safety checks as an update. Slow work runs in a worker thread; results come back through the
-window's queue (App.poll runs ('ui', callable) messages on the Tk thread).
+"As is" is the chosen roster save, "To be" what the update makes of it: picking "To be" runs the
+update in memory with the Update tab's switches (again when they changed); "Refresh update" runs
+it once more. Both show the player's own edits (edits.py), which are kept on this PC and applied
+to every later update as well. The card shows the player's picture: his own, the photo the update
+brings ("To be" with photos on), or what the game shows now (pictures.py). Save as new roster
+writes what is shown as a new save after the same safety checks as an update. Slow work runs in a
+worker thread; results come back through the window's queue (App.poll runs ('ui', callable)
+messages on the Tk thread).
 """
 import datetime
 import threading
@@ -24,6 +27,7 @@ from ..art.portraits import person_key
 from ..builder import Data
 from ..widgets import GhostButton, PrimaryButton
 from . import model
+from .pictures import NO_GAME, Pictures
 
 AS_IS, TO_BE = "As is", "To be"
 POSITIONS = ('C', 'LW', 'RW', 'D', 'G')
@@ -45,13 +49,21 @@ class EditorTab(ctk.CTkFrame):
         super().__init__(master, fg_color='transparent')
         self.app = app
         self.edits = edits.load()
+        self.teams = edits.load_teams()
+        self.pending_photo = None       # a picture chosen for the player on the card, not applied yet
         self.offset = ratings.overall_offset(app.pack.get('ea_ratings') or []) if app.pack else None
         self.season = (app.pack or {}).get('season')
         self.source = None              # (savedata folder, roster folder) the views were made from
+        self.slot = None                # that roster (savedata.Slot or DiscSlot)
         self.raw = None                 # Snapshot of the save as it is, without my edits
         self.raw_source = None
         self.views = {}                 # AS_IS / TO_BE -> (BuildResult, Snapshot) with my edits
         self.preview_bytes = None       # the update's result without my edits
+        self.preview_steps = None       # the Update tab's switches that result was made with
+        self.new_photos = {}            # person key -> photo link the update would install
+        self.pictures = None            # pictures.Pictures of the shown roster's game
+        self.picture_token = 0          # the picture on the card belongs to the latest request only
+        self.after_busy = None          # what to do once the running job is finished
         self.mode = AS_IS
         self.team = None
         self.player = None              # model.Player on the card (None: a new player)
@@ -76,7 +88,7 @@ class EditorTab(ctk.CTkFrame):
                                                   unselected_hover_color=T.CELL_HOVER, fg_color=T.CELL)
         self.mode_switch.set(AS_IS)
         self.mode_switch.pack(side='left', padx=(14, 8))
-        self.preview_button = GhostButton(bar, "Preview update", self.preview, height=30)
+        self.preview_button = GhostButton(bar, "Refresh update", self.preview, height=30)
         self.preview_button.pack(side='left')
         self.edits_button = GhostButton(bar, "", self.show_edits, height=30)
         self.edits_button.pack(side='right')
@@ -127,6 +139,7 @@ class EditorTab(ctk.CTkFrame):
                                         button_hover_color=T.CELL_HOVER, dropdown_fg_color=T.CARD,
                                         font=T.font(13, 'semibold'), dropdown_font=T.font(13))
         self.league.pack(fill='x', pady=(0, 6))
+        GhostButton(side, "Edit this team", self.edit_team, height=28).pack(fill='x', pady=(0, 6))
         frame, self.team_tree = self._tree(side, (('team', "Team", 190),), 12)
         frame.pack(fill='both', expand=True)
         self.team_tree.bind('<<TreeviewSelect>>', lambda _e: self.pick_team())
@@ -149,8 +162,17 @@ class EditorTab(ctk.CTkFrame):
         self.card_note = ctk.CTkLabel(card, text="", font=T.font(12), text_color=T.MUTED, anchor='w', justify='left',
                                       wraplength=280)
         self.card_note.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(0, 6))
+        # the player's picture first: what the game shows now, or what the update brings ("To be")
+        self.photo_preview = ctk.CTkLabel(card, text="", font=T.font(11), text_color=T.FAINT, anchor='w',
+                                          justify='left', wraplength=270)
+        self.photo_preview.grid(row=2, column=0, columnspan=2, sticky='w')
+        self.photo_caption = ctk.CTkLabel(card, text="", font=T.font(11), text_color=T.MUTED, anchor='w',
+                                          justify='left', wraplength=270)
+        self.photo_caption.grid(row=3, column=0, columnspan=2, sticky='w')
+        GhostButton(card, "Choose picture...", self.choose_photo, height=26).grid(row=4, column=0, columnspan=2,
+                                                                                 sticky='w', pady=(2, 8))
         self.fields = {}
-        row = 2
+        row = 5
         for key, label in (('first', "First name"), ('last', "Last name"), ('num', "Number"), ('pos', "Position"),
                            ('shoots', "Shoots"), ('birth', "Born (YYYY-MM-DD)"), ('country', "Country"),
                            ('height', "Height (cm)"), ('weight', "Weight (kg)"), ('team', "Team"), ('ovr', "Overall")):
@@ -209,11 +231,15 @@ class EditorTab(ctk.CTkFrame):
             self.roster_label.configure(text="Pick RPCS3 and a roster on the Update tab first.")
             return
         source = (self.app.rpcs3.savedata, slot.folder)
+        self.slot = slot                    # a roster save, or the game's own roster (savedata.DiscSlot)
         if source != self.source:
-            self.source, self.views, self.preview_bytes = source, {}, None
+            self.source, self.views, self.preview_bytes, self.preview_steps = source, {}, None, None
+            self.new_photos, self.pictures = {}, None
             self.mode_switch.set(AS_IS)
             self.mode = AS_IS
             self.load(AS_IS)
+        elif self.mode == TO_BE and self.preview_steps != self.chosen_steps():
+            self.preview()                  # the Update tab's switches changed: show what they make
 
     def _work(self, text, job, done):
         """Run `job()` in a worker thread; `done(result)` runs on the Tk thread afterwards."""
@@ -235,10 +261,17 @@ class EditorTab(ctk.CTkFrame):
         self.busy = False
         self._enable(True)
         done(result)
+        then, self.after_busy = self.after_busy, None
+        if then:
+            then()
 
     def _failed(self, err):
         self.busy = False
         self._enable(True)
+        self.after_busy = None
+        if self.mode == TO_BE and TO_BE not in self.views:      # the update could not be shown
+            self.mode = AS_IS
+            self.mode_switch.set(AS_IS)
         self.set_status(f"That did not work: {err}", T.RED)
 
     def _enable(self, on):
@@ -246,16 +279,15 @@ class EditorTab(ctk.CTkFrame):
             w.configure(state='normal' if on else 'disabled')
 
     def _with_edits(self, raw_bytes):
-        return pipeline.build(raw_bytes, Data(season_year=self.season or 2026), steps=[], my_edits=self.edits)
+        return pipeline.build(raw_bytes, Data(season_year=self.season or 2026), steps=[], my_edits=self.edits,
+                              team_edits=self.teams)
 
     def load(self, mode):
-        folder, roster = self.source
-        slot = next(s for s in savedata.list_rosters(folder) if s.folder == roster)
+        slot = self.slot
         self.roster_label.configure(text=f"{slot.name}")
 
         def job():
-            with open(slot.sys_data, 'rb') as f:
-                raw = f.read()
+            raw = savedata.read_roster(slot)
             base = self.preview_bytes if mode == TO_BE else raw
             built = self._with_edits(base)
             return raw, built
@@ -267,37 +299,50 @@ class EditorTab(ctk.CTkFrame):
             self.raw = model.Snapshot(raw, self.offset, self.season)
             self.raw_source = self.source
         self.views[mode] = (built, model.Snapshot(built.data, self.offset, self.season))
-        self.show()
+        if self.mode == mode:
+            self.show()
+
+    def chosen_steps(self):
+        """The Update tab's switches that change the roster (what "To be" is made with)."""
+        return [s for s in self.app.steps if self.app.steps[s].get()]
 
     def preview(self):
         """Run the update in memory with the switches of the Update tab; show it as "To be"."""
         folder, roster = self.source or (None, None)
         if folder is None:
             return
-        steps = [s for s in self.app.steps if self.app.steps[s].get()]
+        slot = self.slot
+        self.mode = TO_BE
+        self.mode_switch.set(TO_BE)
+        if self.busy:                       # e.g. "As is" is still loading: run it right after
+            self.after_busy = self.preview
+            return
+        steps = self.chosen_steps()
 
         def job():
             res = pipeline.update(folder, roster, steps, progress=lambda m: self.app.queue.put(('ui', lambda: self.set_status(m))),
-                                  dry_run=True)
+                                  dry_run=True, disc=slot if getattr(slot, 'disc', False) else None)
             if not res.build.ok:
                 raise RuntimeError("the update did not pass the safety checks: " + "; ".join(res.build.problems[:2]))
+            b = res.build.builder
+            photos = {edits.who_of(b.P, prow): link for prow, link in b.photos.items()}
             built = self._with_edits(res.build.data)
-            return res.build.data, built
+            return res.build.data, built, photos
 
         def done(r):
-            self.preview_bytes = r[0]
+            self.preview_bytes, self.preview_steps, self.new_photos = r[0], steps, r[2]
             self.views[TO_BE] = (r[1], model.Snapshot(r[1].data, self.offset, self.season))
-            self.mode_switch.set(TO_BE)
-            self.mode = TO_BE
-            self.show()
-        self._work("Previewing the update (nothing is saved)...", job, done)
+            if self.mode == TO_BE:
+                self.show()
+        self._work("Making the update to show you (nothing is saved)...", job, done)
 
     def set_mode(self, mode):
+        if mode == TO_BE and (self.preview_bytes is None or self.preview_steps != self.chosen_steps()):
+            self.preview()
+            return
         self.mode = mode
-        if mode == TO_BE and self.preview_bytes is None:
-            self.mode_switch.set(AS_IS)
-            self.mode = AS_IS
-            self.set_status("Press Preview update first: it shows what the update will make of this roster.", T.GOLD)
+        if self.busy:
+            self.after_busy = lambda: self.set_mode(mode)
             return
         if mode not in self.views:
             self.load(mode)
@@ -309,6 +354,9 @@ class EditorTab(ctk.CTkFrame):
         stale = [m for m in self.views if m != self.mode]
         for m in stale:
             del self.views[m]
+        if self.busy:
+            self.after_busy = lambda: self.load(self.mode)
+            return
         self.load(self.mode)
 
     # --- showing -------------------------------------------------------------------------------------------
@@ -335,6 +383,11 @@ class EditorTab(ctk.CTkFrame):
             self.set_status(f"Showing {what}" + (f", with your {len(self.edits)} edits" if self.edits else "")
                             + ". Pick a team, then a player.", T.MUTED)
         self.show_teams()
+        if self.player is not None:          # the same player as this view has him (team, rating, picture)
+            p = snap.by_who.get(self.player.who)
+            if p is not None:
+                self.player = p
+                self._fill_card(p)
 
     def show_teams(self):
         snap = self.snap
@@ -448,6 +501,13 @@ class EditorTab(ctk.CTkFrame):
         self.apply_button.enable(on)
 
     def _ratings_for(self, goalie):
+        """The rating fields of a skater or a goalie. Built once per kind and kept while players of
+        the same kind are picked (rebuilding 50 widgets on each pick made the card flicker)."""
+        if getattr(self, '_rating_kind', None) == goalie and self.rating_fields:
+            for w in self.rating_fields.values():
+                w.delete(0, 'end')
+            return
+        self._rating_kind = goalie
         for w in self.rating_frame.winfo_children():
             w.destroy()
         self.rating_fields = {}
@@ -483,6 +543,8 @@ class EditorTab(ctk.CTkFrame):
 
     def _fill_card(self, p):
         snap = self.snap
+        self.pending_photo = None
+        self._show_picture(p)
         self._card_enabled(True)
         self._ratings_for(p is not None and p.pos == 'G')
         if p is None:
@@ -609,7 +671,8 @@ class EditorTab(ctk.CTkFrame):
             fields['pos'] = model.POS_KEY[values['pos']]
             self.edits[who] = {'label': f"{values['first']} {values['last']}", 'new': True, 'set': fields,
                                'team': values['team'], 'ovr': values['ovr'],
-                               **({'ratings': values['ratings']} if values['ratings'] else {})}
+                               **({'ratings': values['ratings']} if values['ratings'] else {}),
+                               **({'photo': self.pending_photo} if self.pending_photo else {})}
         else:
             key = self.edit_key(p)
             e = dict(self.edits.get(key) or {'label': p.name})
@@ -629,7 +692,9 @@ class EditorTab(ctk.CTkFrame):
             teams = model.club(p.teams)
             if values['team'] != (teams[0] if teams else 'FA'):
                 e['team'] = values['team']
-            if not changes and not rated and 'team' not in e and key not in self.edits:
+            if self.pending_photo:
+                e['photo'] = self.pending_photo
+            if not changes and not rated and 'team' not in e and not self.pending_photo and key not in self.edits:
                 self.set_status("Nothing changed.")
                 return
             self.edits[key] = e
@@ -637,6 +702,164 @@ class EditorTab(ctk.CTkFrame):
         self._update_edits_button()
         self.app.refresh_state()
         self.refresh()
+
+    # --- pictures of the player's own ------------------------------------------------------------------
+    def _pick_picture(self, title):
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(parent=self.winfo_toplevel(), title=title,
+                                          filetypes=[("Pictures", "*.png *.jpg *.jpeg *.webp *.bmp *.gif")])
+        if not path:
+            return None
+        try:
+            from PIL import Image
+            with Image.open(path) as img:
+                img.load()
+        except Exception:
+            self.set_status("That file is not a picture this program can read (PNG, JPG, WebP).", T.RED)
+            return None
+        return edits.keep_picture(path)
+
+    def choose_photo(self):
+        link = self._pick_picture("A photo for this player")
+        if link:
+            self.pending_photo = link
+            self._show_picture(self.player)
+            self.set_status("Press Apply to keep the photo. It shows in the game after an update with "
+                            "\"Photos and logos\" on.", T.GOLD)
+
+    def _pictures(self):
+        """Pictures of the game the shown roster belongs to (None before RPCS3 is found)."""
+        if self.app.rpcs3 is None or self.source is None:
+            return None
+        title_id = self.source[1][:9]
+        if self.pictures is None or self.pictures.title_id != title_id or self.pictures.rpcs3 is not self.app.rpcs3:
+            self.pictures = Pictures(self.app.rpcs3, title_id)
+        return self.pictures
+
+    def _show_picture(self, p):
+        """The picture for player `p` (None: a new player), as the game shows it: his own if he has
+        one, the photo the update brings ("To be", photos on), else what the game shows now. It is
+        made in a worker thread; only the latest request is shown."""
+        self.picture_token += 1
+        token = self.picture_token
+        own = self.pending_photo or ((self.edits.get(self.edit_key(p)) or {}).get('photo') if p is not None else None)
+        if p is None and not own:
+            self.photo_preview.configure(image=None, text="")
+            self.photo_caption.configure(text="")
+            return
+        pictures = self._pictures()
+        coming = self.new_photos.get(p.who) if p is not None and self.mode == TO_BE else None
+        photos_on = self.app.photos.get()
+        self.photo_caption.configure(text="Loading the picture...")
+
+        def job():
+            try:
+                if own:
+                    return Pictures.mine(own)
+                if pictures is None:
+                    return None, NO_GAME
+                if coming and photos_on:
+                    pic, caption = pictures.new(coming)
+                    if pic is not None:
+                        return pic, caption
+                pic, caption = pictures.current(p.artid, p.hasportrait)
+                if coming and not photos_on:
+                    caption += ". The update has a new photo: switch on \"Photos, logos and team names\"."
+                return pic, caption
+            except Exception:
+                return None, "The picture could not be read."
+
+        def run():
+            result = job()
+            self.app.queue.put(('ui', lambda: self._picture_ready(token, *result)))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _picture_ready(self, token, pic, caption):
+        if token != self.picture_token:          # the card shows someone else by now
+            return
+        if pic is None:
+            self.photo_preview.configure(image=None, text="")
+        else:
+            self._preview = ctk.CTkImage(light_image=pic, dark_image=pic, size=(240, 120))
+            self.photo_preview.configure(image=self._preview, text="")
+        self.photo_caption.configure(text=caption)
+
+    def edit_team(self):
+        """A small window: the selected team's name, city, abbreviation and logo."""
+        if not isinstance(self.team, int) or self.snap is None:
+            self.set_status("Pick a team first.", T.GOLD)
+            return
+        slot, snap = self.team, self.snap
+        T_ = snap.R.T
+        mine = dict(self.teams.get(str(slot)) or {})
+        top = ctk.CTkToplevel(self, fg_color=T.BG)
+        top.title("Team")
+        top.geometry("460x420")
+        top.transient(self.winfo_toplevel())
+        ctk.CTkLabel(top, text=snap.team_name(slot), font=T.font(16, 'bold'), text_color=T.STRONG).pack(
+            padx=16, pady=(14, 2), anchor='w')
+        ctk.CTkLabel(top, text="The game's menus show these names and the logo after an update with "
+                               "\"Photos and logos\" on.", font=T.font(12), text_color=T.MUTED, wraplength=420,
+                     justify='left').pack(padx=16, anchor='w')
+        form = ctk.CTkFrame(top, fg_color='transparent')
+        form.pack(fill='x', padx=16, pady=8)
+        form.columnconfigure(1, weight=1)
+        boxes = {}
+        for k, (part, label, field) in enumerate((('full', "Full name", 'fullname'), ('city', "City", 'shortname'),
+                                                  ('abbr', "Abbreviation", 'abbrname'))):
+            ctk.CTkLabel(form, text=label, font=T.font(12), text_color=T.MUTED).grid(row=k, column=0, sticky='w',
+                                                                                      padx=(0, 8), pady=3)
+            e = ctk.CTkEntry(form, height=28, fg_color=T.CELL, border_color=T.BORDER, text_color=T.TEXT, font=T.font(13))
+            e.insert(0, mine.get(part) or T_.get(slot, field))
+            e.grid(row=k, column=1, sticky='ew', pady=3)
+            boxes[part] = e
+        preview = ctk.CTkLabel(top, text="", font=T.font(12), text_color=T.FAINT)
+
+        def show_logo(link):
+            if not link:
+                return
+            try:
+                from PIL import Image
+                from ..art import images
+                pic = images.logo(Image.open(link[5:]), 't', (256, 256))
+                top._logo = ctk.CTkImage(light_image=pic, dark_image=pic, size=(96, 96))
+                preview.configure(image=top._logo, text="")
+            except Exception:
+                preview.configure(text="(your logo)")
+
+        def choose_logo():
+            link = self._pick_picture("A logo for this team")
+            if link:
+                mine['logo'] = link
+                show_logo(link)
+
+        GhostButton(top, "Choose logo...", choose_logo, height=28).pack(padx=16, anchor='w')
+        preview.pack(padx=16, pady=6, anchor='w')
+        show_logo(mine.get('logo'))
+
+        def apply_team():
+            for part, e in boxes.items():
+                value = e.get().strip()
+                field = {'full': 'fullname', 'city': 'shortname', 'abbr': 'abbrname'}[part]
+                if value and value != T_.get(slot, field):
+                    mine[part] = value
+            if mine:
+                self.teams[str(slot)] = mine
+            edits.save(teams=self.teams)
+            top.destroy()
+            self._update_edits_button()
+            self.refresh()
+
+        def undo_team():
+            self.teams.pop(str(slot), None)
+            edits.save(teams=self.teams)
+            top.destroy()
+            self._update_edits_button()
+            self.refresh()
+        bar = ctk.CTkFrame(top, fg_color='transparent')
+        bar.pack(fill='x', padx=16, pady=(4, 14))
+        PrimaryButton(bar, "Apply", apply_team, width=110, height=34).pack(side='left')
+        GhostButton(bar, "Undo team edit", undo_team, height=30).pack(side='left', padx=(8, 0))
 
     def undo(self):
         p = self.player
@@ -651,7 +874,7 @@ class EditorTab(ctk.CTkFrame):
             self.refresh()
 
     def _update_edits_button(self):
-        self.edits_button.configure(text=f"My edits ({len(self.edits)})")
+        self.edits_button.configure(text=f"My edits ({len(self.edits) + len(self.teams)})")
 
     def show_edits(self):
         """A small window listing every edit, each with a Remove button."""
@@ -668,19 +891,36 @@ class EditorTab(ctk.CTkFrame):
         def fill():
             for w in box.winfo_children():
                 w.destroy()
-            if not self.edits:
+            if not self.edits and not self.teams:
                 ctk.CTkLabel(box, text="No edits yet.", font=T.font(13), text_color=T.FAINT).pack(pady=20)
+            for slot, e in sorted(self.teams.items(), key=lambda kv: int(kv[0])):
+                row = ctk.CTkFrame(box, fg_color=T.CELL, corner_radius=10)
+                row.pack(fill='x', pady=3)
+                name = self.snap.team_name(int(slot)) if self.snap else f"team {slot}"
+                ctk.CTkLabel(row, text=name, font=T.font(14, 'semibold'), text_color=T.STRONG,
+                             anchor='w').pack(side='left', padx=(12, 6), pady=6)
+                ctk.CTkLabel(row, text="team: " + ", ".join(sorted(e)), font=T.font(12), text_color=T.MUTED,
+                             anchor='w').pack(side='left')
+                GhostButton(row, "Remove", lambda k=slot: remove_team(k), height=26).pack(side='right', padx=8)
             for who, e in sorted(self.edits.items(), key=lambda kv: kv[1].get('label', kv[0])):
                 row = ctk.CTkFrame(box, fg_color=T.CELL, corner_radius=10)
                 row.pack(fill='x', pady=3)
                 what = ['new player'] if e.get('new') else []
                 what += [k for k in (e.get('set') or {})] + (['ratings'] if e.get('ratings') else []) + \
-                    (['team'] if 'team' in e else [])
+                    (['team'] if 'team' in e else []) + (['photo'] if e.get('photo') else [])
                 ctk.CTkLabel(row, text=e.get('label', who), font=T.font(14, 'semibold'), text_color=T.STRONG,
                              anchor='w').pack(side='left', padx=(12, 6), pady=6)
                 ctk.CTkLabel(row, text=", ".join(what), font=T.font(12), text_color=T.MUTED,
                              anchor='w').pack(side='left')
                 GhostButton(row, "Remove", lambda k=who: remove(k), height=26).pack(side='right', padx=8)
+
+        def remove_team(k):
+            self.teams.pop(k, None)
+            edits.save(teams=self.teams)
+            self._update_edits_button()
+            fill()
+            if self.source:
+                self.refresh()
 
         def remove(k):
             self.edits.pop(k, None)
@@ -703,17 +943,19 @@ class EditorTab(ctk.CTkFrame):
                             + built.problems[0], T.RED)
             return
         folder, roster = self.source
-        source = next(s for s in savedata.list_rosters(folder) if s.folder == roster)
+        source = self.slot
         name = savedata.clean_name(self.save_name.get().strip() or savedata.default_name())
+        targets = self.app.save_targets(source) or [source.title_id]     # the Update tab's "Save for"
 
         def job():
-            slot = savedata.install(folder, source, built.data, name)
-            report = pipeline.write_report(built, f"{slot.folder}_edited")
-            return slot, report
+            slots = [savedata.install(folder, source, built.data, name, title_id=t) for t in targets]
+            report = pipeline.write_report(built, f"{slots[0].folder}_edited")
+            return slots, report
 
         def done(r):
-            slot, _report = r
-            self.set_status(f"Saved as \"{slot.name}\" ({slot.folder}). In the game: Roster Management > "
+            slots, _report = r
+            where = " and ".join(f"{s.folder}, {s.region}" for s in slots)
+            self.set_status(f"Saved as \"{slots[0].name}\" ({where}). In the game: Roster Management > "
                             "Load Roster.", T.GREEN)
             self.app.set_rpcs3(self.app.rpcs3.exe, quiet=True)
         self._work("Saving...", job, done)

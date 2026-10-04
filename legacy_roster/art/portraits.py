@@ -21,9 +21,17 @@ import unicodedata
 
 from .. import datasource
 
+from .. import layout as L
+
 EA_IDS = range(1, 12402)           # the disc's portraits
 COMMUNITY_IDS = range(12402, 13827)  # the community roster's portrait pack
 NEW_IDS = range(20000, 65536)       # ours (artid is 16 bits)
+SHARED_POOL_ART = 20054             # the custom logo every prospect pool of the base roster uses
+POOL_ART = 21000                    # + slot: a pool's own logo (team artid is 15 bits)
+CUSTOM_LEAGUE = 13
+# NHL slots the community roster gave to newer teams; the game's text still names the old ones
+NHL_NAMES = {22: ("Utah Mammoth", "Utah", "UTA"), 30: ("Seattle Kraken", "Seattle", "SEA"),
+             31: ("Vegas Golden Knights", "Vegas", "VGK")}
 
 
 def person_key(first, last, birth):
@@ -77,7 +85,7 @@ def plan(b, registry):
     """Give every placed player with a photo his portrait id (written into the roster) and list
     the pictures to make: ({artid: photo link}, {team artid: (logo link, colours)})."""
     P, T = b.P, b.R.T
-    taken ={P.get(r, 'artid') for r in range(P.cur_rec)}
+    taken = {P.get(r, 'artid') for r in range(P.cur_rec)}
     portraits = {}
     for prow in sorted(b.photos):
         aid = P.get(prow, 'artid')
@@ -88,8 +96,77 @@ def plan(b, registry):
             P.set(prow, 'artid', aid)
         P.set(prow, 'hasportrait', 1)
         portraits[aid] = b.photos[prow]
+    _pool_logos(b)
     logos = {}
     for slot, url in sorted(b.logos.items()):
         colours = tuple(tuple(T.get(slot, f"{c}color_{x}") for x in 'rgb') for c in ('primary', 'secondary'))
         logos[T.get(slot, 'artid')] = (url, colours)
-    return portraits, logos
+    return portraits, logos, names(b)
+
+
+def _pool_logos(b):
+    """The prospect pools in the spare custom slots all share one custom logo (art id 20054). Each
+    gets an art id of its own and a logo: an NHL "System" pool its NHL team's, a draft class a
+    badge with its year (drawn by images.badge)."""
+    T, R = b.R.T, b.R
+    names_ = {t: n.replace('®', '').strip().lower() for t, n in b.nhl_names.items()}    # before any team edit
+    # "Red Wings System" -> the NHL team whose name ends in "red wings" (two-word cities too: "los angeles kings")
+    parent_of = lambda nick: next((t for t, n in names_.items() if n.endswith(' ' + nick)), None)
+    nhl_logo = {L.API_TO_SLOT[a]: url for a, url in b.data.nhl_logos.items() if a in L.API_TO_SLOT}
+    for slot in sorted(L.SPARE):
+        if slot >= T.cur_rec or not b.entries_on(slot):
+            continue
+        name = R.team_name(slot).strip()
+        if T.get(slot, 'artid') == SHARED_POOL_ART:
+            T.set(slot, 'artid', POOL_ART + slot)
+        if name.endswith('System'):
+            parent = parent_of(name[:-len('System')].strip().lower())
+            if parent is not None and parent in nhl_logo:
+                b.logos.setdefault(slot, nhl_logo[parent])
+        elif name[:4].isdigit():
+            b.logos.setdefault(slot, f"badge:{name[:4]}")
+
+
+def _nick(full, city):
+    """'Rytíři Kladno' with city 'Kladno' -> 'Rytíři'; the full name when nothing sensible is left."""
+    rest = full.replace(city, '').strip(' -') if city and city in full else ''
+    return rest if len(rest) >= 3 else full
+
+
+def names(b):
+    """The names the menus should show (the game takes them from its text file, loc.py):
+    {'teams': [(art code, full, city, nickname, abbreviation)], 'cities': {custom team key: name},
+     'force': {art codes written even when the game's own text looks the same}}.
+
+    A custom team shows only the text under its `shortname` (a key like COACHELLA_VALLEY, see
+    Builder.custom_city_keys); it gets the team's full name there, unless the game already has a
+    text under that key (ANAHEIM for the Ducks copy)."""
+    T, R = b.R.T, b.R
+    teams, cities = [], {}
+    for slot, (full, city, abbr) in NHL_NAMES.items():           # the community's Utah, Seattle, Vegas
+        T.set(slot, 'fullname', full)
+        T.set(slot, 'shortname', city)
+        T.set(slot, 'abbrname', abbr)
+    clubs = L.SHL | L.LIIGA | L.DEL | L.EXTRALIGA | L.NL | L.NORWAY | L.AHL | L.CHL
+    for slot in range(T.cur_rec):
+        if slot in L.EVENTS or not b.entries_on(slot):
+            continue
+        if T.get(slot, 'league') == CUSTOM_LEAGUE and not L.is_city_key(T.get(slot, 'shortname')):
+            # a city the game cannot find a text for ("NhlCityName_13" on the Kings copy, a roster made
+            # by version 0.4): a key in the game's style; a copy takes its NHL team's city (LOS_ANGELES)
+            city = T.get(L.MIRROR_OF[slot], 'shortname') if slot in L.MIRROR_OF else T.get(slot, 'shortname')
+            L.set_city(T, slot, city or T.get(slot, 'fullname'))
+        art = T.get(slot, 'artabbr')
+        full, city, abbr = T.get(slot, 'fullname'), T.get(slot, 'shortname'), T.get(slot, 'abbrname')
+        if T.get(slot, 'league') == CUSTOM_LEAGUE:
+            if L.is_city_key(city):
+                name = full
+                if slot in L.MIRROR_OF:         # the game has texts for the copies' cities; a fallback only
+                    primary = T.get(L.MIRROR_OF[slot], 'shortname')
+                    name = primary if L.city_key(primary) == city else city.replace('_', ' ').title()
+                cities[city] = (name or city.replace('_', ' ').title()).replace('®', '').strip()
+            if slot in b.team_names and slot not in L.MIRROR_OF:
+                teams.append((art, full, city, _nick(full, city), abbr))
+        elif slot in NHL_NAMES or slot in clubs or slot in b.team_names:
+            teams.append((art, full, city, _nick(full, city), abbr))
+    return {'teams': teams, 'cities': cities, 'force': {T.get(s, 'artabbr') for s in set(NHL_NAMES) | set(b.team_names)}}

@@ -123,13 +123,14 @@ def structure(R, full_lineup=FULL_LINEUP):
     return out, teams
 
 
-def verify(built, source, nhl_players=None, rebuilt=(), edited=None):
+def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_moves=()):
     """Check `built` (bytes of a SYS-DATA) against `source` (the Roster it was built from).
 
     `nhl_players`: the official rosters the build used; when given, every listed player must be
     on exactly his NHL team. `rebuilt`: club teams the build filled from scratch; they must be
     fully playable whatever the source had in those slots. `edited`: (player keys, player rows)
     the player's own edits changed on purpose; only the official-roster check lets them differ.
+    `league_moves`: team slots allowed to change league (only the in-game league test, lab.py).
     Returns (problems, info); the save must not be used if there are problems."""
     edited_keys, edited_rows = edited or (set(), set())
     rebuilt = set(rebuilt)
@@ -145,7 +146,7 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None):
         problems.append(f"team count changed from {source.T.cur_rec} to {T.cur_rec}")
     else:
         for t in range(T.cur_rec):
-            if T.get(t, 'jjMx') != source.T.get(t, 'jjMx'):
+            if T.get(t, 'jjMx') != source.T.get(t, 'jjMx') and t not in league_moves:
                 problems.append(f"{R.team_name(t)} changed league")
 
     # every link resolves to a player, every roster entry id is unique

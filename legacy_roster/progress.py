@@ -42,6 +42,7 @@ REMARKS = (
     r'players skipped, no free player record left',
     r'-- cannot dress 20$',
     r'^Prospect pools: no room left',
+    r"^The game's own roster: ",          # stock.py: before the steps, and before the leagues
 )
 _REMARKS = tuple(re.compile(p) for p in REMARKS)
 

@@ -33,8 +33,7 @@ team and never moves a team to another league (hard limits of the game).
 
 | File | Built from | What it is |
 |---|---|---|
-| `NHLLegacyRosterUpdater.exe` | `packaging/launcher.py` | The window. `legacy_roster.__main__.main()` opens the window when started without arguments and runs the command line when given some (but as a windowed program it has no console to print to). |
-| `NHLLegacyRosterUpdater-Photos.exe` | `packaging/launcher.py` | The same window with `legacy_roster/data/photopack.zip` inside: every photo and logo already drawn (see "Photos and logos"). |
+| `NHLLegacyRosterUpdater.exe` | `packaging/launcher.py` | The window, with `legacy_roster/data/photopack.zip` inside: every photo and logo already drawn (see "Photos and logos"). `legacy_roster.__main__.main()` opens the window when started without arguments and runs the command line when given some (but as a windowed program it has no console to print to). Since 0.6.0 the only window program (owner, 2026-10-04): 0.4–0.5 also had a plain one without the pictures. |
 | `NHLLegacyRosterUpdater-cli.exe` | `packaging/launcher_cli.py` | The command line (`list`, `update`, `export`, `photos`), with a console. Built without Tk. |
 
 Both are PyInstaller **one-file** builds (`packaging/build.ps1`). On every start the exe unpacks
@@ -56,26 +55,38 @@ used only to build.
    `App.poll` (every 100 ms on the Tk thread) writes it to the details log and the status line and
    turns it into a percentage with `progress.fraction()`.
 2. **`pipeline.update(savedata, source_folder, steps, name, progress)`**:
-   1. `savedata.find_savedata()` and `list_rosters()` → the source roster (`savedata.Slot`).
-   2. Reads its `SYS-DATA`.
+   1. `savedata.find_savedata()` and `list_rosters()` → the source roster (`savedata.Slot`), or
+      `disc=` a `savedata.DiscSlot`: the game's own roster (section "The game's own roster").
+   2. Reads its `SYS-DATA` (`savedata.read_roster`; for a DiscSlot `stock.from_disc`).
    3. `datasource.load_pack()` → the newest data pack: a downloaded one (only if `PACK_URL` is
       set), the cached download, or the copy bundled in the exe. "Newest" = highest `generated`.
-   4. `layout.check_base()` → refuses the stock EA roster and any unknown team layout with a
-      message the player can act on.
+   4. `layout.check_base()` → the layout: `COMMUNITY` or `STOCK` (the game's own); refuses any
+      other team layout with a message the player can act on. Community rosters whose custom
+      copies of NHL teams are out of step (the community's 2026-27 roster) pass: a copy is
+      recognised by its name (`MIRROR_NAMES`) or by sharing most players with its team.
    5. `datasource.gather()` → a `builder.Data`: NHL.com rosters (32 requests, cached 20 minutes),
       players those rosters leave out (injured, reassigned: player search + landing page,
       cached 6 hours), and the parts of the pack the chosen steps need.
    6. `pipeline.build()` → runs the steps (next section) and `verify()`.
    7. Any problem from `verify()` → writes `reports\failed_<time>.csv` and returns; **nothing is
       saved**.
-   8. `savedata.install()` → the next free folder `<TITLEID>02NN`. `ICON0.PNG` and `PARAM.SFO` are
-      copied from the source save with a new `SAVEDATA_DIRECTORY` and `SUB_TITLE` (the roster
-      name), then `SYS-DATA` is written and read back. The folder is assembled next to
-      `savedata` and renamed in, so the game never sees half a save.
-   9. Writes `reports\<folder>_<time>.csv`: every change, one row each (the "List of changes").
+   8. `savedata.install()` → the next free folder `<TITLEID>02NN`, once per version of the game
+      in `targets` (EU `BLES02153`, NA `BLUS31540`; default: the source's version). `ICON0.PNG`
+      and `PARAM.SFO` are copied from the source save with a new `SAVEDATA_DIRECTORY` and
+      `SUB_TITLE` (the roster name); for the other version they come from that version's newest
+      roster save, else from the source with that version's `TITLE` (`savedata._model_for`).
+      Starting from the game's own roster with no save of that version at all: `PARAM.SFO` is
+      made from scratch (`savedata.roster_sfo`, byte-identical to the game's own) and the icon
+      is the disc's `PS3_GAME/ICON0.PNG` (`stock.disc_icon`).
+      Then `SYS-DATA` is written and read back. The folder is assembled next to `savedata` and
+      renamed in, so the game never sees half a save.
+   9. Writes the list of changes (`write_report`): `reports\<folder>_<time>.html`, a page grouped
+      by part and team with full team names and a search box (`report.py`), which "List of
+      changes" opens, and the same rows as `.csv` next to it.
    10. With "Photos and logos" on: installs the pictures (section "Photos and logos").
-3. **Result**: `App.report` shows the green banner (headline, photos line, how to load it in the
-   game, buttons), `App.failed` the red one.
+3. **Result**: `App.report` shows the green banner: one line per part of the update
+   (`BuildResult.lines()`, in two columns when there are many), the photos line, how to load it in
+   the game, and the buttons. `App.failed` shows the red one.
 
 The command line runs the same `pipeline.update()`; `--dry-run` stops before step 8.
 
@@ -85,16 +96,16 @@ Steps run in this fixed order, whatever order they are given in:
 
 | # | Step key | Code | What it does |
 |---|---|---|---|
-| 0 | – | `Roster(src)`, `check_base`, `Builder(R, data)` | Parse, check the layout, index entries, links and ratings, detect maintain mode, prepare donors |
-| 1 | `nhl` | `Builder.nhl_rosters()` | Players on no official NHL roster leave their NHL entry (free agent unless still on another pro team). Every listed player goes onto his team: his entry there, his entry moved from another NHL team, an AHL/pool/junior entry promoted (`source_rank`), a new entry, or a new player record (`create_player`). Jersey numbers from NHL.com; a clash goes to the official number, then the better player, and the loser keeps his old number so a re-run changes nothing |
+| 0 | – | `Roster(src)`, `check_base`, `stock.prepare` (game's own roster only), `Builder(R, data, layout=)` | Parse, check the layout, index entries, links and ratings, detect maintain mode, prepare donors. Every change-log row is tagged with its part (`builder.ChangeLog`, `log.section`) |
+| 1 | `nhl` | `Builder.nhl_rosters()` | Players on no official NHL roster leave their NHL entry (free agent unless still on another pro team; on the game's own roster, 30 and older, they retire: `Builder.retires`). Every listed player goes onto his team: his entry there, his entry moved from another NHL team, an AHL/pool/junior entry promoted (`source_rank`), a new entry, or a new player record (`create_player`). A matched skater gets NHL.com's position (`nhl_position`, 0.6.0), and one matched without his birthdate gets NHL.com's (`nhl_birthdate`). Jersey numbers from NHL.com; a clash goes to the official number, then to whoever already wears it, then to the better player, and the loser keeps his old number so a re-run changes nothing |
 | 2 | `ratings` | `Builder.apply_ea_ratings()` | EA attributes written exactly: stored = rating − 36, field per attribute in `schema.EA_SKATER` / `EA_GOALIE`. Players with only an overall are shifted until their level matches it. Fields EA does not publish (potential, growth, traits) are left alone. Rated players go into `b.ea_rated` |
-| 3 | `nhl` | `nhl_lines()`, `sync_mirrors()` | Departed players' line slots and letters go to newcomers, then lines are re-dealt by rating within each team's own structure. Custom teams 222–233 are made identical copies of their NHL team |
-| 4 | `national` | `fill_empty_national()` | Fills the 8 national teams the base left empty from IIHF rosters plus NHL players by nationality. Runs before the club leagues because its new players need records, and the junior leagues, last in line, are the ones that run short |
+| 3 | `nhl` | `nhl_lines()`, `sync_mirrors()` | Departed players' line slots and letters go to newcomers, then lines are re-dealt by rating within each team's own structure (a team without one gets `lines_from_scratch`). A slot set's class comes from its even-strength slots (`lines.slot_role`), and a wing's set goes to a winger of its side first (`lines.wing_side`, unless the other side's winger is `lines.SIDE_MARGIN` better). Custom teams 222–233 are made identical copies of their NHL team (`Builder.mirrors`: none on the game's own roster); a player who was only on the copy becomes a free agent |
+| 4 | `national` | `fill_empty_national()` | Fills every national team the source leaves empty (the base's 8, and squads a community roster emptied): the IIHF roster, NHL players by nationality, then the country's players elsewhere in the save where positions are short; at most 26. A country that cannot dress 2 G + 18 skaters stays empty (summary line). Runs before the club leagues because its new players need records, and the junior leagues, last in line, are the ones that run short |
 | 5 | league keys | `clubs.core_needs()`, then `leagues/clubs.update_league()` per league in `pipeline.LEAGUE_ORDER` | Club names on the slots; players matched (`match_club`) or created; former occupants become free agents; displaced prospect pools move to spare slots (`pools.relocate`); short clubs topped up to a dressable 20 (`_fill_lineup`); numbers, lines (`lines.build_lines`), letters. Records for later leagues' line-ups are held back from depth players (`b.core_reserve`) |
 | 6 | (any league) | `leagues/pools.settle()` | Pool slots trimmed to 40, best prospects kept, overflow moved to pools with room or made free agents; lines for changed pools |
-| 7 | `national` | `national_teams()`, `national_lines()` | Keeps national squads current: a member no longer active in the NHL makes room for the best eligible NHL player of his position (eligible = the save's nationality and NHL.com's birth country agree). On a first build, up to 4 rising stars (24 or younger) per team replace the weakest member; not in maintain mode and not for squads filled in step 4. Removed players with no club become free agents |
+| 7 | `national` | `national_teams()`, `national_lines()` | Keeps national squads current: a member no longer active in the NHL makes room for the best eligible NHL player of his position (eligible = the save's nationality and NHL.com's birth country agree). On a first build, up to 4 rising stars (24 or younger) per team replace the weakest member; not in maintain mode and not for squads filled in step 4. Removed players with no club become free agents. A squad with players but no line slots (Czech Republic and Denmark in the 2026-27 community roster) gets lines dealt from scratch |
 | 8 | always | `contracts()` | Contract team (`cPbu.team` = team + 1) must be a team the player is on; free agents have no contract fields (their NHL rights in `proteam` stay) |
-| 9 | always | `finish()` | Drops deleted entries, renumbers `key = team × 40 + slot` without gaps, rewrites the free-agent list |
+| 9 | always | `finish()` | Drops deleted entries, renumbers `key = team × 40 + slot` without gaps, rewrites the free-agent list, and drops the player links (`caBZ`) of removed entries that nothing (entries, free agents, draft picks) uses any more. New links take the lowest free id below 16,000 (`LINK_LIMIT`). Without this every update used more of the 9,955 links |
 | 10 | always | `RosterFile.build()` (`tdb.py`) | Packs the tables, recomputes the checksum chain, compresses, writes the wrapper CRCs |
 | 11 | always | `verify()` | See "Safety net" |
 
@@ -259,11 +270,46 @@ that is set (empty today; see MAINTAINING.md). Gzipped JSON:
   (`pipeline.left_out_note`). A league appears as soon as the pack has it (`pipeline.steps_for(pack)`).
   Leagues the game has but the pack lacks are listed as "Coming later" (`pipeline.planned(pack)`).
 
+## The game's own roster (`stock.py`, 0.6.0, experimental)
+
+For players with no community roster (owner, 2026-10-04). The disc's `db/nhlng.db` (in
+`cacheboot.big`) holds all 39 tables of a roster save with the same record layout (FORMAT.md
+section 6).
+- **The source.** `Rpcs3.disc_slots()` lists a `savedata.DiscSlot` per version RPCS3 has the disc
+  of (`games.yml`). The window shows it last in the roster list, marked "start fresh". The command
+  line takes it as `--source disc`. `find_rpcs3` accepts an RPCS3 with no roster save when the game
+  is listed. A roster saved in the game without a community roster has the same layout and is
+  accepted too.
+- **`from_disc()`** builds the save: the roster tables in the save's order, the game's maxima
+  (`ROSTER_MAX`), header flag 6, the `prCe` index on `caBZ`, trailer, wrapper (`tdb.RosterFile.from_db`).
+- **`prepare()`** (start of `build()`, `check_base` → `STOCK`; a no-op on its own output, since 30/31
+  then hold no All-Star copies):
+  - empties the All-Star slots 30/31 (Seattle, Vegas);
+  - moves birth years to year − 1910;
+  - retires 2014's free agents of `RETIRE_AGE` (30) and older;
+  - adds spare "ZZ" records cloned per position, up to the 6,745 players the community roster shows
+    the game reads.
+- **During the build.**
+  - No mirrors (`layout.mirrors(STOCK)` is empty: no custom copies, owner's decision).
+  - `pipeline.usable_clubs` leaves out clubs whose slot is a switched-off custom team (Coachella
+    Valley and Henderson).
+  - Before the leagues, `retire_leftovers()` retires 2014's players of 30 and older whom no feed
+    lists, except those a club needs to dress 20. The NHL step retires its leavers the same way.
+    Retired players' links are handed out again in place (`Builder.dead_links`). All of this
+    happens before any new player is made, so a second run finds no spare record the first did not
+    have, and stays byte-identical.
+- **In-game check:** `cli stock-test` (ROADMAP).
+
 ## Photos and logos (`legacy_roster/art/`, experimental)
 
-A switch in the window (off by default, NEW) and `update --photos` on the command line. Decision 4
-of the owner: the pictures are made on the player's own PC; the program ships no photo, logo or
-EA file.
+A switch in the window ("Photos, logos and team names") and `update --photos` on the command line.
+The pictures are made on the player's own PC from templates of his own disc; the exe carries
+them already drawn (photo pack, below); no EA file is shipped.
+
+**Both versions of the game.** The EU (`BLES02153`) and NA (`BLUS31540`) discs hold the same art and
+text files, so one set of pictures serves both. `install.install(rpcs3, title_id, ..., also=[...])`
+reads the templates from the disc of `title_id` and writes every file into the game folder of each
+version (`_Writer` over several folders). The pipeline passes the versions in `targets`.
 
 1. **Before anything is built** `install.check()` stops with a sentence when RPCS3 is running or
    RPCS3 does not know where the game is (`config/games.yml`).
@@ -275,19 +321,42 @@ EA file.
    build on its own output stays byte-identical. `hasportrait` is set to 1.
 3. **After the roster is saved** `install.install()`:
    - reads templates from the player's disc (`lab.Disc`: portrait p100, each club's own logo files);
-   - downloads each photo and logo (6 at a time) and draws the game's pictures with Pillow
-     (`images.py`): background removed from studio photos (flood fill from the edges), head found
-     (top, middle, width) and placed where the game's own portraits have it; logos in the five
-     styles (`t`, `s`, `w`, `c`, `d`);
+   - takes each picture from this PC's cache (`photopack.PictureCache`, `art\pictures\`, keyed by
+     the exact link), else from the photo pack, else downloads it (6 at a time), draws it and keeps
+     it in the cache. Drawing with Pillow (`images.py`): background removed from studio photos
+     (flood fill from the edges), head found (top, middle, width) and placed where the game's own
+     portraits have it; logos in the five styles (`t`, `s`, `w`, `c`, `d`), and for the 32 NHL slots
+     the sixth, `r` (logo on its reflection, 256×512, the favourite-team screens;
+     `install.logo_kinds`);
    - encodes them (Pillow's DXT5 for portraits, plain 32-bit for logos) into a copy of the template
      (`bigf.ArtFile.with_image`) and writes them as loose files (portraits in `p0_4000`,
      `p4001_8000` or `p8001_12000`);
-   - backs up any file it replaces and lists every file with its link in `art\installed.json`.
-     A file already made from the same link is skipped, so later updates download only new photos.
+   - backs up any file it replaces and lists every file with its link in `art\installed.json`,
+     per game folder (`{'games': {folder: {file: {'source', 'backup', 'stamp'}}}}`; version 0.4's
+     single `{'game_dir', 'files'}` is read too). A file already made from the same link is skipped.
+     Rules for the copies (`_Writer.write`, `_keep`, `ours`):
+     - a kept copy is never overwritten by one of the program's own files (after a lost
+       `installed.json` the file there is ours, and the original stays);
+     - `stamp` (size, time) tells our file from one put there later, for example another picture
+       pack: that one is copied aside first and comes back with "Restore";
+     - `remove()` leaves a file it did not write and has no copy of.
    A failed download leaves the player with his old picture or the silhouette.
-4. **"Remove photos and logos"** (`install.remove()`, `cli photos remove`) restores every backup,
-   deletes the files it added and the folders it made. Rosters are not changed: ids without a file
-   show the silhouette.
+4. **Team names** (`portraits.names()`, `install.install_names()`, `loc.py`).
+   - For every rebuilt club, NHL slots 22/30/31 (Utah, Seattle, Vegas) and every team the player
+     renamed, the art code's five name keys are written into each language's text file.
+   - A custom team shows only the text under its `shortname`. The update writes custom shortnames
+     as keys in the game's own style (`layout.city_key`: COACHELLA_VALLEY, 2026_PROSPECTS_2;
+     `pools.relocate`, the club step, team edits, and `portraits.names()` for older rosters and
+     the Kings copy's "NhlCityName_13" → LOS_ANGELES). Each gets the team's full name as its text,
+     unless the game already has one (ANAHEIM). Keys added to the text file keep their case
+     (`loc.LocFile.set`): texts added under capitalised keys did not show in the game.
+   - The files are always made from the disc's originals, so nothing piles up across updates. They
+     are listed in `installed.json` like the pictures.
+   - The prospect pools in the spare custom slots get art ids of their own (21000 + slot) and logos:
+     the NHL team's for a "System" pool, `images.badge()` with the year for a draft class.
+5. **"Restore the game's own pictures"** (`install.remove()`, `cli photos remove`) restores every backup,
+   deletes the files it added and the folders it made, in every game folder. Rosters are not
+   changed: ids without a file show the silhouette.
 
 Pillow is the only package outside the standard library the engine uses, and only here
 (`images.py`, imported when the switch is on).
@@ -299,9 +368,10 @@ Pillow is the only package outside the standard library the engine uses, and onl
   - logos: trimmed, at most 512 px.
 - **Keys and index:** `index.json` maps a key to its file. The key is the link itself, or `nhl:<id>`
   for NHL.com headshots, whose links change with the season.
-- **Shipping:** `packaging/build.ps1` puts the zip into the Photos exe only, and git ignores it.
-- **At run time:** `art/photopack.py` opens it and `install.make_portrait` / `make_logo` take
-  pictures from it first. Only links missing from it are downloaded.
+- **Shipping:** `packaging/build.ps1` puts the zip into the window program (it refuses to build
+  without it), not into the cli. Git ignores it.
+- **At run time:** `art/photopack.py` opens it. `install.make_portrait` / `make_logo` take pictures
+  from the cache first, then from the pack. Only links missing from both are downloaded.
 
 ## Roster editor and the player's edits (`editor/`, `edits.py`)
 
@@ -320,8 +390,15 @@ Pillow is the only package outside the standard library the engine uses, and onl
 **Views.**
 - **As is** = the chosen save rebuilt with the edits only: `pipeline.build(raw, Data(), steps=[],
   my_edits=...)`, about 2 s.
-- **To be** = **Preview update**, a dry run of `pipeline.update` with the Update tab's switches,
-  then the edits on top.
+- **To be** = a dry run of `pipeline.update` with the Update tab's switches, then the edits on top.
+  Picking "To be" runs it (`EditorTab.preview`) when there is none yet or the switches changed
+  since (`preview_steps`); **Refresh update** runs it again. A request while a job runs waits
+  (`after_busy`).
+- **The picture on the card** (`editor/pictures.py`, Pillow): the player's own picture if he has
+  one; in "To be" with photos on, the photo the update brings (`new_photos` from the dry run's
+  `Builder.photos`, drawn from the photo pack or downloaded); else what the game shows now for his
+  `artid` (the loose file in RPCS3's game folder, else the disc's own file). Made in a thread; a
+  token drops a late result for a player no longer shown.
 - Worker threads hand results back through `App.queue` as `('ui', callable)`.
 
 **Edits** (`edits.py`).
@@ -350,12 +427,21 @@ Pillow is the only package outside the standard library the engine uses, and onl
   (`tests/test_edits.py`).
 - **Who applies them.** The Update tab's "My edits" switch and `cli update --edits` apply them to
   every update.
+- **Team edits and pictures of the player's own.**
+  - `edits.json` also holds `teams`: `{slot: {full, city, abbr, logo}}`, applied by
+    `edits.apply_teams` (team table names, `Builder.team_names`, `Builder.logos`).
+  - A player edit may carry `photo`.
+  - Chosen pictures are copied to `art\mine\` (`edits.keep_picture`) and used as `file:` links by
+    `install._download`.
 
 ## Team layout of the supported roster
 
 The game has 252 team slots in 16 leagues, all fixed (`layout.py`, FORMAT.md section 6). The
-updater supports the 2025-26 community roster family ("ROSTER2526"); `check_base()` refuses
-anything else.
+updater supports the community roster family: the 2025-26 roster ("ROSTER2526"), the community's
+2026-27 roster (the same layout; its custom copies out of step, six national teams emptied, 25 more
+player records) and the rosters made from them. Since 0.6.0 it also supports the game's own layout
+(section "The game's own roster": real 2014 clubs everywhere, All-Star teams in 30/31, custom
+slots off). `check_base()` refuses anything else.
 
 | League (id) | Slots | What the base roster has there | Updater |
 |---|---|---|---|
@@ -405,6 +491,10 @@ With every league on, all 16 spare slots are used.
   anything above it.
 - A roster save is a folder `<TITLEID>02NN` whose `SYS-DATA` starts with `PS3RosterFile`.
   `Slot.tool_made` recognises this tool's saves by their name (`YYYY-MM-DD HH:MM`).
+- **Versions.** `GAMES` = {`BLES02153`: EU, `BLUS31540`: NA}; `Slot.region`; `Rpcs3.games()` lists
+  the versions RPCS3 has (in `games.yml` or with saves). Both read the same `SYS-DATA`; their
+  `PARAM.SFO` differs only in `TITLE` (`TITLES`) and the folder name, so `install(title_id=...)`
+  saves a roster for the other version.
   `next_free()` takes the number after the highest in use (wrapping to a free one after 99).
   `clean_name()` keeps names to characters the game's font has, at most 40.
 
@@ -412,22 +502,38 @@ With every league on, all 16 spare slots are used.
 
 | Where | What |
 |---|---|
-| `…\savedata\<TITLEID>02NN\` | A new roster save per update. Nothing else in `savedata` is ever written, changed or deleted |
+| `…\savedata\<TITLEID>02NN\` | A new roster save per update and version saved for. Nothing else in `savedata` is ever written, changed or deleted |
 | `%LOCALAPPDATA%\NHLLegacyRosterUpdater\settings.json` | Path of `rpcs3.exe` (`rpcs3`), switch positions (`steps`) |
 | `…\cache\` | `nhl_<season>.json`, `missing_<hash>.json`, a downloaded `datapack.json.gz` |
-| `…\reports\` | One CSV per update (`<folder>_<time>.csv`, `failed_<time>.csv`, `dryrun_<time>.csv`) |
+| `…\reports\` | The list of changes per update, as a page and a CSV (`<folder>_<time>.html` / `.csv`, `failed_…`, `dryrun_…`) |
 | `…\logs\error.log` | Tracebacks of unexpected errors, for bug reports |
 | `…\edits.json` | The player's own edits from the Roster editor |
 | `…\art\portrait_ids.json` | Photos and logos: the portrait id given to each person on this PC |
 | `…\art\installed.json`, `…\art\backup\` | Photos and logos: every picture file written (with the link it was made from) and a copy of any file it replaced |
-| `<dev_hdd0>\game\<TITLEID>\USRDIR\fe\ion\artassets\…` | Photos and logos only (switch on, RPCS3 closed): loose picture files the game reads before its disc. "Remove photos and logos" puts back every file as it was |
+| `…\art\pictures\` | Photos and logos: every picture this PC downloaded, drawn (the photo pack's layout), so none is downloaded twice |
+| `<dev_hdd0>\game\<TITLEID>\USRDIR\fe\ion\artassets\…` | Photos and logos only (switch on, RPCS3 closed): loose picture files the game reads before its disc. "Restore the game's own pictures" puts back every file as it was |
 
 ## The window (`gui.py`, `widgets.py`, `theme.py`, `progress.py`)
 
-- **Layout**: header (Puck Peak logo, title line, glow line); cards 1 RPCS3, 2 roster list,
-  3 switches, 4 name + "Update roster"; result banner; footer with progress bar, status line and
-  "Details" (the log). Built from the components in `widgets.py` (`Card`, `Chip`, `PrimaryButton`,
-  `GhostButton`, `RosterRow`, `SwitchRow`, `Banner`).
+- **Layout**: header (Puck Peak logo, title line, glow line); cards 1 RPCS3 (rosters found per
+  version), 2 roster list (each row with the flag of its version; the game's own roster last),
+  3 switches, 4 name + "Save for" (EU · NA · EU + NA with flags, only when RPCS3 has both versions;
+  `App.save_targets`) + "Update roster"; result banner; footer with progress bar, status line and
+  "Details" (the log, cleared at each start). Built from the components in `widgets.py` (`Card`,
+  `Chip`, `Choice`, `PrimaryButton`, `GhostButton`, `RosterRow`, `SwitchRow`, `Banner`).
+- **Flags**: `widgets.flag_image()` draws the EU and US flags with Pillow (at 4×, shown through
+  `CTkImage`): Windows has no flag emoji and Tk draws no colour emoji. Without Pillow the chips show
+  text only.
+- **Few redraws** (the owner saw flicker and slow repaints):
+  - `set_rpcs3` reads and checks the saves in a thread, and caches the checks by (path, size,
+    time);
+  - `list_rosters` keeps rows that did not change (`RosterRow.shows`);
+  - `refresh_state` changes only what changed (`widgets.configure_if_changed`, `App.set_status`;
+    options set through that helper must not be set with `configure()` elsewhere);
+  - `poll` shows everything the engine said since the last look in one go;
+  - at the start of an update the last result stays, dimmed (`Banner.dim`), so the window does not
+    shrink and grow again;
+  - the editor builds its rating fields once per kind.
 - **Look**: `theme.py` holds Puck Peak's colours as tokens (page `#0b1318`, accent `#2596be`;
   Tk has no transparency, so translucent colours are written out blended), loads the bundled
   Source Sans 3 (Segoe UI if that fails) and picks the logo size for the screen scaling.
@@ -437,8 +543,8 @@ With every league on, all 16 spare slots are used.
   Version 0.1's `folder` setting is still read.
 - **Size**: 1000 wide, 640–730 tall depending on the screen (`theme.screen_height()` uses
   `GetSystemMetrics` because the program is DPI-aware). The banner and the details panel make the
-  window taller (`App.resize()`) as far as the screen allows; on small screens the two lists
-  scroll instead.
+  window taller (`App.resize()`, by the difference when the banner changes) as far as the screen
+  allows; on small screens the two lists scroll instead.
 - **Progress**: `progress.py` maps engine messages to a fraction with a table of regular
   expressions. **The wording of engine messages is an interface**: rename a message and the bar
   stalls. `tests/test_progress.py` replays the messages of a real update.

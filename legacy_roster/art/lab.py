@@ -83,6 +83,7 @@ class Disc:
 
     def __init__(self, path):
         src = IsoImage(path) if os.path.isfile(path) else path
+        self.source = src
         self.archives = {name: EbArchive.open(src, name) for name in ('nocache.big', 'cache.big')}
 
     def find(self, inner):
@@ -99,6 +100,14 @@ class Disc:
 
     def logo(self, folder, prefix, artid):
         return self.find('/'.join(ART + (folder, f"{prefix}{artid}.big")))
+
+    def text_file(self, language):
+        """The game's text database for a language ('eng_us'), from cacheboot.big (bytes or None)."""
+        if 'cacheboot.big' not in self.archives:
+            self.archives['cacheboot.big'] = EbArchive.open(self.source, 'cacheboot.big')
+        arc = self.archives['cacheboot.big']
+        name = f"fe/loc/nhl_{language}.db"
+        return arc.read(name) if name in arc.entries else None
 
 
 LOGO_KINDS = (('teamlogos', 't'), ('teamlogossmall', 's'), ('teamlogoswide', 'w'), ('teamlogoscalendar', 'c'),
@@ -203,6 +212,45 @@ def install(rpcs3, source=None, say=print):
     lab = savedata.install(rpcs3.savedata, slot, built, LAB_NAME)
     say(f"Saved the roster \"{lab.name}\" ({lab.folder}). Players with new portraits: "
         + ", ".join(f"{R.name(r)} (id {aid})" for r, aid in new_ids.items()))
+    return lab
+
+
+# --- the league test: can a custom slot join a real league? ----------------------------------------
+LEAGUE_LAB_NAME = "LAB custom teams in leagues"
+# custom slot -> (slot of the league whose league fields it copies, its new full / short / abbr names)
+LEAGUE_MOVES = {234: (33, ("Coachella Valley Firebirds", "Coachella Valley", "CV")),     # AHL, Pacific like Bakersfield
+                235: (33, ("Henderson Silver Knights", "Henderson", "HSK")),
+                250: (76, ("Jokerit", "Helsinki", "JOK")),                                # Liiga: a 16th club
+                249: (119, ("HC Ajoie", "Ajoie", "AJO")),                                 # National League: a 13th
+                248: (192, ("Penticton Vees", "Penticton", "PEN"))}                       # WHL: a 23rd
+LEAGUE_FIELDS = ('league', 'leaguegroup', 'conferencegroup', 'divisiongroup')
+
+
+def league_test(rpcs3, source=None, say=print):
+    """A roster whose custom slots above play in a real league (their league fields copied from a
+    club of that league). Nothing else changes and no game file is written. The owner checks in
+    the game whether the teams show in their league's list and can play."""
+    slots = savedata.list_rosters(rpcs3.savedata)
+    slot = next((s for s in slots if source in (s.folder, s.name)), None) if source else slots[0]
+    if slot is None:
+        raise FileNotFoundError(f"roster save {source} not found")
+    with open(slot.sys_data, 'rb') as f:
+        src = f.read()
+    R = Roster(src)
+    T = R.T
+    for custom, (like, (full, short, abbr)) in LEAGUE_MOVES.items():
+        for field in LEAGUE_FIELDS:
+            T.set(custom, field, T.get(like, field))
+        T.set(custom, 'fullname', full)
+        T.set(custom, 'shortname', short)
+        T.set(custom, 'abbrname', abbr)
+        say(f"{full} (slot {custom}) now plays in {R.team_name(like)}'s league")
+    built = R.f.build()
+    problems, _ = verify(built, Roster(src), league_moves=set(LEAGUE_MOVES))
+    if problems:
+        raise RuntimeError("the LAB roster did not pass the checks: " + "; ".join(problems[:3]))
+    lab = savedata.install(rpcs3.savedata, slot, built, LEAGUE_LAB_NAME)
+    say(f"Saved the roster \"{lab.name}\" ({lab.folder}).")
     return lab
 
 

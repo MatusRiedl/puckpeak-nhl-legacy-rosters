@@ -25,6 +25,21 @@ class Sfo:
             self.entries[key] = (pos, fmt, dlen, dmax, dstart + doff)
 
     @classmethod
+    def new(cls, items, version=0x101):
+        """A PARAM.SFO made from scratch: `items` [(key, format, value bytes, max length)], in
+        the order they are stored (the key table is padded to four bytes, as the game's are)."""
+        keys = b''.join(k.encode() + b'\0' for k, *_ in items)
+        keys += b'\0' * (-len(keys) % 4)
+        kstart = 20 + 16 * len(items)
+        dstart = kstart + len(keys)
+        index, data, koff = bytearray(), bytearray(), 0
+        for key, fmt, value, dmax in items:
+            index += struct.pack('<HHIII', koff, fmt, len(value), dmax, len(data))
+            data += value + b'\0' * (dmax - len(value))
+            koff += len(key) + 1
+        return cls(struct.pack('<4sIIII', b'\0PSF', version, kstart, dstart, len(items)) + index + keys + data)
+
+    @classmethod
     def load(cls, path):
         with open(path, 'rb') as f:
             return cls(f.read())

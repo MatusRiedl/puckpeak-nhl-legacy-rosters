@@ -48,7 +48,9 @@ def match(R, people):
 
     Each needs 'first', 'last' and 'birth' (y, m, d). Tried in order: last name + birthdate,
     full name, same birthdate with a near-identical last name, last name + birth year within one
-    + first initial."""
+    + first initial. A goalie only matches a goalie's record and a skater a skater's (when 'pos'
+    is given): the game's own roster has a forward Daniil Tarasov, born 1991, who is not Detroit's
+    goalie."""
     by_lb, by_name = build_index(R)
     by_birth = {}
     for (ln, b), rs in by_lb.items():
@@ -60,21 +62,34 @@ def match(R, people):
             continue
         fn, ln = norm(p['first']), norm(p['last'])
         how = 'birth'
-        rows = by_lb.get((ln, p['birth']))
-        if rows and len(rows) > 1:   # twins, or one person with two records: the first name decides
-            rows = [r for r in rows if same_first_name(norm(P.get(r, 'PedH')), fn)] or rows
-        if not rows:
-            how, rows = 'name', by_name.get((fn, ln))
+        rows = _same_kind(P, p, by_lb.get((ln, p['birth'])))
+        p['row'] = best_row(R, rows) if rows else None
+        if rows:
+            p['how'] = how
+            if len(rows) > 1:   # twins, or one person with two records: the first name decides
+                rows = [r for r in rows if same_first_name(norm(P.get(r, 'PedH')), fn)] or rows
+                p['row'] = best_row(R, rows)
+            continue
+        rows = _same_kind(P, p, by_name.get((fn, ln)))
+        how = 'name'
         if not rows:  # same birthdate and a near-identical last name (spelling variants)
             how = 'birth+similar'
-            rows = [r for l2, r in by_birth.get(p['birth'], []) if _similar(l2, ln) >= 0.8]
+            rows = _same_kind(P, p, [r for l2, r in by_birth.get(p['birth'], []) if _similar(l2, ln) >= 0.8])
         if not rows:  # same last name, birth year within 1, same first initial
             how = 'last+year'
-            rows = [r for (l2, b), rs in by_lb.items() if l2 == ln and abs(b[0] - p['birth'][0]) <= 1
-                    for r in rs if norm(P.get(r, 'PedH'))[:1] == fn[:1]]
+            rows = _same_kind(P, p, [r for (l2, b), rs in by_lb.items() if l2 == ln and abs(b[0] - p['birth'][0]) <= 1
+                                     for r in rs if norm(P.get(r, 'PedH'))[:1] == fn[:1]])
         p['row'] = best_row(R, rows) if rows else None
         p['how'] = how if rows else 'none'
     return people
+
+
+def _same_kind(P, p, rows):
+    """The records among `rows` of the same kind of player as `p`: goalie or skater."""
+    if not rows or not p.get('pos'):
+        return rows
+    goalie = p['pos'] == 'G'
+    return [r for r in rows if (P.get(r, 'aljv') == 4) == goalie]
 
 
 def match_club(R, people):

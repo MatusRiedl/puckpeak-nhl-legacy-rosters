@@ -39,7 +39,7 @@ feed typo that makes an AHL player 15.
 | Part | Source | When | Notes |
 |---|---|---|---|
 | `ea_ratings` | nhlratings.net (EA's in-game ratings) | when EA updates its rosters (about monthly in season) | about one request per second; 40 minutes the first time, pages cached in `tools/cache/nhl27/` |
-| `iihf` | stats.iihf.com roster PDFs | once a year, after the World Championships | URLs in `tools/providers/iihf.py`; Belarus uses its last IIHF event (2021) |
+| `iihf` | stats.iihf.com roster PDFs | once a year, after the World Championships | URLs in `tools/providers/iihf.py` for 20 countries (every national team the game has except Russia, banned since 2022); Belarus uses its last IIHF event (2021). The PDF name ends in its version (`_33_7_1`): take the highest, it lists everyone registered. Keys are ISO codes (DEU, CHE, LVA, DNK) |
 | `liiga` | liiga.fi `/api/v2/players/info` | monthly in season, after the trade deadline | one request; season parameter derived from `SEASON` |
 | `extraliga` | hokej.cz club roster pages | same | one page per club; the page must say the right season or the provider stops |
 | `shl` | shl.se site API (`/api/sports-v2/…`, Sportality) | same | the season filter finds the season and the SHL series; one request per club and one per player (~380, about 3 minutes) |
@@ -53,9 +53,10 @@ feed typo that makes an AHL player 15.
 After a refresh: run the tests (they build with the bundled pack) and `tools/capacity.py`, then
 ship it (next section).
 
-## The photo pack (for the Photos exe)
+## The photo pack (inside the exe)
 
-After refreshing the data pack, and before building:
+Since 0.6.0 there is one window program, with every picture inside (owner, 2026-10-04). After
+refreshing the data pack, and before building:
 
 ```
 .venv\Scripts\python tools\build_photopack.py      # 4,300 pictures; first time about 15 minutes
@@ -65,8 +66,11 @@ After refreshing the data pack, and before building:
   ones (`--fresh` redoes everything).
 - **What it prints.** The size (about 60–100 MB) and the failed links. A few failures are normal:
   dead links, or photos without a recognisable head.
-- **Then build.** `packaging\build.ps1` builds the Photos exe only when the zip is there.
-- **Git.** The zip is not committed (`.gitignore`). Attach the Photos exe to the release.
+- **Then build.** `packaging\build.ps1` refuses to build without the zip.
+- **Git.** The zip is not committed (`.gitignore`); it travels inside the exe.
+- **Players' PCs.** Pictures the pack lacks (players new since it was built) are downloaded by the
+  program and kept in `%LOCALAPPDATA%\NHLLegacyRosterUpdater\art\pictures\`, so each is downloaded
+  once.
 
 ## Shipping new data
 
@@ -110,7 +114,9 @@ go-ahead (ROADMAP.md).
      - WHL: Penticton has no slot.
 5. `layout.NOT_ELIGIBLE`: players born in one country who represent another (they must not be
    picked for their birth country's team).
-6. IIHF: new PDF URLs in `tools/providers/iihf.py` after the World Championships.
+6. IIHF: new PDF URLs in `tools/providers/iihf.py` after the World Championships (the event number
+   changes; try `IHM<event>0<IOC code>_33_<n>_<m>.pdf` for the highest `n` that exists).
+   The cache keeps the old PDFs under the country's key: delete `tools/cache/iihf/` first.
 7. Refresh every part of the data pack, run the tests and `tools/capacity.py`, release.
 8. Every provider picks its season from `SEASON`. Check each part's printed count: an empty
    part usually means the league has not published the new season yet.
@@ -122,14 +128,17 @@ go-ahead (ROADMAP.md).
 2. Data pack refreshed if due (above).
 3. `python -m pytest -q` green with the base roster present (no unexpected skips).
 4. `powershell -ExecutionPolicy Bypass -File packaging\build.ps1`.
-5. **Smoke test** the two exes:
+5. **Smoke test** the two exes (the window program and the cli):
    - `dist\NHLLegacyRosterUpdater-cli.exe list --rpcs3 <rpcs3.exe>`: lists the rosters, community
      rosters "ok";
    - `dist\NHLLegacyRosterUpdater-cli.exe list --rpcs3 C:\Windows`: "That is not RPCS3…", exit code 1;
    - start `dist\NHLLegacyRosterUpdater.exe`: the window appears within a few seconds with the
      Puck Peak logo, font and icon, and finds RPCS3 when it is running or was used before;
    - run one update into a **copy** of a savedata folder (`update --savedata <copy>`), or with
-     `--dry-run`.
+     `--dry-run`; with an EU roster in the copy, `--for both` must add an EU and an NA folder;
+   - the game's own roster: a temporary folder with an empty `rpcs3.exe` and `config\games.yml`
+     naming your disc image (`BLUS31540: "<image>"`), then `update --rpcs3 <that exe> --dry-run`:
+     it starts from `disc:NA` and passes every check.
 6. If the release changes what is written into the save: the project owner loads a new roster
    in the game (Roster Management, Team Management, lines, one game) before release.
 7. Release notes for players: what is new, what to expect, known issues. Keep the README's
@@ -152,6 +161,7 @@ go-ahead (ROADMAP.md).
 | nationalleague.ch | 0 forwards or 0 players | `tools/providers/swiss.py` (`POSITION`: the feed says `forwarder`) |
 | HockeyTech | HTTP 403/"invalid key", no regular season | `tools/providers/hockeytech.py` (`KEYS`: copy the new `key=` from the league site's requests) |
 | RPCS3 | "That is not RPCS3" or saves not found for a valid install | `savedata._dev_hdd0` (`config\vfs.yml`), `savedata._active_user` (`GuiConfigs`) |
+| A new community roster | "… is not a copy of … in this roster" or another layout refusal | `layout.check_base` (`MIRROR_NAMES`); then build it once in memory (as `tests/test_pipeline.py::community_style` does) and look at `verify`'s problems |
 | Photo links (any league) | "N could not be downloaded" grows, or players keep old pictures | the provider's `photo` field (HockeyTech `player_image`, Sportality `portraitList`… `srcset`, Liiga `pictureUrl`, DEL roster row `<img>`, NHL.com `headshot`) |
 | Logo links | a club shows its old logo with photos on | its `logo` in the pack: feed `_logos`, `tools/cache/logos.json` (Wikipedia), or set `logo` / `wiki` for the club in `club_slots.json` |
 | A photo looks wrong (head too big, background left) | – | `legacy_roster/art/images.py` (`cut_out`, `head`, `PORTRAIT_SPOTS`); `tests/test_art.py` has a drawn test photo |

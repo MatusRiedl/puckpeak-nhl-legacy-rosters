@@ -34,7 +34,7 @@ GOALIE_ATTRIBUTES = _labels(EA_GOALIE)
 
 class Player:
     __slots__ = ('who', 'prow', 'pid', 'first', 'last', 'pos', 'num', 'birth', 'country', 'shoots', 'height_in',
-                 'weight_lb', 'teams', 'ovr', 'ratings')
+                 'weight_lb', 'teams', 'ovr', 'ratings', 'artid', 'hasportrait')
 
     @property
     def name(self):
@@ -92,6 +92,7 @@ class Snapshot:
             p.height_in = P.get(prow, 'QBpy') + 54
             p.weight_lb = P.get(prow, 'WZNs') + 120
             p.teams = sorted(teams_of.get(pid, []))
+            p.artid, p.hasportrait = P.get(prow, 'artid'), P.get(prow, 'hasportrait')     # his menu photo
             p.ratings, p.ovr = {}, None
             where = ai.get(pid)
             if where:
@@ -140,7 +141,14 @@ def compare(before, after, team, renamed=None):
     """How `team` changed from `before` to `after` (two Snapshots):
     {'joined': {who: where from}, 'left': [Player of before], 'changed': {who: [field, ...]}}.
     `renamed` maps a renamed player's new key to his old one (edits keep the old one)."""
-    renamed = renamed or {}
+    renamed = dict(renamed or {})
+    # the same record under the same name whose birthdate the update corrected (NHL.com's) is the
+    # same person, not one leaving and another joining
+    by_pid = {q.pid: q for q in before.roster(team)}
+    for p in after.roster(team):
+        q = by_pid.get(p.pid)
+        if q is not None and q.who != p.who and (q.first, q.last) == (p.first, p.last):
+            renamed.setdefault(p.who, q.who)
     old_key = lambda who: renamed.get(who, who)
     now = {old_key(p.who) for p in after.roster(team)}
     was = {p.who for p in before.roster(team)}

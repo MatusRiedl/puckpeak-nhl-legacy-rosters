@@ -10,6 +10,7 @@ The player table cannot simply grow, so a new player takes over an existing reco
 Taking a record over also wipes what belonged to its previous owner: portrait, commentary
 name, draft and career data.
 """
+import bisect
 import zlib
 from collections import Counter
 
@@ -79,6 +80,20 @@ class Donors:
         self.generic_heads = sorted(k for k in heads if k[1] == usual) or [(GENERIC_HEAD, 1)]
         # the usual birth-state code per country (Ontario for Canada, ...)
         self.home_state = {c: cnt.most_common(1)[0][0] for c, cnt in home.items()}
+
+    def add_spare(self, prow):
+        """A record that just became free (a player of the game's own roster who retired in this
+        run): spare from now on, in its place in the oldest-first order."""
+        b, P = self.b, self.b.P
+        pid = P.get(prow, 'zIBw')
+        if pid not in b.quality or b.quality[pid] >= LEGEND_LEVEL or len(b.records_of[b.identity(prow)]) != 1:
+            return
+        if real_birth_year(P, prow) > b.data.season_year - MIN_AGE:
+            return
+        key = lambda i: (real_birth_year(P, i), b.quality[P.get(i, 'zIBw')], i)
+        spare = self.spare[P.get(prow, 'aljv')]
+        if prow not in spare:
+            bisect.insort(spare, prow, key=key)
 
     def available(self, pos):
         return len(self.blank[pos]) + len(self.spare[pos])

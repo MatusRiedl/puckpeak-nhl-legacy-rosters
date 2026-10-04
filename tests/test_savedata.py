@@ -70,8 +70,39 @@ def test_anything_that_is_not_rpcs3_is_refused_in_plain_words(rpcs3, tmp_path):
 def test_rpcs3_without_a_roster_says_what_to_do(tmp_path):
     (tmp_path / 'rpcs3.exe').write_bytes(b'MZ')
     (tmp_path / 'dev_hdd0' / 'home' / '00000001' / 'savedata').mkdir(parents=True)
-    with pytest.raises(savedata.Rpcs3Error, match="no roster saved"):
+    with pytest.raises(savedata.Rpcs3Error, match="no roster of NHL Legacy"):
         savedata.find_rpcs3(str(tmp_path / 'rpcs3.exe'))
+
+
+def test_without_any_roster_the_games_own_roster_is_saved_from_scratch(tmp_path, monkeypatch, base_bytes):
+    """A player who never saved a roster: RPCS3 lists the game, so it offers the game's own roster,
+    and the new save gets a PARAM.SFO made from scratch and the icon of the player's disc."""
+    from legacy_roster import stock
+    (tmp_path / 'rpcs3.exe').write_bytes(b'MZ')
+    disc = tmp_path / 'NHL Legacy (USA).iso'
+    disc.write_bytes(b'not read here')
+    (tmp_path / 'config').mkdir()
+    (tmp_path / 'config' / 'games.yml').write_text(f'BLUS31540: "{disc.as_posix()}"\n', encoding='utf-8')
+    r = savedata.find_rpcs3(str(tmp_path / 'rpcs3.exe'))
+    assert r.user == '00000001' and not os.path.exists(r.savedata)          # never saved anything
+    [slot] = r.disc_slots()
+    assert (slot.title_id, slot.region, slot.folder, slot.disc) == ('BLUS31540', 'NA', 'BLUS31540 game', True)
+    monkeypatch.setattr(stock, 'disc_icon', lambda path: b'\x89PNG icon of the disc')
+    new = savedata.install(r.savedata, slot, base_bytes, 'From the game')
+    assert new.folder == 'BLUS315400200' and new.region == 'NA' and new.name == 'From the game'
+    assert open(os.path.join(new.path, 'ICON0.PNG'), 'rb').read() == b'\x89PNG icon of the disc'
+    sfo = Sfo.load(os.path.join(new.path, 'PARAM.SFO'))
+    assert sfo.get('TITLE') == savedata.TITLES['BLUS31540'] and sfo.get('SAVEDATA_DIRECTORY') == new.folder
+    again = savedata.install(r.savedata, slot, base_bytes, 'Again')      # from now on, from that save
+    assert again.folder == 'BLUS315400201'
+
+
+def test_a_roster_saves_param_sfo_can_be_made_from_scratch(base_dir):
+    with open(os.path.join(base_dir, 'PARAM.SFO'), 'rb') as f:
+        theirs = f.read()
+    sfo = Sfo(theirs)
+    mine = savedata.roster_sfo('BLES02153', sfo.get('SAVEDATA_DIRECTORY'), sfo.get('SUB_TITLE')).to_bytes()
+    assert mine == theirs
 
 
 def test_a_relocated_dev_hdd0_is_followed(rpcs3, tmp_path):
@@ -125,6 +156,61 @@ def test_install_writes_a_new_save_and_leaves_the_source_alone(rpcs3, base_bytes
     assert {f: open(os.path.join(source.path, f), 'rb').read() for f in savedata.FILES} == before
     assert savedata.install(sd, source, base_bytes, 'again').folder == 'BLES021530204'
     assert not [n for n in os.listdir(os.path.dirname(sd)) if n.startswith('.roster-updater')]   # no leftovers
+
+
+def test_rosters_carry_their_version_of_the_game(rpcs3):
+    sd, _ = savedata.find_savedata(str(rpcs3))
+    slot = savedata.list_rosters(sd)[0]
+    assert slot.region == 'EU' and 'EU' in slot.label()
+    assert savedata.region('BLUS31540') == 'NA' and savedata.region('BLES01853') == 'BLES01853'
+    assert savedata.title_of('na') == 'BLUS31540' and savedata.title_of('XX') is None
+
+
+def test_a_roster_can_be_saved_for_the_other_version(rpcs3, base_bytes):
+    """Both versions read the same SYS-DATA: an EU roster saved for NA gets an NA folder and the NA
+    title; once the NA version has a roster save, new NA saves are made from that one."""
+    sd, _ = savedata.find_savedata(str(rpcs3))
+    source = savedata.list_rosters(sd)[0]
+    before = {f: open(os.path.join(source.path, f), 'rb').read() for f in savedata.FILES}
+    profile = os.path.join(sd, 'BLUS315400000')          # the NA game was started once: its profile save
+    os.makedirs(profile)
+    sfo = Sfo.load(os.path.join(source.path, 'PARAM.SFO'))
+    sfo.set_str('TITLE', 'NHL® Legacy Edition (from its own save)')
+    sfo.save(os.path.join(profile, 'PARAM.SFO'))
+    na = savedata.install(sd, source, base_bytes, 'Both', title_id='BLUS31540')
+    assert (na.folder, na.region, na.name) == ('BLUS315400200', 'NA', 'Both')
+    got = Sfo.load(os.path.join(na.path, 'PARAM.SFO'))
+    assert got.get('TITLE') == 'NHL® Legacy Edition (from its own save)' and got.get('SAVEDATA_DIRECTORY') == na.folder
+    assert open(na.sys_data, 'rb').read() == base_bytes
+    shutil.rmtree(profile)
+    again = savedata.install(sd, source, base_bytes, 'Again', title_id='BLUS31540')
+    assert again.folder == 'BLUS315400201'
+    assert Sfo.load(os.path.join(again.path, 'PARAM.SFO')).get('TITLE') == got.get('TITLE')   # from the NA roster
+    eu = savedata.install(sd, source, base_bytes, 'EU too')
+    assert eu.folder == 'BLES021530203' and Sfo.load(os.path.join(eu.path, 'PARAM.SFO')).get('TITLE') == sfo_title(source)
+    assert {f: open(os.path.join(source.path, f), 'rb').read() for f in savedata.FILES} == before
+
+
+def sfo_title(slot):
+    return Sfo.load(os.path.join(slot.path, 'PARAM.SFO')).get('TITLE')
+
+
+def test_a_version_without_a_save_of_its_own_gets_its_standard_title(rpcs3, base_bytes):
+    sd, _ = savedata.find_savedata(str(rpcs3))
+    source = savedata.list_rosters(sd)[0]
+    na = savedata.install(sd, source, base_bytes, 'NA', title_id='BLUS31540')
+    assert Sfo.load(os.path.join(na.path, 'PARAM.SFO')).get('TITLE') == savedata.TITLES['BLUS31540']
+
+
+def test_the_versions_rpcs3_has(rpcs3, tmp_path):
+    (rpcs3 / 'rpcs3.exe').write_bytes(b'MZ')
+    r = savedata.find_rpcs3(str(rpcs3))
+    assert r.games() == ['BLES02153']                     # an EU save only
+    disc = tmp_path / 'NHL Legacy (USA).iso'
+    disc.write_bytes(b'')
+    (rpcs3 / 'config').mkdir()
+    (rpcs3 / 'config' / 'games.yml').write_text(f'BLUS31540: "{disc.as_posix()}"\n', encoding='utf-8')
+    assert r.games() == ['BLES02153', 'BLUS31540']        # the NA game is in RPCS3's list
 
 
 def test_next_free_skips_other_titles_and_wraps(tmp_path):

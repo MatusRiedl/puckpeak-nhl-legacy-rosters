@@ -1,14 +1,18 @@
-"""Where things live in a roster of the 2025-26 community family ("ROSTER2526" and its descendants).
+"""Where things live in a roster of the community family: "ROSTER2526", its descendants such as the
+community's 2026-27 roster, and the rosters this program makes from them.
 
 The game has 252 fixed team slots in 16 fixed leagues. The updater never adds a team and never
 changes a team's league (hard limits of the game); it only refills existing slots.
 """
+import re
+import unicodedata
 from collections import Counter
 
 # ttOk.league
 LEAGUE_NAMES = {0: 'NHL', 1: 'AHL', 2: 'SHL', 3: 'Liiga', 4: 'DEL', 5: 'Extraliga', 6: 'National League',
                 7: 'Norway', 8: 'National', 9: 'OHL', 10: 'QMJHL', 11: 'WHL', 12: 'Top Prospects',
                 13: 'Custom', 14: 'Winter Classic', 15: 'EASHL'}
+CUSTOM_LEAGUE = 13
 TEAM_COUNT = 252
 MAX_PER_TEAM = 40                 # roster entry ids (ulGe.key) are team * 40 + slot
 XWOT_UNSET = (1 << 14) - 1
@@ -24,6 +28,10 @@ SLOT_TO_API = {v: k for k, v in API_TO_SLOT.items()}
 MIRRORS = {0: [225], 2: [223], 5: [232], 12: [230], 13: [227], 14: [233], 20: [231], 22: [229],
            24: [222], 28: [224], 30: [228], 31: [226]}
 MIRROR_OF = {m: p for p, ms in MIRRORS.items() for m in ms}
+# what the community calls those copies; a roster whose copies are out of step with their NHL team
+# (the 2026-27 community roster) is still recognised by these names
+MIRROR_NAMES = {222: 'Blues', 223: 'Bruins', 224: 'Canucks', 225: 'Ducks', 226: 'Golden Knights', 227: 'Kings',
+                228: 'Kraken', 229: 'Mammoth', 230: 'Panthers', 231: 'Senators', 232: 'Whalers', 233: 'Wild'}
 
 NHL_PRIMARY = set(range(32))
 NHL_ALL = NHL_PRIMARY | set(MIRROR_OF)
@@ -53,6 +61,7 @@ AHL_PARENT_EXTRA = {234: 30, 235: 31}
 
 POS_CODE = {'C': 0, 'L': 1, 'R': 2, 'D': 3, 'G': 4}
 POS_CLASS = {0: 'C', 1: 'W', 2: 'W', 3: 'D', 4: 'G'}
+POS_NAME = {0: 'C', 1: 'LW', 2: 'RW', 3: 'D', 4: 'G'}
 # cPbu.intlcountry codes (decoded from the players in the file)
 NAT_CODE = {'SWE': 69, 'USA': 14, 'FIN': 67, 'CAN': 0, 'RUS': 76, 'NOR': 68, 'CZE': 82, 'CHE': 97, 'DEU': 85,
             'SVK': 95, 'BLR': 70, 'DNK': 66, 'AUT': 78, 'LVA': 74, 'FRA': 84, 'AUS': 98, 'JPN': 109, 'KAZ': 72,
@@ -60,8 +69,8 @@ NAT_CODE = {'SWE': 69, 'USA': 14, 'FIN': 67, 'CAN': 0, 'RUS': 76, 'NOR': 68, 'CZ
 # national teams the original mod left empty, filled from the latest IIHF rosters
 EMPTY_NATIONAL = {'AUT': 133, 'BLR': 134, 'GBR': 141, 'JPN': 143, 'KAZ': 144, 'NOR': 146, 'POL': 147, 'UKR': 152}
 # how much weaker (rating-field units) than the mod's European national players an unrated player is
-NATIONAL_TIER = {'AUT': 0, 'NOR': 0, 'BLR': 0, 'GBR': -2, 'KAZ': -2, 'POL': -3, 'UKR': -3, 'JPN': -3}
-LINE_TEMPLATE_NATIONAL = 142  # Italy: a complete national team (20 dressed, all line slots) used as template
+NATIONAL_TIER = {'AUT': 0, 'NOR': 0, 'BLR': 0, 'GBR': -2, 'KAZ': -2, 'POL': -3, 'UKR': -3, 'JPN': -3,
+                 'DEU': 1, 'CHE': 1, 'SVK': 1, 'LVA': 0, 'DNK': 0, 'FRA': -1, 'ITA': -2}
 # national team (ttOk abbreviation) -> birth country code used by the NHL data
 NATIONAL_ISO = {'CAN': 'CAN', 'CZE': 'CZE', 'DEN': 'DNK', 'FIN': 'FIN', 'FRA': 'FRA', 'GER': 'DEU', 'ITA': 'ITA',
                 'LAT': 'LVA', 'RUS': 'RUS', 'SLV': 'SVK', 'SWE': 'SWE', 'SWI': 'CHE', 'USA': 'USA',
@@ -103,8 +112,40 @@ def country_code(code):
 NOT_ELIGIBLE = {('mason', 'mctavish'), ('benoitolivier', 'groulx')}
 
 
+def city_key(text):
+    """A custom team's city as a key in the game's own style: 'Coachella Valley' -> COACHELLA_VALLEY.
+
+    A custom team's name in the menus is the game's text whose key is its `shortname` (art/loc.py).
+    The keys that show are written like the game's own (ANAHEIM, LAS_VEGAS); the community's
+    "NhlCityName_13" and the texts this program added under "Coachella Valley" or
+    "2026 Prospects 2" showed nothing in the game (owner, 2026-10-04)."""
+    plain = unicodedata.normalize('NFKD', text or '').encode('ascii', 'ignore').decode()
+    return re.sub(r'[^A-Z0-9]+', '_', plain.upper()).strip('_')
+
+
+def is_city_key(text):
+    return bool(re.fullmatch(r'[A-Z0-9_]+', text or ''))
+
+
+def set_city(T, slot, city):
+    """Write a team's city (`shortname`); a custom team's as a key in the game's style."""
+    if T.get(slot, 'league') == CUSTOM_LEAGUE and not is_city_key(city):
+        city = city_key(city) or city
+    T.set(slot, 'shortname', city[:T.field('shortname').bits // 8 - 1])
+
+
 class LayoutError(ValueError):
     """The roster is not one the updater can work on."""
+
+
+# the layouts the updater works on (check_base): the community roster family, and the game's own
+# roster (stock.py: from the player's disc, or saved in the game without loading a community roster)
+COMMUNITY, STOCK = 'community', 'stock'
+
+
+def mirrors(kind):
+    """The custom copies of NHL teams a layout keeps in step: none in the game's own roster."""
+    return MIRRORS if kind == COMMUNITY else {}
 
 
 def team_leagues(R):
@@ -112,28 +153,36 @@ def team_leagues(R):
 
 
 def check_base(R):
-    """Raise LayoutError unless `R` is a roster of the supported family.
+    """The layout of `R` (COMMUNITY or STOCK); LayoutError when the updater cannot work on it.
 
-    The stock EA roster (30 NHL teams, no Utah/Seattle/Vegas, no custom teams) and anything with
-    a different table set are rejected with a message a player can act on."""
+    Two layouts are known: the community roster family, and the game's own roster (30 NHL teams
+    and the All-Star teams, the custom teams switched off; stock.py prepares it). Anything else,
+    and a different table set, is rejected with a message a player can act on. The custom copies
+    of NHL teams of a community roster may be out of step with their team (the update makes them
+    copies again): they are recognised by their name or by sharing most players with it."""
+    from . import stock
     T, U = R.T, R.U
     if T.cur_rec != TEAM_COUNT:
         raise LayoutError(f"this roster has {T.cur_rec} teams; the updater needs the 252-team NHL Legacy layout")
     count = Counter(U.get(i, 'BSXd') for i in range(U.cur_rec))
+    if any(count[t] > MAX_PER_TEAM for t in count):
+        raise LayoutError("a team has more than 40 players")
+    if stock.is_stock(R):
+        return STOCK
     if not all(count[m] for m in MIRROR_OF) or not T.get(222, 'NYKk'):
         raise LayoutError(
-            "this looks like the stock EA roster, not the 2025-26 community roster. The updater needs a base "
-            "roster with 32 NHL teams (Utah, Seattle and Vegas) -- load the community roster in game, save it, "
-            "and pick that save.")
+            "some of the custom copies of NHL teams are missing, so this is neither the game's own roster nor a "
+            "community roster. Pick another roster, or start from the game's own roster.")
     members = {}
     for i in range(U.cur_rec):
         members.setdefault(U.get(i, 'BSXd'), set()).add(R.link_to_pid.get(U.get(i, 'TWSX')))
     for prim, mirrors in MIRRORS.items():
         for m in mirrors:
+            if R.team_name(m).replace('®', '').strip() == MIRROR_NAMES[m]:
+                continue
             a, b = members.get(prim, set()), members.get(m, set())
             if len(a & b) < 0.6 * max(len(a), len(b), 1):
                 raise LayoutError(
                     f"{R.team_name(m)} (team {m}) is not a copy of {R.team_name(prim)} in this roster; "
-                    "the team layout differs from the supported community roster.")
-    if any(count[t] > MAX_PER_TEAM for t in count):
-        raise LayoutError("a team has more than 40 players")
+                    "the team layout differs from the community roster.")
+    return COMMUNITY

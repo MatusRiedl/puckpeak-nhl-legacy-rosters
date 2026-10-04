@@ -1,8 +1,7 @@
 # Build the Windows program into dist\ :
-#   NHLLegacyRosterUpdater.exe          the window (double-click)
-#   NHLLegacyRosterUpdater-Photos.exe   the same window with every photo and logo inside
-#                                       (only when legacy_roster\data\photopack.zip exists)
-#   NHLLegacyRosterUpdater-cli.exe      the same engine on the command line
+#   NHLLegacyRosterUpdater.exe          the window (double-click), with every photo and logo inside
+#                                       (legacy_roster\data\photopack.zip, made by tools\build_photopack.py)
+#   NHLLegacyRosterUpdater-cli.exe      the same engine on the command line (no photo pack)
 #
 # Uses its own virtual environment (.venv) so nothing is installed into your Python.
 #   powershell -ExecutionPolicy Bypass -File packaging\build.ps1
@@ -35,24 +34,19 @@ $common = @(
     '--distpath', 'dist', '--workpath', 'build', '--specpath', 'build'
 )
 
-# the photo pack goes only into the photo edition: keep it out of the plain builds
+# one window program for everyone, with every photo and logo inside (owner, 2026-10-04): new players'
+# pictures are downloaded by it and kept on the player's PC
 $pack = Join-Path $data 'photopack.zip'
 $aside = Join-Path $root 'build\photopack.zip.aside'
 New-Item -ItemType Directory -Force (Join-Path $root 'build') | Out-Null
-if (Test-Path $pack) { Move-Item -Force $pack $aside }
-try {
-    & $py -m PyInstaller @common --windowed --collect-all customtkinter --name NHLLegacyRosterUpdater packaging\launcher.py
-    if ($LASTEXITCODE -ne 0) { throw "building the window program failed" }
-} finally {
-    if (Test-Path $aside) { Move-Item -Force $aside $pack }
+if (-not (Test-Path $pack)) {
+    throw "No photo pack (legacy_roster\data\photopack.zip). Run .venv\Scripts\python tools\build_photopack.py first."
 }
-if (Test-Path $pack) {
-    # the same window with every photo and logo inside (tools\build_photopack.py makes the pack)
-    & $py -m PyInstaller @common --windowed --collect-all customtkinter --name NHLLegacyRosterUpdater-Photos packaging\launcher.py
-    if ($LASTEXITCODE -ne 0) { throw "building the photo edition failed" }
-} else {
-    Write-Warning "No photo pack (legacy_roster\data\photopack.zip): the photo edition is not built. Run tools\build_photopack.py first."
-}
+$old = Join-Path $root 'dist\NHLLegacyRosterUpdater-Photos.exe'     # the second exe of 0.4-0.5
+if (Test-Path $old) { Remove-Item -Force $old }
+& $py -m PyInstaller @common --windowed --collect-all customtkinter --name NHLLegacyRosterUpdater packaging\launcher.py
+if ($LASTEXITCODE -ne 0) { throw "building the window program failed" }
+# the command line stays small: no pack (it downloads, and keeps what it downloaded)
 if (Test-Path $pack) { Move-Item -Force $pack $aside }
 try {
     & $py -m PyInstaller @common --console --exclude-module customtkinter --exclude-module tkinter `

@@ -1,5 +1,8 @@
 # NHL Legacy Roster Updater
 
+**New here? Read the [Quick start](QUICKSTART.md)**, then download `NHLLegacyRosterUpdater.exe` from
+[Releases](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest).
+
 Keeps the rosters of **NHL Legacy Edition** (PS3, played on RPCS3) up to date. You show it where
 RPCS3 is, switch on what you want updated, and it saves a **new** roster named with today's date
 and time. Your existing rosters are never changed.
@@ -10,21 +13,45 @@ and time. Your existing rosters are never changed.
 
 | | What happens | Where the data comes from |
 |---|---|---|
-| NHL | Every player on his current team, jersey numbers, lines, captains, contracts | NHL.com, fetched when you press the button |
+| NHL | Every player on his current team, at the position NHL.com lists, with jersey numbers, lines (left wings on the left, right wings on the right), captains, contracts | NHL.com, fetched when you press the button |
 | Ratings | Player attributes for NHL players | EA NHL 27 ratings |
-| National teams | Squads refreshed; the eight empty national teams filled | IIHF rosters and NHL players by nationality |
+| National teams | Squads refreshed; every empty national team filled (also the ones a community roster left empty) | IIHF 2026 rosters and NHL players by nationality |
 | Liiga | The 15 Finnish clubs with their real 2026-27 rosters, lines and captains | liiga.fi |
 | Extraliga | The 14 Czech clubs likewise | hokej.cz |
-| SHL (new) | The 14 Swedish clubs | shl.se |
-| DEL (new) | The 14 German clubs | penny-del.org |
-| National League (new) | 12 of the 14 Swiss clubs | nationalleague.ch |
-| Norway (new) | Stavanger and Vålerenga, the two Norwegian clubs the game has | ehl.no |
-| AHL (new) | All 32 AHL teams with their real rosters; players on NHL contracts belong to their NHL club | theahl.com (HockeyTech) |
-| CHL (new) | The OHL, QMJHL and WHL clubs | the leagues' sites (HockeyTech) |
-| Photos and logos (new) | Today's player photos and club logos in the game's menus | the leagues' sites, downloaded on your PC (see below) |
+| SHL | The 14 Swedish clubs | shl.se |
+| DEL | The 14 German clubs | penny-del.org |
+| National League | 12 of the 14 Swiss clubs | nationalleague.ch |
+| Norway | Stavanger and Vålerenga, the two Norwegian clubs the game has | ehl.no |
+| AHL | All 32 AHL teams with their real rosters; players on NHL contracts belong to their NHL club | theahl.com (HockeyTech) |
+| CHL | The OHL, QMJHL and WHL clubs | the leagues' sites (HockeyTech) |
+| Photos, logos and team names | Today's player photos, club logos and real team names in the game's menus | the leagues' sites, downloaded on your PC (see below) |
 
-Switches marked **NEW** are off until you switch them on: they pass every check the program
-makes, but have not been played in the game yet. Tell us how they work.
+Everything is switched on to start with; switch off what you do not want. Every part passes the
+program's safety check; SHL, DEL, National League, Norway, AHL and CHL have not been played in the
+game by the project owner yet. Tell us how they work.
+
+## No roster yet? Start from the game's own
+
+You do not need a community roster. If RPCS3 lists the game, the window shows **The game's own
+roster** (marked *start fresh*) under your saves. The program reads it from your copy of the game,
+the 2014-15 players, and brings it up to today:
+
+- Seattle and Vegas move into the All-Star teams' places. With "Photos, logos and team names" on,
+  Utah, Seattle and Vegas show their names and logos in the NHL list.
+- Players of 2014 who are 30 or older and on no team any more retire. Their places in the save go
+  to today's players. Younger ones become free agents.
+- Coachella Valley and Henderson are left out: the game's own roster has no team for them.
+- The first roster of a game that has no save yet gets the game's own icon.
+
+This is new in 0.6.0 and has not been played in the game yet. Tell us how it works.
+
+## EU and NA
+
+The European (`BLES02153`) and North American (`BLUS31540`) versions of the game read the same
+roster file. The program finds the rosters of both and marks each one **EU** or **NA**. If your
+RPCS3 has both versions, **Save for** (next to the roster name) saves the new roster for EU, NA or
+both. It can even make the first roster of a version that has none yet. Photos, logos and team
+names then go into both games too.
 
 **About the club leagues.**
 
@@ -33,9 +60,9 @@ makes, but have not been played in the game yet. Tell us how they work.
   - National League: Ajoie and Rapperswil-Jona;
   - WHL: Penticton;
   - Norway: every club except Stavanger and Vålerenga.
-- **A club new to a league since 2015 takes the slot of one that left,** and keeps the old club's jersey,
-  and its logo unless "Photos and logos" is on. For now the game's menus also still show the old club's
-  name there (the game takes these names from its own text, not from the roster):
+- **A club new to a league since 2015 takes the slot of one that left,** and keeps the old club's jersey.
+  Its logo and its name in the menus are the old club's unless "Photos, logos and team names" is on
+  (the game takes team names from its own text, not from the roster):
   - Kiekko-Espoo plays in the Espoo Blues slot;
   - Kladno in Chomutov's, České Budějovice in Zlín's;
   - Björklöven in Karlskrona's, Timrå in MODO's;
@@ -58,31 +85,48 @@ makes, but have not been played in the game yet. Tell us how they work.
     fitting year (the List of changes marks him).
   - The National League does not publish nationality, so its players new to the game are listed as Swiss.
 
-**Photos and logos (new).** With this switch on, the program also gives the players their current
-photo and the clubs their current logo in the game's menus:
+**Photos, logos and team names.** With this switch on, the program also gives the players their
+current photo and the clubs their current logo and real name in the game's menus. Examples: Kladno
+instead of Chomutov; Utah, Seattle and Vegas instead of Arizona, Green and Black; names for
+Coachella Valley, Henderson and the prospect pools. The game takes team names from its own text
+file, so the program writes a corrected copy of that too:
 
 - **RPCS3 must be closed** while it runs.
-- **Two programs.** `NHLLegacyRosterUpdater-Photos.exe` has about 4,300 photos and logos inside, so
-  nothing needs downloading except players new since it was made. `NHLLegacyRosterUpdater.exe` is
-  the small one: it downloads the photos from the leagues' sites the first time (about 8 minutes),
-  and later updates download only new or changed photos.
+- **Pictures inside the program.** `NHLLegacyRosterUpdater.exe` carries about 4,300 photos and logos,
+  so nothing needs downloading except players new since it was made. Those are downloaded once and
+  kept on your PC, so no picture is ever downloaded twice.
 - **Made for your game.** The pictures are turned into the game's own picture files on your PC,
   using templates from your copy of the game. Writing them takes a few minutes and about 600 MB.
-- **Where they go.** The pictures go into RPCS3's folder for the game (`dev_hdd0\game\BLES02153`),
-  not into your roster saves.
-- **Undo.** **Remove photos and logos** in the window puts every file back as it was. Your rosters
-  stay as they are, and the game shows its own pictures again.
+- **Where they go.** The pictures and team names go into RPCS3's folder for the game
+  (`dev_hdd0\game\BLES02153` for EU, `dev_hdd0\game\BLUS31540` for NA), not into your roster saves.
+  A roster file (`SYS-DATA`) holds only each player's picture number. So a roster file you download
+  and drop into a save folder does not bring or remove pictures: it shows the ones installed for
+  the numbers it uses.
+- **Custom teams** (under CUSTOM: the copies of 12 NHL teams with today's logos and jerseys,
+  Coachella Valley, Henderson, the prospect pools) get a name in the menus as well.
+- **The favourite team screens** ("Choose Your Favorite Team" when you start the game, and the
+  favourite team in your settings) get the current logos too: Utah's instead of the Coyotes'.
+- **Your own pictures are kept.** Before a picture is replaced, the one that was there is kept on
+  your PC: the game's own, or one from a picture pack you installed yourself. If you install
+  another pack later, its pictures are kept as well.
+- **Undo.** **Restore the game's own pictures** in the window puts every file back as it was. Your
+  rosters stay as they are.
 - **Not covered:** the National League and Extraliga publish no player photos, so their players
   keep the game's pictures. Their club logos are covered.
 
-**Roster editor (new).** The second tab of the window shows what a roster holds: every league, team
-and player with position, number, age, nationality and overall.
+**Roster editor.** The second tab of the window shows what a roster holds: every league, team
+and player with position, number, age, nationality and overall, with the player's photo.
 
-- **As is / To be.** "As is" is the roster you picked. **Preview update** shows what the update will
-  make of it, without saving. Green players joined a team, red ones left, and gold ones changed
-  (for example "OVR 83 → 86").
+- **As is / To be.** "As is" is the roster you picked. **To be** shows what the update will make of
+  it, with the switches of the Update tab, without saving (it takes a moment the first time).
+  **Refresh update** makes it again. Green players joined a team, red ones left, and gold ones
+  changed (for example "OVR 83 → 86").
+- **The photo** on the right is the one the game shows now, or in "To be" the one the update
+  brings (with "Photos, logos and team names" on).
 - **Edit any player.** Name, number, position, shooting side, birthdate, country, height, weight,
-  team (or free agent) and every rating. Then **Apply**.
+  team (or free agent), every rating, and a **photo of your own** (any PNG or JPG; you see it as the game
+  will). Then **Apply**.
+- **Edit any team.** Full name, city, abbreviation and a **logo of your own** ("Edit this team").
 - **New player.** Give a name, birthdate, team and overall. The save has a fixed number of player
   records, so new players use spare ones.
 - **Your edits are kept** on this PC and applied again after every later update ("My edits" on the
@@ -93,30 +137,35 @@ and player with position, number, age, nationality and overall.
 
 ## What you need
 
-- Windows and RPCS3 with NHL Legacy Edition (`BLES02153` or `BLUS31540`).
-- A roster of the **2025-26 community roster family** saved in the game at least once (the one
-  with 32 NHL teams including Utah, Seattle and Vegas). The stock EA roster cannot be used: it
-  has no slots for those teams, and the program will tell you so.
+- Windows and RPCS3 with NHL Legacy Edition, European (`BLES02153`) or North American
+  (`BLUS31540`), or both.
+- A roster to start from: a **community roster** (the 2025-26 roster family or the community's
+  2026-27 roster, also a file you put into a save folder by hand), or **the game's own roster**
+  (see above). A roster you saved in the game without loading a community roster counts as the
+  game's own.
 
 ## How to use it
 
-1. Download `NHLLegacyRosterUpdater-Photos.exe` (with photos and logos) or `NHLLegacyRosterUpdater.exe`
-   (smaller) from the Releases page and start it.
+1. Download `NHLLegacyRosterUpdater.exe` from the Releases page and start it.
 2. **Where is RPCS3?** Pick the file `rpcs3.exe` in your RPCS3 folder. The program finds your
    saves from there, also when RPCS3 keeps its hard disk somewhere else or has several users. If
    RPCS3 is running, or you have used the program before, this is already filled in.
-3. **Which roster should be updated?** Pick the roster to start from. Rosters made by this
-   program are marked *made here*; rosters it cannot use are greyed out with the reason.
+3. **Which roster should be updated?** Pick the roster to start from. Each one carries the flag of
+   its version (EU or NA); rosters made by this program are marked *made here*; rosters it cannot
+   use are greyed out with the reason. The game's own roster is at the end of the list.
 4. **What should be updated?** Switch on what you want and press **Update roster**. It takes
-   about a minute.
+   about a minute. With both versions of the game in RPCS3, choose first who gets the new roster
+   (**Save for**: EU, NA or both).
 5. In the game: *Roster Management > Load Roster*, pick the roster with the new date, then save
    it once so the game keeps it as the active roster.
 
 The program writes a new folder next to your existing roster saves (for example
 `BLES021530205`). To remove an update, delete that roster in the game or delete the folder.
 
-When it is done, the window offers **List of changes** (every move, call-up and new player, as a
-spreadsheet), **Open save folder** and, when RPCS3 is not running, **Start RPCS3**.
+When it is done, the window shows what each part did, one line each, and offers **List of
+changes**, **Open save folder** and, when RPCS3 is not running, **Start RPCS3**. The list of changes
+opens in your browser: every trade, call-up, new player and position change, grouped by league and
+team, with a search box. The same list is saved as a spreadsheet file next to it.
 
 ## Good to know
 
@@ -140,10 +189,13 @@ spreadsheet), **Open save folder** and, when RPCS3 is not running, **Start RPCS3
 NHLLegacyRosterUpdater-cli list   --rpcs3 "C:\RPCS3\rpcs3.exe"
 NHLLegacyRosterUpdater-cli update --rpcs3 "C:\RPCS3\rpcs3.exe" --source BLES021530202 --leagues nhl,ratings,national,ahl
 NHLLegacyRosterUpdater-cli export --rpcs3 "C:\RPCS3\rpcs3.exe" --source BLES021530202 --out tables
+NHLLegacyRosterUpdater-cli update --rpcs3 "C:\RPCS3\rpcs3.exe" --source disc:NA
 ```
 
 `--leagues` takes `nhl`, `ratings`, `national`, `liiga`, `extraliga`, `shl`, `del`, `nl`, `norway`,
-`ahl`, `chl` or `all`; without it, everything not marked NEW is updated. `--photos` adds photos and
+`ahl`, `chl` or `all`; without it, everything is updated. `--for EU`, `--for NA` or `--for both`
+chooses the version(s) of the game to save for (default: the version of the roster you start from).
+`--source disc` (or `disc:EU`, `disc:NA`) starts from the game's own roster. `--photos` adds photos and
 logos (RPCS3 closed); `NHLLegacyRosterUpdater-cli photos remove` takes them away. `--savedata <folder>` can be
 given instead of `--rpcs3` to name a save folder directly. `export` writes every table of a roster as
 CSV with readable column names, for roster editors.
@@ -166,10 +218,11 @@ Developers and AI agents: start with [AGENTS.md](AGENTS.md). It leads to how the
 
 ## Credits and legal
 
-Built on the 2025-26 community roster for NHL Legacy and on its author's team layout. NHL team
-and player names belong to their owners. The photo edition carries photos and logos published by
-the NHL, ESPN, the leagues and Wikipedia; no game files are included. It is not affiliated with EA Sports, the
-NHL or the IIHF. Code is under the MIT licence.
+Built on the NHL Legacy community rosters (2025-26 and 2026-27) and their authors' team layout. NHL team
+and player names belong to their owners. The program carries photos and logos published by the NHL,
+ESPN, the leagues and Wikipedia; no game files are included (the game's own roster, its pictures'
+templates and its icon are read from your copy of the game). It is not affiliated with EA Sports, the
+NHL or the IIHF. Code is under the [MIT licence](LICENSE) (c) 2026 Matus Riedl.
 
 A [Puck Peak](https://www.puckpeak.com) project (NHL & hockey analytics like never before): the
 window wears Puck Peak's look and logo, and the logo links to www.puckpeak.com. It uses

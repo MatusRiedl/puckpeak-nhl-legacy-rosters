@@ -195,6 +195,23 @@ class RosterFile:
             db = b[0x2C:0x2C + self.section_size]
         self._parse_db(db)
 
+    @classmethod
+    def from_db(cls, db, section_size, magic=ROSTER_MAGIC, version=4, counter=1):
+        """A roster save around a bare database (the game's own, stock.py): a PS3RosterFile wrapper
+        of `section_size`, compressed. Everything that depends on the content (sizes, the CRCs) is
+        filled in by build()."""
+        self = cls.__new__(cls)
+        self.path = None
+        raw = bytearray(0x2C + section_size)
+        raw[:0x10] = magic.ljust(0x10, b'\0')
+        struct.pack_into('>IIIII', raw, 0x14, version, 0, 1, counter, section_size)
+        self.raw = bytes(raw)
+        self.magic = self.raw[:0x10]
+        self.compressed = True
+        self.section_size = section_size
+        self._parse_db(db)
+        return self
+
     @property
     def is_roster(self):
         return self.magic.startswith(ROSTER_MAGIC)

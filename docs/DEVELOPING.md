@@ -21,6 +21,11 @@ and `tools/window_shot.py` look for a roster save folder (with `SYS-DATA`, `PARA
 for one, or save the community roster in the game and copy its folder. Without it, the tests
 that need it are skipped (and say so).
 
+**The game's own roster** (`tests/test_stock.py`) needs the game itself: set `LEGACY_ROSTER_DISC`
+to a disc image (`.iso`) or extracted game folder of NHL Legacy Edition, EU or NA. It is only
+read, never changed. Without it those tests skip. In PowerShell:
+`$env:LEGACY_ROSTER_DISC = 'D:\...\NHL Legacy Edition (USA).iso'`.
+
 Run from source:
 
 ```
@@ -35,6 +40,8 @@ python -m legacy_roster update --rpcs3 <path> --dry-run   # build and check, wri
 legacy_roster/   the program (see ARCHITECTURE.md for what each module does)
   tdb.py sfo.py schema.py schema_names.py roster.py layout.py      the save and its layout
   builder.py lines.py ratings.py estimate.py donors.py matching.py the update
+  stock.py                                                         the game's own roster (from the disc)
+  report.py                                                        the list of changes as a page
   leagues/clubs.py leagues/pools.py                                club leagues, pool relocation
   art/disc.py art/bigf.py art/refpack.py art/dds.py art/lab.py     menu art: the game's file format, the art test
   verify.py                                                        integrity checks
@@ -63,12 +70,13 @@ python -m pytest -q                 # about a minute (every league is built twic
 |---|---|
 | `test_tdb.py` | checksums; an untouched roster rebuilds byte-identical; field read/write; real names as aliases; record add/delete; broken chain detected |
 | `test_sfo.py` | PARAM.SFO strings, name length, real save keeps its size |
-| `test_pipeline.py` | the full NHL/ratings/national build: integrity, every NHL player on his team, mirrors, hard limits, legal line-ups, exact attributes, untouched fields, clean new players, styles, **second run identical**, steps on their own, line builder rules, stock roster refused |
+| `test_pipeline.py` | the full NHL/ratings/national build: integrity, every NHL player on his team, NHL.com's positions (Cole Smith), wingers on their side, mirrors, hard limits, legal line-ups, exact attributes, untouched fields, clean new players, styles, **second run identical**, steps on their own, line builder rules, an unknown layout refused |
+| `test_stock.py` | (needs `LEGACY_ROSTER_DISC`) the game's own roster: the save made from the disc matches a real save's tables and wrapper; prepare makes room once; a full update passes every check, skips nobody and a second run is identical; clubs in switched-off custom slots left out |
 | `test_leagues.py` | every club league in the pack, built together: real names and listed players (allowing for spelling, NHL call-ups, players another league keeps, skipped players, line-up fillers), playable clubs, contracts, plausible ratings per league, pools moved and nobody lost (on a team or a free agent), free agents without contracts but with their rights, AHL players on NHL contracts belong to the parent club, second run identical, a league added later, running out of records, twins, birthdate matching |
 | `test_providers.py` | every feed parser on small samples (no network): HockeyTech rows, Sportality players, DEL roster page, National League players, places to countries |
 | `test_datasource.py` | the newest readable pack wins; a pack for a newer program is skipped |
-| `test_art.py` | RefPack round trips; art files read and take a new image (parts, trailer kept); 32-bit logos exact; the art test installs into a fake RPCS3 and removes itself, restoring a file that was there before (synthetic art, no EA data) |
-| `test_savedata.py` | finding RPCS3 (relocated `dev_hdd0`, several users, folder inside RPCS3, plain-word errors), listing, installing without touching the source, folder numbering, names |
+| `test_art.py` | RefPack round trips; art files read and take a new image (parts, trailer kept); 32-bit logos exact; the art test installs into a fake RPCS3 and removes itself, restoring a file that was there before (synthetic art, no EA data); the logo styles incl. the favourite-team `r`, only for NHL teams; pictures downloaded once (cache) and originals always kept (another pack's file, a lost list of installed files) |
+| `test_savedata.py` | finding RPCS3 (relocated `dev_hdd0`, several users, folder inside RPCS3, plain-word errors), listing, installing without touching the source, folder numbering, names; an RPCS3 with no roster but the game listed (the game's own roster, PARAM.SFO from scratch byte-identical to a real one, the disc's icon) |
 | `test_progress.py` | progress mapping replays a real update's messages in order; every other message is a known remark (`progress.REMARKS`) |
 
 The build tests use the bundled data pack only (its NHL snapshot instead of live NHL.com), so
@@ -88,10 +96,18 @@ Before calling a change done:
    .venv\Scripts\python tools\window_shot.py done   shot.png --all          # runs a real offline update
    .venv\Scripts\python tools\window_shot.py ready  shot.png --scale 0.5 --screen-lines 768   # 100 % laptop, on a 200 % screen
    ```
-   Check 100 %, 150 % and 200 % scaling and a 768-line screen.
+   Check 100 %, 150 % and 200 % scaling and a 768-line screen. The pretend RPCS3 has an EU and
+   an NA roster (flags, "Save for"); `--disc <your game image>` (read only) lets the Roster editor's
+   card show real portraits and adds the game's own roster to the list. The window reads the
+   rosters in the background; `window_shot.py` waits for `App.scanning` to end.
+   **Pitfall:** `--scale` below 1 (100 % on a 150 % screen: 0.667) leaves the list of switches in
+   card 3 blank in the picture: CustomTkinter places its rows outside the scrolled area at that
+   emulated scaling. Version 0.4.0 shows the same; at real scalings (1.0 and up) the list is fine.
+   Judge the rest of the 100 % picture, and the switches at 150 % / 200 %.
 4. For anything shipped: build the exe and start it (MAINTAINING.md, "Smoke test").
 5. Anything that changes what is written into the save (new step, new rule, new league) also
-   needs a test **in the game** by the project owner before it loses its "NEW" mark: load the
+   needs a test **in the game** by the project owner before it leaves `pipeline.EXPERIMENTAL`
+   (the list of parts still waiting for that check; the window no longer marks them): load the
    roster, open Roster Management, Team Management and lines, and play a game with the
    changed teams.
 
@@ -129,8 +145,8 @@ The steps are in `pipeline.build()` and run in a fixed order (ARCHITECTURE.md). 
 3. `progress.STAGES`: a pattern for the step's first message.
 4. `BuildResult.headline()` / `summary()`: a line about what it did.
 5. Tests in `tests/`. The window and the command line pick the step up through
-   `pipeline.steps_for()`; put it in `pipeline.EXPERIMENTAL` (off by default, gold "NEW" chip)
-   until it has been played in the game.
+   `pipeline.steps_for()` (switched on by default); list it in `pipeline.EXPERIMENTAL` and in
+   ROADMAP.md until it has been played in the game.
 
 ### Add a club league
 
@@ -236,7 +252,19 @@ with a message). `build/` and `dist/` are git-ignored.
   `schema.py`. An older correlation-guessed map (`work/research/attr_map.json`) was wrong; do
   not revive it.
 - **Mirrors** (custom teams 222–233) must stay identical to their NHL team or the game shows
-  different rosters for the "same" team.
+  different rosters for the "same" team. Community rosters may come with them out of step:
+  `check_base` recognises them by name, `sync_mirrors` makes them copies again and releases a
+  player who was only on the copy (the 2026-27 roster's Ben Hutton) as a free agent.
+- **Custom team names** are the game's text under the team's `shortname`; only keys in the game's
+  own style (capitals, digits, underscores: LAS_VEGAS) showed. Write a custom team's city with
+  `layout.set_city`, never `T.set(..., 'shortname', ...)`. Texts added to the text file keep their
+  key's case (`loc.LocFile.set`). About 11,700 of the game's own text records carry a hash that is
+  not that of their stored key; leave them alone.
+- **EU and NA** read the same `SYS-DATA` and their discs hold the same art and text files. Code that
+  works with a game folder or disc takes the title id of the roster in hand (`Slot.title_id`),
+  never a fixed `BLES02153`.
+- **The team table of a core build stays untouched** (`test_hard_limits_...`): only steps that name
+  teams (club leagues, pools, team edits, team names) may write it.
 - **Name fields** are limited in UTF-8 bytes, not characters (`Builder.set_text`).
 - **Matching**: twins share last name and birthdate, so first names must agree; club matching
   requires the birthdate (the DEL, which gives ages, matches by full name and birth year);

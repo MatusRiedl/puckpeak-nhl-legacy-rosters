@@ -9,6 +9,11 @@ left empty). The rules follow what every team in the stock EA roster satisfies:
 from . import schema
 
 S = schema.SLOT_TAG  # 'l1c' -> field tag
+# the wing slots of the four even-strength lines, then every other wing slot: tag -> position code
+_LINE_WINGS = {S[f"l{k}{w}"]: 1 if w == 'lw' else 2 for k in range(1, 5) for w in ('lw', 'rw')}
+_OTHER_WINGS = {tag: 1 if name.endswith('lw') else 2 for name, tag in S.items() if name.endswith(('lw', 'rw'))}
+# a winger plays his own side unless a winger of the other side is this much better (overall points)
+SIDE_MARGIN = 5
 
 # skater attributes used to rank players for special teams
 OFFENCE = ('VlLd', 'oRUd', 'YqXz', 'iCvN', 'ObeE')      # off. awareness, passing, puck control, deking, wrist accuracy
@@ -18,6 +23,42 @@ SHOOTOUT = ('iCvN', 'ObeE', 'YqXz')                     # deking, wrist accuracy
 
 class NotEnoughPlayers(Exception):
     pass
+
+
+_LINE_ROLE = {S[f"l{k}{s}"]: role for k in range(1, 5) for s, role in
+              (('lw', 'W'), ('rw', 'W'), ('c', 'C'), ('ld', 'D'), ('rd', 'D')) if f"l{k}{s}" in S}
+_LINE_ROLE.update({S['g1']: 'G', S['g2']: 'G'})
+
+
+def slot_role(slots):
+    """The position class (G, D, C, W) a set of line slots is for, from its even-strength line or
+    goalie slot; None when it holds none (only special-team or extra slots)."""
+    roles = {_LINE_ROLE[f] for f in slots if f in _LINE_ROLE}
+    return roles.pop() if len(roles) == 1 else None
+
+
+def wing_side(slots):
+    """The position code (1 LW, 2 RW) of the side a set of line slots plays on: its even-strength
+    line slot decides, then any other wing slot. None when the set holds no wing slot."""
+    for table in (_LINE_WINGS, _OTHER_WINGS):
+        sides = {table[f] for f in slots if f in table}
+        if len(sides) == 1:
+            return sides.pop()
+    return None
+
+
+def _wing_pairs(P, b, wings, by_q):
+    """Four (left, right) pairs from eight wingers, best line first: the k-th best left wing with the
+    k-th best right wing; when one side runs short, the best of the others fills in."""
+    left = by_q(e for e in wings if P.get(b.prow_of_entry(e), 'aljv') == 1)
+    right = by_q(e for e in wings if P.get(b.prow_of_entry(e), 'aljv') == 2)
+    rest = by_q(e for e in wings if e not in left and e not in right)
+    pairs = []
+    for _ in range(len(wings) // 2):
+        lw = (left or rest or right).pop(0)
+        rw = (right or rest or left).pop(0)
+        pairs.append((lw, rw))
+    return pairs
 
 
 def _sides(P, b, x, y):
@@ -73,8 +114,7 @@ def build_lines(b, team):
 
     slots = {}
     lines = []
-    for k in range(4):
-        lw, rw = _sides(P, b, wings[2 * k], wings[2 * k + 1])
+    for k, (lw, rw) in enumerate(_wing_pairs(P, b, wings, by_q)):
         lines.append((lw, centres[k], rw))
         slots[f"l{k + 1}lw"], slots[f"l{k + 1}c"], slots[f"l{k + 1}rw"] = lw, centres[k], rw
     pairs = [_pair(P, b, d6[2 * k], d6[2 * k + 1]) for k in range(3)]

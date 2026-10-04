@@ -1,11 +1,17 @@
-"""Latest IIHF rosters for the national teams the base roster leaves empty.
+"""Latest IIHF rosters for the national teams: used for any national team a roster leaves empty
+(the eight the base roster never had, and any squad a community roster emptied).
 
 Sources are the official IIHF team-roster PDFs (stats.iihf.com/hydra):
-  2026 World Championship (event 969): Austria, Great Britain, Norway
-  2026 World Championship Division I A (event 722): Kazakhstan, Ukraine, Japan, Poland
-Belarus has been banned from IIHF events since 2022; its last IIHF roster (2021 Worlds,
-event 748) is used and topped up with Belarusian professionals by the updater.
+  2026 World Championship (event 969): Austria, Great Britain, Norway, and the other top-division
+      teams the game has (Canada, Czechia, Denmark, Finland, Germany, Italy, Latvia, Slovakia,
+      Sweden, Switzerland, USA)
+  2026 World Championship Division I A (event 722): Kazakhstan, Ukraine, Japan, Poland, France
+Belarus and Russia have been banned from IIHF events since 2022; Belarus's last IIHF roster
+(2021 Worlds, event 748) is used and topped up with Belarusian professionals by the updater;
+Russia has none (an empty Russian squad is filled from NHL and other players in the save).
 
+The pack's keys are the ISO codes layout.NAT_CODE uses (DEU, CHE, LVA, DNK), not the IIHF's. The
+last numbers of a PDF's name are its version: the newest one lists every player registered.
 Update the URLs below each spring. The PDF text extraction needs Windows' Arial fonts.
 """
 import os
@@ -24,6 +30,19 @@ PDFS = {
     'JPN': "https://stats.iihf.com/hydra/722/IHM7220JPN_33_1_0.pdf",
     'POL': "https://stats.iihf.com/hydra/722/IHM7220POL_33_1_0.pdf",
     'BLR': "https://stats.iihf.com/Hydra/748/IHM7480BLR_33_2_0_BLR.pdf",  # 2021 Worlds, last IIHF event
+    # squads the base roster has; a community roster may leave them empty (2026-27: six of them)
+    'CAN': "https://stats.iihf.com/hydra/969/IHM9690CAN_33_3_0.pdf",
+    'CZE': "https://stats.iihf.com/hydra/969/IHM9690CZE_33_5_1.pdf",
+    'DNK': "https://stats.iihf.com/hydra/969/IHM9690DEN_33_7_0.pdf",
+    'FIN': "https://stats.iihf.com/hydra/969/IHM9690FIN_33_6_1.pdf",
+    'DEU': "https://stats.iihf.com/hydra/969/IHM9690GER_33_7_1.pdf",
+    'ITA': "https://stats.iihf.com/hydra/969/IHM9690ITA_33_3_0.pdf",
+    'LVA': "https://stats.iihf.com/hydra/969/IHM9690LAT_33_5_0.pdf",
+    'SVK': "https://stats.iihf.com/hydra/969/IHM9690SVK_33_3_0.pdf",
+    'SWE': "https://stats.iihf.com/hydra/969/IHM9690SWE_33_7_1.pdf",
+    'CHE': "https://stats.iihf.com/hydra/969/IHM9690SUI_33_5_0.pdf",
+    'USA': "https://stats.iihf.com/hydra/969/IHM9690USA_33_3_0.pdf",
+    'FRA': "https://stats.iihf.com/hydra/722/IHM7220FRA_33_1_0.pdf",
 }
 MONTHS = {m: i + 1 for i, m in enumerate("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split())}
 ROW = re.compile(r"^(\d+) (.+?) (GK|D|F) ([LR]) (\d{1,2}) ([A-Z]{3}) (\d{4}) (\d\.\d\d) / \S+ (\d+) / \d+ (.*)$")

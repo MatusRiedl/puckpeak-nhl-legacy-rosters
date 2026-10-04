@@ -78,4 +78,28 @@ def test_edits_are_kept_on_the_pc(tmp_path):
     f = str(tmp_path / 'edits.json')
     assert edits.load(f) == {}
     edits.save({'a|b|2000-01-01': {'label': 'A B', 'set': {'num': 9}}}, f)
-    assert edits.load(f)['a|b|2000-01-01']['set'] == {'num': 9}
+    edits.save(file=f, teams={'5': {'full': 'X'}})                # saving teams keeps the players
+    assert edits.load(f)['a|b|2000-01-01']['set'] == {'num': 9} and edits.load_teams(f) == {'5': {'full': 'X'}}
+
+
+def test_a_team_edit_renames_the_team_and_gives_it_a_logo(base_bytes, data, pack, tmp_path):
+    from legacy_roster.art import portraits
+    from legacy_roster.builder import Data
+    edm = L.API_TO_SLOT['EDM']
+    teams = {str(edm): {'full': 'Edmonton Puckers', 'city': 'Edmonton', 'abbr': 'EPK', 'logo': 'file:C:/logo.png'}}
+    d = Data(nhl_players=data.nhl_players, ea_ratings=data.ea_ratings, iihf=data.iihf, season_year=data.season_year,
+             leagues=pack['leagues'], nhl_logos=pack['nhl_logos'])
+    res = pipeline.build(base_bytes, d, steps=pipeline.steps_for(pack), team_edits=teams,
+                         art_registry=portraits.Registry(str(tmp_path / 'ids.json')))
+    assert res.ok
+    R = Roster(res.data)
+    assert R.T.get(edm, 'fullname') == 'Edmonton Puckers' and R.T.get(edm, 'abbrname') == 'EPK'
+    _photos, logos, names = res.art
+    assert logos[R.T.get(edm, 'artid')][0] == 'file:C:/logo.png'
+    art = R.T.get(edm, 'artabbr')
+    assert any(t[0] == art and t[1] == 'Edmonton Puckers' for t in names['teams']) and art in names['force']
+    # the prospect pools get logos of their own: an NHL team's for a "System" pool, a badge for a draft class
+    pools = {R.team_name(s): logos.get(R.T.get(s, 'artid'), (None,))[0] for s in L.SPARE if R.team_roster(s)}
+    assert pools and all(v for v in pools.values())
+    assert all(v.startswith('badge:') for k, v in pools.items() if k[:4].isdigit())
+    assert len({R.T.get(s, 'artid') for s in L.SPARE if R.team_roster(s)}) == len(pools)

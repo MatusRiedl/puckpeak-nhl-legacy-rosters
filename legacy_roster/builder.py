@@ -4,6 +4,7 @@
 entries and links, the free-agent list, line slots, contracts and the change log. It also holds
 the NHL and national-team steps; club leagues are in leagues/. pipeline.build() runs the steps.
 """
+import heapq
 import zlib
 from collections import Counter
 
@@ -12,6 +13,16 @@ from . import lines
 from . import ratings
 from .donors import Donors
 from .matching import match, norm, same_first_name
+
+
+class ChangeLog(list):
+    """The change log: rows [team, change, player, detail, number], each tagged on its way in with
+    the part of the update it belongs to (`section`: 'NHL', a league's name, ...) as a sixth
+    column, so the list of changes can group them (Chicago and Chicoutimi are both 'CHI')."""
+    section = ''
+
+    def append(self, row):
+        super().append(list(row) + [self.section])
 
 
 class Data:
@@ -26,6 +37,14 @@ class Data:
         self.nhl_logos = nhl_logos or {}       # NHL.com team code -> logo link (photos and logos)
 
 
+LINK_LIMIT = 16000      # player link ids from here up are the game's own
+
+
+def stock_retire_age():
+    from .stock import RETIRE_AGE
+    return RETIRE_AGE
+
+
 def source_rank(team):
     """Which non-NHL entry to promote: AHL first, then prospect pools, draft classes, juniors."""
     if team in L.AHL:
@@ -38,21 +57,30 @@ def source_rank(team):
 
 
 class Builder:
-    def __init__(self, R, data, progress=None):
+    def __init__(self, R, data, progress=None, layout=L.COMMUNITY):
         self.R = R
         self.data = data
+        self.layout = layout
+        self.mirrors = L.mirrors(layout)    # custom copies kept in step with their NHL team
+        # the game's own roster: players of 2014 who leave a team at this age retire (their records
+        # become spare) instead of filling the free-agent list
+        self.retire_age = None if layout == L.COMMUNITY else stock_retire_age()
         self.progress = progress or (lambda msg: None)
         self.U, self.P, self.C, self.Q = R.U, R.P, R.C, R.Q
         U = self.U
         self.flags = [n for n, f in U.fields.items() if f.bits == 1 and n != 'jZSh']
-        self.log = []
+        self.log = ChangeLog()
         self.deleted = set()
         self.left_keys = set()  # people who left the NHL and are no longer active
         self.created = set()    # repurposed records (their old contract data is junk)
         self.arrivals = {}      # team -> [entry]
         self.departures = {}    # team -> [(pos_class, frozenset(flags), quality)]
-        used = {self.C.get(i, 'qEfv') for i in range(self.C.cur_rec)}
-        self.next_link = max(v for v in used if v < 16000) + 1
+        # player links (exhibitionplayers): new ones take the lowest free number; ids from 16000 up
+        # are the game's own special links and are never handed out
+        self.link_ids = {self.C.get(i, 'qEfv') for i in range(self.C.cur_rec)}
+        self.free_links = (k for k in range(LINK_LIMIT) if k not in self.link_ids)
+        self.link_row = {self.C.get(i, 'qEfv'): i for i in range(self.C.cur_rec)}
+        self.dead_links = []    # (row, link) of retired players' links, handed out again before new ones
         self.fa_links = [self.Q.get(i, 'TWSX') for i in range(self.Q.cur_rec)]
         self.ovr = {}           # pid -> EA overall (filled by apply_ea_ratings)
         self.api = []
@@ -65,8 +93,11 @@ class Builder:
         self.core_reserve = Counter()   # records kept back for the line-ups of leagues still to come ('G', 'S')
         self.ea_rated = set()   # pids whose attributes EA's ratings set in this run (never estimated over)
         self.pool_released = 0  # prospect-pool players who found no room and became free agents
+        self.positions_changed = 0  # NHL players given NHL.com's position
         self.photos = {}        # player row -> photo link, for the players placed in this run
         self.logos = {}         # team slot -> logo link
+        self.team_names = {}    # team slot -> True: the player renamed it in the Roster editor
+        self.nhl_names = {t: R.team_name(t) for t in range(32)}     # as the source has them
         # rating rows never move: player id -> row in the skater / goalie attribute table
         self.ai_row = {tn: {R.f[tn].get(i, 'zIBw'): i for i in range(R.f[tn].cur_rec)} for tn in ('yvSd', 'yuHm')}
         # EA overalls run slightly above (skaters) or below (goalies) the plain attribute mean
@@ -89,11 +120,13 @@ class Builder:
             self.records_of.setdefault(self.identity(r), []).append(r)
         self.donors = Donors(self)
         self.orig_club = self.club_teams()
-        # each team's original line structure: (class, slot set) of its dressed players, best first
+        # each team's original line structure: (class, slot set) of its dressed players, best first.
+        # The class is the one the slots are for (a centre on a wing's line slot leaves a wing's set)
         self.orig_slot_sets = {}
         for i in range(U.cur_rec):
             if self.held(i):
-                self.orig_slot_sets.setdefault(U.get(i, 'BSXd'), []).append((self.cls(i), self.held(i), self.q(i)))
+                role = lines.slot_role(self.held(i)) or self.cls(i)
+                self.orig_slot_sets.setdefault(U.get(i, 'BSXd'), []).append((role, self.held(i), self.q(i)))
         for sets in self.orig_slot_sets.values():
             sets.sort(key=lambda s: (-len(s[1]), -s[2]))
         # contracts that already point at a team the player is not on (left alone, as in the original)
@@ -197,9 +230,15 @@ class Builder:
         return e
 
     def new_link(self, pid):
-        link = self.next_link
-        self.next_link += 1
-        self.C.add_record({'BERR': 0, 'qEfv': link, 'qFky': pid})
+        if self.dead_links:     # a retired player's link: the row is taken over in place
+            row, link = heapq.heappop(self.dead_links)
+            self.C.set(row, 'BERR', 0)
+            self.C.set(row, 'qFky', pid)
+            self.R.link_to_pid[link] = pid
+            return link
+        link = next(self.free_links)
+        self.link_ids.add(link)
+        self.link_row[link] = self.C.add_record({'BERR': 0, 'qEfv': link, 'qFky': pid})
         self.R.link_to_pid[link] = pid
         return link
 
@@ -230,6 +269,32 @@ class Builder:
             return False        # a second record of someone the game has elsewhere (national-team goalies)
         if not any(self.R.link_to_pid.get(l) == pid for l in self.fa_links):
             self.fa_links.append(self.U.get(e, 'TWSX'))
+        return True
+
+    def retires(self, pid):
+        """The game's own roster only: a player of 2014 who has left his team, is on no team at all
+        any more and is RETIRE_AGE or older retires instead of becoming a free agent. His record is
+        cleared of its contract and NHL rights and becomes a spare record for a new player. False
+        for everyone else. Only the NHL step and stock.retire_leftovers() retire players: both run
+        before any new player is made, so a second run finds no spare record the first did not."""
+        if self.retire_age is None:
+            return False
+        if any(x not in self.deleted for x in self.R.entries_by_pid.get(pid, [])):
+            return False
+        prow = self.R.p_by_id[pid]
+        from .donors import real_birth_year
+        if real_birth_year(self.P, prow) > self.data.season_year - self.retire_age or pid in self.attached:
+            return False
+        for f in ('BSXd', 'GDhI', 'dhKk', 'IrlK', 'IzRv', 'WBbd'):
+            self.P.set(prow, f, 0)
+        self.fa_links = [l for l in self.fa_links if self.R.link_to_pid.get(l) != pid]
+        self.donors.add_spare(prow)
+        if getattr(self, '_pick_links', None) is None:
+            picks = self.R.f['vaHq']
+            self._pick_links = {picks.get(i, 'TWSX') for i in range(picks.cur_rec)}
+        for link in self.R.pid_to_links.get(pid, []):      # his links are free for new players now
+            if link not in self._pick_links and link in self.link_row:
+                heapq.heappush(self.dead_links, (self.link_row[link], link))
         return True
 
     # --- creating players that are not in the file -------------------------
@@ -308,6 +373,8 @@ class Builder:
                 status = 'free agent'
                 if other:
                     status = 'stays with ' + R.team_name(U.get(other[0], 'BSXd'))
+                elif self.retire_age is not None and self.retires(pid):
+                    status = 'retired'
                 elif U.get(e, 'TWSX') not in self.fa_links:
                     self.fa_links.append(U.get(e, 'TWSX'))
                 self.log.append([L.SLOT_TO_API[t], 'left NHL roster', R.name(R.p_by_id[pid]), status, U.get(e, 'tRVs')])
@@ -329,6 +396,8 @@ class Builder:
                 self.set_pro_team(prow, target)
                 continue
             self.set_pro_team(p['row'], target)
+            self.nhl_position(p)
+            self.nhl_birthdate(p)
             pid = self.P.get(p['row'], 'zIBw')
             ents = [x for x in R.entries_by_pid.get(pid, []) if x not in self.deleted]
             here = [x for x in ents if U.get(x, 'BSXd') == target]
@@ -371,9 +440,12 @@ class Builder:
                     U.set(e, 'tRVs', p['num'])
                 taken[U.get(e, 'tRVs')] += 1
             for n in [n for n, c in taken.items() if c > 1]:
-                # the official number wins; between two official claims the better player keeps it
+                # the official number wins; between two official claims the one who already wears it
+                # keeps it (so a second run, with ratings since written, changes nothing), else the
+                # better player
                 clash = sorted((e for e in ents if U.get(e, 'tRVs') == n),
-                               key=lambda e: (bool(target_entry.get(e) and target_entry[e]['num'] == n), self.q(e)),
+                               key=lambda e: (bool(target_entry.get(e) and target_entry[e]['num'] == n),
+                                              before[e] == n, self.q(e)),
                                reverse=True)
                 for e in clash[1:]:
                     # the number he wore before, if nobody has it: a second run then changes nothing
@@ -385,6 +457,39 @@ class Builder:
                     if free != before[e]:
                         self.log.append([L.SLOT_TO_API[team], 'number changed', R.name(self.prow_of_entry(e)),
                                          f"#{n} also used by {R.name(self.prow_of_entry(clash[0]))}", free])
+
+    def nhl_position(self, p):
+        """A player already in the save gets the position NHL.com lists him at (C, LW, RW, D): the
+        community roster has some at another one (Cole Smith a left wing, Chicago one right wing
+        short). Goalies and skaters never swap."""
+        want = L.POS_CODE.get(p.get('pos'))
+        cur = self.P.get(p['row'], 'aljv')
+        if want is None or want == cur or 4 in (want, cur):
+            return
+        self.set_position(p['row'], want)
+        self.positions_changed += 1
+        self.log.append([p['team'], 'position changed', f"{p['first']} {p['last']}",
+                         f"{L.POS_NAME[cur]} to {L.POS_NAME[want]}", p['num']])
+
+    def nhl_birthdate(self, p):
+        """A player found by his name (not his birthdate) gets the birthdate NHL.com lists: the game's
+        own roster has Kyle Burroughs a month off, and a league step would then not know him and
+        make him a second record. National-team goalies' second records are left alone (their
+        records must keep one birthdate)."""
+        if p.get('how') == 'birth' or not p.get('birth'):
+            return
+        prow = p['row']
+        if len(self.records_of.get(self.identity(prow), ())) > 1:
+            return
+        y, m, d = p['birth']
+        if y - 1910 < 0:
+            return
+        before = self.identity(prow)
+        self.P.set(prow, 'dnFq', y - 1910)
+        self.P.set(prow, 'pLKJ', m - 1)
+        self.P.set(prow, 'iwsK', d - 1)
+        self.records_of.pop(before, None)
+        self.records_of.setdefault(self.identity(prow), []).append(prow)
 
     def set_position(self, prow, pos):
         """Give a skater another skater position. Moving between forward and defence also moves his
@@ -421,19 +526,25 @@ class Builder:
         for team in changed:
             self.fill_lines(team)
         for team in L.NHL_PRIMARY:
-            if team in changed or not self.maintain:
+            if team not in self.orig_slot_sets:
+                self.lines_from_scratch(team)
+            elif team in changed or not self.maintain:
                 self.lines_by_template(team, self.orig_slot_sets[team])
 
     def sync_mirrors(self):
-        """Keep the mirror copies (classic/alternate team slots) identical to the primary team."""
+        """Keep the mirror copies (classic/alternate team slots) identical to the primary team. A
+        player who was only on the copy (a community roster whose copies are out of step) becomes
+        a free agent rather than a player on no team."""
         U = self.U
-        for prim, mirrors in L.MIRRORS.items():
+        live = None
+        for prim, mirrors in self.mirrors.items():
             pe = {self.pid_of_entry(e): e for e in self.entries_on(prim)}
             for m in mirrors:
                 me = {self.pid_of_entry(e): e for e in self.entries_on(m)}
                 for pid, e in me.items():
                     if pid not in pe:
-                        self.deleted.add(e)
+                        live = live if live is not None else self.live_entries()
+                        self.release(e, live)
                 for pid, src in pe.items():
                     e = me.get(pid)
                     if e is None:
@@ -445,10 +556,20 @@ class Builder:
                         U.set(e, f, U.get(src, f))
 
     def finish(self):
-        """Remove deleted entries, give every entry its team slot id, write the free-agent list."""
-        U, Q = self.U, self.Q
+        """Remove deleted entries, give every entry its team slot id, write the free-agent list, and
+        give back the links of removed roster places that nothing uses any more (the link table
+        has room for 9,955: without this every update would use up more, until it is full)."""
+        U, Q, C = self.U, self.Q, self.C
+        gone = {U.get(e, 'TWSX') for e in self.deleted}
         for e in sorted(self.deleted, reverse=True):
             U.delete_record(e)
+        used = {U.get(i, 'TWSX') for i in range(U.cur_rec)} | set(self.fa_links)
+        picks = self.R.f['vaHq']
+        used |= {picks.get(i, 'TWSX') for i in range(picks.cur_rec)}      # draft picks point at links too
+        unused = gone - used
+        for i in reversed(range(C.cur_rec)):
+            if C.get(i, 'qEfv') in unused:
+                C.delete_record(i)
         self.deleted = set()
         self.renumber_entries()
         Q.cur_rec = 0
@@ -470,9 +591,12 @@ class Builder:
                 U.set(i, 'XWot', team * L.MAX_PER_TEAM + k)
 
     # --- lines by rating -----------------------------------------------------
+    STAND_INS = {'G': 'G', 'D': 'DWC', 'C': 'CWD', 'W': 'WCD'}   # who fills a slot set of each class
+
     def lines_by_template(self, team, template):
         """Re-deal a team's line slots by rating: the i-th best player of a class (G, D, C, W) gets
-        the slot set held by the i-th most-used player of that class in `template`."""
+        the slot set held by the i-th most-used player of that class in `template`. A wing's slot
+        set goes to a winger of its side first (a left wing on the left), then to the other side."""
         U = self.U
         ents = self.entries_on(team)
         for e in ents:
@@ -483,10 +607,16 @@ class Builder:
             for cc, slots, _ in template:
                 if cc != c:
                     continue
-                # short of forwards: the other forward position, then a spare defenceman
-                pool = pools[c] or (pools['W' if c == 'C' else 'C'] or pools['D'] if c in 'CW' else [])
+                # short of forwards: the other forward position, then a spare defenceman (and the
+                # other way round for defence)
+                pool = next((pools[k] for k in self.STAND_INS[c] if pools[k]), [])
                 if pool:
-                    e = pool.pop(0)
+                    e = pool[0]
+                    side = lines.wing_side(slots) if pool is pools['W'] else None
+                    natural = next((x for x in pool if self.P.get(self.prow_of_entry(x), 'aljv') == side), None)
+                    if natural is not None and self.q(natural) >= self.q(e) - lines.SIDE_MARGIN:
+                        e = natural         # his own side, unless that means dressing a much weaker player
+                    pool.remove(e)
                     for f in slots:
                         U.set(e, f, 1)
         for e in ents:
@@ -672,46 +802,85 @@ class Builder:
                 prof[(tname, c)] = {n: sorted(r[k] for r in rows)[len(rows) // 2] for k, n in enumerate(act)}
         return prof
 
+    # the smallest squad a filled national team gets (2 goalies and 18 skaters dress, plus spares)
+    NATIONAL_MINIMUM = {'G': 3, 'D': 7, 'F': 13}
+
     def fill_empty_national(self):
+        """Fill every national team the source leaves empty: the eight the base roster never had,
+        and any squad a community roster emptied. Members: the latest IIHF roster (players not in
+        the save get a spare record), NHL players of that nationality, then -- where positions are
+        still short -- other players of that nationality in the save (AHL, European clubs, juniors,
+        prospect pools, free agents), best first; at most 26. A country without enough players to
+        dress 2 goalies and 18 skaters keeps its empty squad."""
         R, U, P = self.R, self.U, self.P
         rosters = self.data.iihf or {}
         prof = self.estimated_profile()
-        nhl_now = {}
+        group = lambda prow: {3: 'D', 4: 'G'}.get(P.get(prow, 'aljv'), 'F')
+        quality = lambda prow: self.quality.get(P.get(prow, 'zIBw'), 0)
+        nhl_now, elsewhere = {}, {}
         for t in L.NHL_PRIMARY:
             for e in self.entries_on(t):
                 nhl_now[self.person(self.prow_of_entry(e))] = self.prow_of_entry(e)
-        for code, team in L.EMPTY_NATIONAL.items():
-            if self.entries_on(team) or not rosters.get(code):
+        for e in range(U.cur_rec):
+            t = U.get(e, 'BSXd')
+            if e not in self.deleted and t not in L.NHL_ALL and t not in L.NATIONAL and t not in L.EVENTS:
+                elsewhere.setdefault(self.person(self.prow_of_entry(e)), self.prow_of_entry(e))
+        for link in self.fa_links:
+            prow = R.p_by_id.get(R.link_to_pid.get(link))
+            if prow is not None:
+                elsewhere.setdefault(self.person(prow), prow)
+        for team in sorted(L.NATIONAL):
+            code = L.NATIONAL_ISO.get(R.T.get(team, 'RPbr'))
+            if self.entries_on(team) or code not in L.NAT_CODE:
                 continue
-            self.filled_now.add(team)
-            iihf = [dict(p) for p in rosters[code]]
+            iihf = [dict(p) for p in rosters.get(code) or []]
             if code == 'BLR':  # 2021 roster: drop players who would be 38+ this season
                 iihf = [p for p in iihf if p['birth'][0] >= self.data.season_year - 37]
             for p in iihf:
                 p.update(team=code, birth=tuple(p['birth']))
             match(R, iihf)
-            members = []  # (prow, number, source)
+            members = []  # (prow or IIHF player still to be created, number, source)
             for p in iihf:
-                prow = p['row'] if p['row'] is not None else self.create_national(p, code, prof)
-                members.append((prow, p['num'], 'IIHF'))
+                members.append((p['row'] if p['row'] is not None else p, p['num'], 'IIHF'))
+            grp = lambda m: group(m[0]) if isinstance(m[0], int) else {'G': 'G', 'D': 'D'}.get(m[0]['pos'], 'F')
+            qual = lambda m: (quality(m[0]) if isinstance(m[0], int) else
+                              (self._national_estimate(m[0], code, prof) or (0, 0, 0, 0))[3])
+            have = {self.person(m[0]) for m in members if isinstance(m[0], int)}
             # NHL players of that nationality (save nationality and NHL birth country agree)
-            have = {self.person(m[0]) for m in members}
             nhl_cands = sorted((prow for k, prow in nhl_now.items()
                                 if k not in have and P.get(prow, 'hleL') == L.NAT_CODE[code]
                                 and self.api_country.get(prow) == code),
-                               key=lambda r: self.quality.get(P.get(r, 'zIBw'), 0), reverse=True)
+                               key=quality, reverse=True)
             for prow in nhl_cands:
-                grp = {3: 'D', 4: 'G'}.get(P.get(prow, 'aljv'), 'F')
-                same = [m for m in members if {3: 'D', 4: 'G'}.get(P.get(m[0], 'aljv'), 'F') == grp]
+                same = [m for m in members if grp(m) == group(prow)]
                 if len(members) < 26:
                     members.append((prow, None, 'NHL'))
                 elif same:
-                    weakest = min(same, key=lambda m: self.quality.get(P.get(m[0], 'zIBw'), 0))
-                    if self.quality.get(P.get(prow, 'zIBw'), 0) > self.quality.get(P.get(weakest[0], 'zIBw'), 0):
+                    weakest = min(same, key=qual)
+                    if quality(prow) > qual(weakest):
                         members.remove(weakest)
                         members.append((prow, None, 'NHL'))
+            # positions still short: the country's players elsewhere in the save
+            have = {self.person(m[0]) for m in members if isinstance(m[0], int)}
+            others = sorted((prow for k, prow in elsewhere.items()
+                             if k not in have and k not in nhl_now and P.get(prow, 'hleL') == L.NAT_CODE[code]
+                             and P.get(prow, 'dnFq') + 1910 >= self.data.season_year - 38),
+                            key=lambda r: (-quality(r), r))
+            for prow in others:
+                g = group(prow)
+                if len(members) >= 26:
+                    break
+                if sum(grp(m) == g for m in members) < self.NATIONAL_MINIMUM[g]:
+                    members.append((prow, None, 'club'))
+            count = Counter(grp(m) for m in members)
+            if count['G'] < 2 or count['D'] + count['F'] < 18:
+                self.log.append([code, 'national team: left empty', R.team_name(team),
+                                 f"{count['G']} goalies and {count['D'] + count['F']} skaters found", ''])
+                continue
+            self.filled_now.add(team)
             numbers = Counter()
-            for prow, num, src in members:
+            for who, num, src in members:
+                prow = who if isinstance(who, int) else self.create_national(who, code, prof, team)
                 e = self.new_entry(team, self.new_link(P.get(prow, 'zIBw')), prow)
                 n = num if num and not numbers[num] else next(x for x in range(2, 99) if not numbers[x])
                 U.set(e, 'tRVs', n)
@@ -720,7 +889,22 @@ class Builder:
             lines.build_lines(self, team)
             self.set_letters(team)
 
-    def create_national(self, p, code, prof):
+    def _national_estimate(self, p, code, prof):
+        """(rating table, attribute profile, adjustment, quality) for an IIHF player EA does not
+        rate: the mod's European national median, adjusted for tournament level and age. None
+        when the save has no such profile."""
+        goalie = p['pos'] == 'G'
+        tname, grp = ('yuHm', 'G') if goalie else ('yvSd', 'D' if p['pos'] == 'D' else 'F')
+        base = prof.get((tname, grp))
+        if not base:
+            return None
+        name = f"{p['first']} {p['last']}"
+        age = self.data.season_year - p['birth'][0]
+        adj = L.NATIONAL_TIER.get(code, 0) + (-2 if age < 21 else -1 if age < 24 else -1 if age > 32 else 0)
+        adj += (zlib.crc32(name.encode()) % 3) - 1
+        return tname, base, adj, sum(base.values()) / len(base) + adj + 36 + self.ovr_offset[goalie]
+
+    def create_national(self, p, code, prof, team):
         """A European/Asian league player EA does not rate: repurpose a spare record, fill in the
         IIHF data and an estimated rating profile."""
         R, P = self.R, self.P
@@ -751,20 +935,15 @@ class Builder:
             P.set(prow, 'tRVs', p['num'])
         for f in ('GDhI', 'dhKk', 'IrlK', 'IzRv'):
             P.set(prow, f, 0)
-        P.set(prow, 'BSXd', L.EMPTY_NATIONAL[code] + 1)  # national-only player: contract team = national team
-        # estimated ratings: mod's European national median, adjusted for tournament level and age
-        tname, grp = ('yuHm', 'G') if pos == 4 else ('yvSd', 'D' if pos == 3 else 'F')
-        base = prof.get((tname, grp))
-        t = R.f[tname]
+        P.set(prow, 'BSXd', team + 1)  # national-only player: contract team = national team
+        estimate = self._national_estimate(p, code, prof)
         pid = P.get(prow, 'zIBw')
-        row = self.ai_row[tname].get(pid)
-        if base and row is not None:
-            age = self.data.season_year - y
-            adj = L.NATIONAL_TIER[code] + (-2 if age < 21 else -1 if age < 24 else -1 if age > 32 else 0)
-            adj += (zlib.crc32(name.encode()) % 3) - 1
+        if estimate and self.ai_row[estimate[0]].get(pid) is not None:
+            tname, base, adj, quality = estimate
+            t, row = R.f[tname], self.ai_row[tname][pid]
             for n, v in base.items():
                 t.set(row, n, max(0, min(63, v + adj)))
-            self.quality[pid] = sum(base.values()) / len(base) + adj + 36 + self.ovr_offset[pos == 4]
+            self.quality[pid] = quality
         self.log.append([code, 'created', name, f"IIHF {code}, reused record of {old}", p.get('num')])
         return prow
 
@@ -849,8 +1028,27 @@ class Builder:
     def national_lines(self):
         changed = set(self.departures) | set(self.arrivals)
         for team in L.NATIONAL:
-            if team in self.orig_slot_sets and self.entries_on(team) and (team in changed or not self.maintain):
+            ents = self.entries_on(team)
+            if not ents:
+                continue
+            if team not in self.orig_slot_sets and team not in self.filled_now:
+                # players but no line structure (a squad a community roster left unfinished): deal
+                # lines from scratch, or the game would see a team that dresses nobody
+                self.lines_from_scratch(team)
+            elif team in self.orig_slot_sets and (team in changed or not self.maintain):
                 self.lines_by_template(team, self.orig_slot_sets[team])
+
+    def lines_from_scratch(self, team):
+        """Deal every line slot of a team that has no structure of its own to copy (lines.py) and
+        give it letters; a team too short to dress 20 keeps no lines."""
+        try:
+            lines.build_lines(self, team)
+        except lines.NotEnoughPlayers:
+            for e in self.entries_on(team):
+                for f in self.flags + ['jZSh']:
+                    self.U.set(e, f, 0)
+            return
+        self.set_letters(team)
 
     # --- contracts -----------------------------------------------------------------
     def contracts(self):

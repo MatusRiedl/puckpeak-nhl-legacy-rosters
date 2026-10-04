@@ -259,10 +259,50 @@ def _round(size, inset=0.12, soft=0.12):
     return mask.filter(ImageFilter.GaussianBlur(w * soft))
 
 
+def badge(text, colours=((20, 60, 110), (200, 210, 220)), size=512):
+    """A plain round badge with `text` (a draft class's year) for teams that have no logo."""
+    from PIL import ImageFont
+    inner, ring = colours if colours and colours[0] != colours[1] else ((20, 60, 110), (200, 210, 220))
+    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.ellipse((8, 8, size - 8, size - 8), fill=tuple(ring) + (255,))
+    d.ellipse((size * 0.07, size * 0.07, size * 0.93, size * 0.93), fill=tuple(inner) + (255,))
+    try:
+        font = ImageFont.load_default(size=int(size * 0.32))
+    except TypeError:                                   # Pillow before 10.1: the small bitmap font
+        font = ImageFont.load_default()
+    box = d.textbbox((0, 0), text, font=font)
+    d.text(((size - (box[2] - box[0])) / 2 - box[0], (size - (box[3] - box[1])) / 2 - box[1]), text,
+           font=font, fill=(255, 255, 255, 255))
+    return img
+
+
+def _reflected(img, size):
+    """The favourite-team picture (kind 'r', NHL teams only): the logo in the upper half, standing
+    on a faint mirror image of itself, as on the disc (logo about 190 x 180 pixels around y 125,
+    the reflection under it fading out within about 50 pixels)."""
+    w, h = size
+    mark = _outlined(_fit(img, w * 0.72, h * 0.3), max(2, w // 64))
+    mark = mark.crop(mark.getchannel('A').getbbox() or (0, 0, mark.width, mark.height))
+    canvas = Image.new('RGBA', size, (0, 0, 0, 0))
+    x, y = round((w - mark.width) / 2), round(h * 0.245 - mark.height / 2)
+    canvas.alpha_composite(mark, (x, max(0, y)))
+    bottom = max(0, y) + mark.height
+    fade_h = max(1, round(h * 0.11))
+    mirror = mark.transpose(Image.FLIP_TOP_BOTTOM).crop((0, 0, mark.width, min(mark.height, fade_h)))
+    fade = Image.linear_gradient('L').resize((mirror.width, mirror.height)).point(lambda v: round((255 - v) * 0.3))
+    mirror.putalpha(ImageChops.multiply(mirror.getchannel('A'), fade))
+    if bottom < h:
+        canvas.alpha_composite(mirror, (x, bottom), (0, 0, mirror.width, min(mirror.height, h - bottom)))
+    return canvas
+
+
 def logo(img, kind, size, colours=((60, 60, 60), (20, 20, 20))):
     """One of the game's logo pictures: kind 't' plain, 'd' dynasty, 'c' calendar, 'w' wide
-    watermark, 's' small banner (in the team's colours)."""
+    watermark, 's' small banner (in the team's colours), 'r' with a reflection (favourite team)."""
     clean = _trim(img)
+    if kind == 'r':
+        return _reflected(clean, size)
     if kind == 't':
         return _centred(_outlined(_fit(clean, size[0] * 0.78, size[1] * 0.78), max(2, size[0] // 64)), size, 0.94)
     if kind == 'd':

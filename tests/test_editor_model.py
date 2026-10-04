@@ -10,6 +10,7 @@ def test_a_roster_reads_into_teams_and_players(base_bytes):
     mcd = next(p for p in snap.roster(L.API_TO_SLOT['EDM']) if p.name == 'Connor McDavid')
     assert mcd.pos == 'C' and mcd.num == 97 and 80 < mcd.ovr < 100 and mcd.ratings['Passing'] > 80
     assert mcd.age(2026) in (29, 30) and mcd.country == 'CAN'
+    assert mcd.artid == 9857 and mcd.hasportrait            # his menu photo on the disc (the card shows it)
     assert snap.search('mcdav')[0].name == 'Connor McDavid'
     assert snap.roster(model.FREE_AGENTS)
 

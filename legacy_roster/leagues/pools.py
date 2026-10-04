@@ -39,7 +39,7 @@ def relocate(b, groups):
             if target is not None:
                 T.set(target, 'NYKk', 1)         # active
                 T.set(target, 'JkmY', name)      # fullname
-                T.set(target, 'ITNQ', name)      # shortname
+                L.set_city(T, target, name)      # shortname: a key the game's text file names (layout.city_key)
                 T.set(target, 'nnsx', abbr)      # abbrname
                 T.set(target, 'RPbr', abbr)      # artabbr, as the base's own custom teams have it
                 b.log.append([abbr, 'prospect pool moved', name, f"now custom team {target}", ''])
