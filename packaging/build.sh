@@ -21,7 +21,7 @@ fi
 
 version=$("$py" -c "import legacy_roster; print(legacy_roster.__version__)")
 cacert=$("$py" -c "import certifi; print(certifi.where())")
-data=legacy_roster/data
+data="$PWD/legacy_roster/data"         # full paths: PyInstaller reads relative ones from its spec folder (build/)
 if [ ! -f "$data/photopack.zip" ]; then
     echo "No photo pack ($data/photopack.zip): the pictures will be downloaded on the player's computer."
     echo "To put them inside, run first:  $py tools/build_photopack.py"
@@ -36,7 +36,7 @@ common=(--noconfirm --clean
         --distpath dist --workpath build --specpath build)
 
 if [ "$(uname)" = "Darwin" ]; then
-    "$py" -m PyInstaller "${common[@]}" --windowed --icon "$PWD/$data/app_256.png" \
+    "$py" -m PyInstaller "${common[@]}" --windowed --icon "$data/app_256.png" \
         --collect-all customtkinter --name NHLLegacyRosterUpdater packaging/launcher.py
     (cd dist && ditto -c -k --keepParent NHLLegacyRosterUpdater.app "NHLLegacyRosterUpdater-$version-macos.zip")
 else
