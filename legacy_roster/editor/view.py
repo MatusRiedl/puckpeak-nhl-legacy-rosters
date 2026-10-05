@@ -957,7 +957,7 @@ class EditorTab(ctk.CTkFrame):
             where = " and ".join(f"{s.folder}, {s.region}" for s in slots)
             self.set_status(f"Saved as \"{slots[0].name}\" ({where}). In the game: Roster Management > "
                             "Load Roster.", T.GREEN)
-            self.app.set_rpcs3(self.app.rpcs3.exe, quiet=True)
+            self.app.set_rpcs3(self.app.rpcs3.where, quiet=True)
         self._work("Saving...", job, done)
 
     def set_status(self, text, colour=T.MUTED):

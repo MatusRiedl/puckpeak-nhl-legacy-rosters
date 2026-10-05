@@ -33,13 +33,16 @@ def links(pack, nhl_teams):
     """({key: photo link}, {key: logo link}) of everything the data pack and the NHL rosters link."""
     photos, logos = {}, {}
     for league in pack.get('leagues', {}).values():
-        for team in league['teams']:
+        for team in league['teams'] + league.get('extra', []):     # extra: clubs for a player's own team
             if team.get('logo'):
                 logos[key_for(team['logo'])] = team['logo']
             for p in team['players']:
                 if p.get('photo'):
                     photos[key_for(p['photo'])] = p['photo']
-    for p in datasource.flatten_nhl(nhl_teams):
+    for league in pack.get('leagues', {}).values():       # former: last season's photos of players on no list now
+        for p in league.get('former') or []:
+            photos[key_for(p['photo'])] = p['photo']
+    for p in datasource.flatten_nhl(nhl_teams) + (pack.get('nhl_last') or []):   # nhl_last: unsigned free agents
         if p.get('photo'):
             photos[key_for(p['photo'])] = p['photo']
     for url in (pack.get('nhl_logos') or {}).values():

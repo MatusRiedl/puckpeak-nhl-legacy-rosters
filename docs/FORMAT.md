@@ -69,6 +69,7 @@ The tables that matter:
 | `caBZ` | exhibitionplayers | link id (`index`) to `playerid`; roster entries point at links |
 | `QEoV` | exhibitionfreeagents | link ids of unattached players |
 | `yvSd` / `yuHm` | exhibitionskaterai / exhibitiongoalieai | attributes, keyed by `game_id` |
+| `lVMf` | exhibitiongoalieequipment | a goalie's gear, keyed by `game_id`: `pads`, `blocker`, `trapper` models and nine zones of colour each (`padszone1color_r` ... `trapperzone9color_b`), `showcustomcolors` |
 
 **Teams** (`ttOk.league`): 0 NHL, 1 AHL, 2 SHL, 3 Liiga, 4 DEL, 5 Extraliga, 6 National League,
 7 Norway, 8 national teams, 9 OHL, 10 QMJHL, 11 WHL, 12 Top Prospects, 13 custom, 14 Winter
@@ -79,8 +80,17 @@ Classic, 15 EASHL.
 North Americans and the country code for everyone else. `headid` is the 3D head model (60000
 and up are generic heads), `artid` + `hasportrait` the menu photo, `audioid` the commentary
 name. `team` is the contract team + 1 (0 = none), `contractlength`, `contractdollars`.
-`proteam` and `draftteam` are NHL team + 1 in five bits. `draftyear` is the year - 1900, 255
-for undrafted.
+`proteam` and `draftteam` are NHL team + 1 in five bits (Vegas, slot 31, cannot be stored).
+`draftyear` is the year - 1900, 255 for undrafted; `draftround` (4 bits) and `draftposition` (9
+bits) are the round and the **overall** pick (the disc: Gaudreau round 4, pick 104; Saad round 2,
+pick 43). EA gives a junior who is not drafted yet his draft year with round 0 (2014-2017 on the
+disc), and the disc's Legacy Edition already holds the 2015 draft. `draft.py` writes NHL.com's
+picks (0.8.0).
+
+**Goalie equipment.** EA painted every goalie's gear in his 2014 team's colours on white
+(`showcustomcolors` 1 for all 62 NHL goalies on the disc; Hiller's pads Calgary red and gold).
+The colours are free RGB values; `Builder.goalie_gear` repaints the coloured zones of a goalie who
+changed club (0.8.0, waiting for the in-game check).
 
 **Attributes.** Stored value = rating - 36 (six bits, ratings 36 to 99). The field for each
 attribute is in `legacy_roster/schema.py` (`EA_SKATER`, `EA_GOALIE`); for example `c_speed` =
@@ -232,7 +242,11 @@ More details:
     at x 235, the head 144 px wide at its widest, nothing below y 247 (medians of `images.head()` over
     the disc; the head width varies 8 % between players).
   - The small portrait (256×128) is the same picture at half size (top 13, middle 101, width 74).
-  - Logos are drawn over the whole canvas with transparency. `t` has a white edge and a soft
+  - Logos are drawn with transparency, inside an area that depends on the kind (medians of the
+    disc's NHL logos, alpha above 40; `images.LOGO_BOX`): `t` 0.16-0.84 × 0.20-0.79 of the picture,
+    `d` 0.14-0.86 × 0.19-0.83, `c` 0.05-0.70 × 0.05-0.62 (top left only), `w` 0.09-0.89 × 0.11-0.90,
+    `s` 0.05-0.95 × 0.14-0.86. Drawn over the whole canvas (0.4-0.7) they covered the record on the
+    team screens and spilled out of the calendar's cells. `t` has a white edge and a soft
     shadow; `d` is a small `t`; `c` is the logo enlarged and cut off on the right; `w` is a big
     zoomed piece faded to a circle; `s` is a banner in the team's colours with part of the logo.
   - `r` (256×512, `teamlogosreflection`, NHL art ids 0–29 on the disc) is the logo in the upper

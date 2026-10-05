@@ -10,6 +10,11 @@ version too (install(title_id=...)).
 
 The window asks for RPCS3 itself (find_rpcs3); the command line also takes a save folder
 directly (find_savedata).
+
+Where RPCS3 keeps its data depends on the system: on Windows next to rpcs3.exe; on Linux in
+~/.config/rpcs3 (the Flatpak: ~/.var/app/net.rpcs3.RPCS3/config/rpcs3), on a Mac in
+~/Library/Application Support/rpcs3 (data_folders()). The program itself may be rpcs3.exe, the
+rpcs3 program or AppImage, or RPCS3.app; the player may also point at the data folder.
 """
 import datetime
 import glob
@@ -17,6 +22,8 @@ import hashlib
 import os
 import re
 import shutil
+import subprocess
+import sys
 
 from .sfo import FMT_INT, FMT_SPECIAL, FMT_STRING, Sfo
 from .tdb import ROSTER_MAGIC
@@ -28,6 +35,40 @@ FILES = ('ICON0.PNG', 'PARAM.SFO', 'SYS-DATA')
 # the game's versions: title id -> what the window calls it, and the TITLE of their saves' PARAM.SFO
 GAMES = {'BLES02153': 'EU', 'BLUS31540': 'NA'}
 TITLES = {'BLES02153': "NHL™ Legacy Edition", 'BLUS31540': "NHL® Legacy Edition"}
+WINDOWS, MAC = os.name == 'nt', sys.platform == 'darwin'
+# what the player is asked to pick, in his system's words
+PICK_RPCS3 = ("Pick the file rpcs3.exe in your RPCS3 folder." if WINDOWS else
+              "Pick RPCS3.app, or RPCS3's folder (~/Library/Application Support/rpcs3)." if MAC else
+              "Pick the rpcs3 program or AppImage, or RPCS3's folder (~/.config/rpcs3).")
+
+
+def data_folders():
+    """Where an installed RPCS3 keeps its data on this system (none on Windows: next to the program)."""
+    home = os.path.expanduser('~')
+    if WINDOWS:
+        return []
+    if MAC:
+        return [os.path.join(home, 'Library', 'Application Support', 'rpcs3')]
+    config = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home, '.config')
+    return [os.path.join(config, 'rpcs3'), os.path.join(home, '.var', 'app', 'net.rpcs3.RPCS3', 'config', 'rpcs3')]
+
+
+def is_program(path):
+    """rpcs3.exe, the rpcs3 program, an RPCS3 AppImage or RPCS3.app."""
+    name = os.path.basename(os.path.normpath(path)).lower()
+    if os.path.isdir(path):
+        return name.endswith('.app') and 'rpcs3' in name
+    return os.path.isfile(path) and (name in ('rpcs3.exe', 'rpcs3') or (name.endswith('.appimage') and 'rpcs3' in name))
+
+
+def has_data(folder):
+    """Does RPCS3 keep its data in this folder (its virtual hard disk or its config is there)?"""
+    return any(os.path.exists(os.path.join(folder, n)) for n in ('dev_hdd0', os.path.join('config', 'vfs.yml'), 'vfs.yml'))
+
+
+def default_rpcs3():
+    """An installed RPCS3's data folder in the usual place, if there is one (Linux, Mac), else None."""
+    return next((f for f in data_folders() if has_data(f)), None)
 
 
 def region(title_id):
@@ -157,14 +198,28 @@ class Rpcs3Error(FileNotFoundError):
 
 
 class Rpcs3:
-    """An RPCS3 installation and the save folder NHL Legacy uses in it."""
+    """An RPCS3 installation and the save folder NHL Legacy uses in it. `exe` is the program (None
+    when the player pointed at the data folder), `root` the folder with RPCS3's data (default: the
+    program's folder, as on Windows)."""
+    plain = False                       # SaveFolder: roster saves without RPCS3
 
-    def __init__(self, exe, savedata, user):
+    def __init__(self, exe, savedata, user, root=None):
         self.exe = exe
-        self.folder = os.path.dirname(exe)
+        self.folder = root or os.path.dirname(exe)
+        self.where = exe or self.folder     # what the window shows and remembers
         self.savedata = savedata
         self.user = user
         self.dev_hdd0 = _dev_hdd0(self.folder)
+
+    def start(self):
+        """Start RPCS3 (the program the player picked, else the one installed on this system)."""
+        exe = self.exe or shutil.which('rpcs3')
+        if exe and exe.lower().endswith('.app'):
+            subprocess.Popen(['open', '-a', exe])
+        elif exe:
+            subprocess.Popen([exe], cwd=os.path.dirname(exe))
+        elif MAC:
+            subprocess.Popen(['open', '-a', 'RPCS3'])
 
     def game_folder(self, title_id):
         """The game's own folder on RPCS3's hard disk (its update and any loose files):
@@ -195,6 +250,35 @@ class Rpcs3:
                         path = os.path.normpath(path if os.path.isabs(path) else os.path.join(self.folder, path))
                         return path if os.path.exists(path) else None
         return None
+
+
+class SaveFolder(Rpcs3):
+    """Roster saves without RPCS3: a savedata folder (or one roster save) the player picks himself,
+    for example when the program runs in CrossOver or Wine and RPCS3 is the Mac or Linux one, or the
+    saves were copied from somewhere else (testers, 0.8.0). Updating works the same and the new
+    roster goes next to the others; the game's own roster and the photos need RPCS3 (its games list
+    and game folder), so they are not offered."""
+    plain = True
+
+    def __init__(self, savedata):
+        self.exe, self.user, self.dev_hdd0 = None, None, None
+        self.folder = self.where = self.savedata = savedata
+
+    def game_folder(self, title_id):
+        return None
+
+    def game_disc(self, title_id):
+        return None
+
+    def start(self):
+        pass
+
+
+def open_saves(path):
+    """(SaveFolder, roster folder pointed at or None) for a folder with roster saves, a roster save,
+    or a file in one. FileNotFoundError (with what to do) when there are none."""
+    folder, preselected = find_savedata(path)
+    return SaveFolder(folder), preselected
 
 
 def _dev_hdd0(root):
@@ -234,24 +318,31 @@ def _active_user(root):
 
 
 def find_rpcs3(path):
-    """Resolve the RPCS3 program (rpcs3.exe, the folder holding it, or a folder inside that one,
-    such as a save folder remembered by version 0.1) to its NHL Legacy saves.
+    """Resolve RPCS3 to its NHL Legacy saves. `path`: the program (rpcs3.exe, rpcs3, an AppImage,
+    RPCS3.app), the folder holding it or a folder inside that one (such as a save folder remembered
+    by version 0.1), or RPCS3's data folder (~/.config/rpcs3 on Linux).
 
     Raises Rpcs3Error with a message for the user when it is not RPCS3 or has no roster yet."""
     path = os.path.abspath(os.path.expanduser((path or '').strip().strip('"')))
-    exe = path
-    if os.path.isdir(path):
-        folder, exe = path, None
-        while exe is None:
-            exe = next((os.path.join(folder, n) for n in ('rpcs3.exe', 'rpcs3')
-                        if os.path.isfile(os.path.join(folder, n))), None)
+    exe = root = None
+    if is_program(path):
+        exe = path
+    elif os.path.isdir(path):
+        folder = path
+        while True:
+            exe = next((os.path.join(folder, n) for n in ('rpcs3.exe', 'rpcs3') if is_program(os.path.join(folder, n))),
+                       None)
+            if exe or (not WINDOWS and has_data(folder)):     # Windows: the data is always next to rpcs3.exe
+                root = None if exe else folder
+                break
             if os.path.dirname(folder) == folder:
                 break
             folder = os.path.dirname(folder)
-        exe = exe or os.path.join(path, 'rpcs3.exe')
-    if os.path.basename(exe).lower() not in ('rpcs3.exe', 'rpcs3') or not os.path.isfile(exe):
-        raise Rpcs3Error("That is not RPCS3. Pick the file rpcs3.exe in your RPCS3 folder.")
-    root = os.path.dirname(exe)
+    if exe is None and root is None:
+        raise Rpcs3Error("That is not RPCS3. " + PICK_RPCS3)
+    if root is None:            # the program: its data is next to it (Windows, a portable copy), else in the usual place
+        places = [os.path.dirname(os.path.normpath(exe))] + data_folders()
+        root = next((p for p in places if has_data(p)), places[0])
     home = os.path.join(_dev_hdd0(root), 'home')
     users = sorted(u for u in os.listdir(home) if re.fullmatch(r'\d{8}', u)) if os.path.isdir(home) else []
     newest = {}
@@ -263,19 +354,19 @@ def find_rpcs3(path):
     if not newest:
         # no roster yet: still usable when RPCS3 has the game, which carries its own roster
         user = active or (users[0] if users else '00000001')
-        found = Rpcs3(exe, os.path.join(home, user, 'savedata'), user)
+        found = Rpcs3(exe, os.path.join(home, user, 'savedata'), user, root)
         if found.disc_slots():
             return found
         raise Rpcs3Error("RPCS3 was found, but it has no roster of NHL Legacy and does not list the game. Start the "
                          "game once from RPCS3's game list (or save a roster in the game), then try again.")
     user = active if active in newest else max(newest, key=newest.get)
-    return Rpcs3(exe, os.path.join(home, user, 'savedata'), user)
+    return Rpcs3(exe, os.path.join(home, user, 'savedata'), user, root)
 
 
 def running_rpcs3():
-    """Full path of a running rpcs3.exe, or None (Windows only; never raises)."""
-    if os.name != 'nt':
-        return None
+    """Full path of a running RPCS3, or None (never raises)."""
+    if not WINDOWS:
+        return _running_posix()
     try:
         import ctypes
         from ctypes import wintypes
@@ -304,6 +395,37 @@ def running_rpcs3():
     except (OSError, AttributeError):
         pass
     return None
+
+
+def _running_posix(proc='/proc'):
+    """A running RPCS3 on Linux (`proc`: /proc) or a Mac (ps)."""
+    is_rpcs3 = lambda cmd: (os.path.basename(cmd).lower() == 'rpcs3'
+                            or ('rpcs3' in cmd.lower() and cmd.lower().endswith('.appimage')))
+    try:
+        if os.path.isdir(proc):
+            for pid in sorted(os.listdir(proc)):
+                if not pid.isdigit():
+                    continue
+                try:
+                    with open(os.path.join(proc, pid, 'cmdline'), 'rb') as f:
+                        cmd = f.read().split(b'\0')[0].decode('utf-8', 'replace')
+                except OSError:
+                    continue
+                if cmd and is_rpcs3(cmd):
+                    return cmd
+            return None
+        out = subprocess.run(['ps', '-axo', 'comm='], capture_output=True, text=True, timeout=5).stdout
+        return next((line.strip() for line in out.splitlines() if is_rpcs3(line.strip())), None)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def open_path(path):
+    """Open a folder or a file with the system's own program (Explorer, Finder, the file manager)."""
+    if WINDOWS:
+        os.startfile(path)
+    else:
+        subprocess.Popen(['open' if MAC else 'xdg-open', path])
 
 
 def list_rosters(savedata):

@@ -27,18 +27,26 @@ CAREER_FIELDS = ('nhlgamesplayedcareer', 'progamesplayedcareer', 'nhlgamesplayed
 NORTH_AMERICA = (L.NAT_CODE['CAN'], L.NAT_CODE['USA'])
 
 
-def real_birth_year(P, i):
+def real_birth_year(P, i, stale=True):
     """The player's actual birth year, as well as the record tells it.
 
     This roster family stores birth years as year - 1910, but records nobody updated since EA's
     2015 database still hold year - 1900 and read ten years too young. The draft year (stored as
     year - 1900 in both) gives such records away; an undrafted record with EA's own portrait is
-    taken to be one of them too."""
+    taken to be one of them too. A birth year that fits the draft year (drafted at 15-21) is the
+    record's own: a junior's draft year is when he becomes eligible (draft.py), and his birth year
+    must not move with it. `stale` False: the roster has no such records (the game's own roster,
+    whose birth years stock.prepare moved all at once)."""
     shown = P.get(i, 'dnFq') + 1910
     drafted = P.get(i, 'WzKY')
     if drafted != UNDRAFTED:
-        return drafted + 1900 - 18
-    if 0 < P.get(i, 'rnOl') <= EA_ART_MAX and shown >= 1990:
+        guess = drafted + 1900 - 18
+        if -3 <= shown - guess <= 3:
+            return shown
+        if stale and -3 <= shown - 10 - guess <= 3:
+            return shown - 10
+        return guess if stale else shown
+    if stale and 0 < P.get(i, 'rnOl') <= EA_ART_MAX and shown >= 1990:
         return shown - 10
     return shown
 
@@ -52,7 +60,6 @@ class Donors:
         self.spare = {pos: [] for pos in range(5)}   # other teamless records, oldest first
         self.reserved = set()                        # normalised (first, last) of people in the data
         heads, home = Counter(), {}
-        youngest = b.data.season_year - MIN_AGE
         for i in range(P.cur_rec):
             pid = P.get(i, 'zIBw')
             country = P.get(i, 'hleL')
@@ -66,11 +73,10 @@ class Donors:
             pos = P.get(i, 'aljv')
             if 'ZZ' in P.get(i, 'RMbQ'):
                 self.blank[pos].append(i)
-            elif (b.quality[pid] < LEGEND_LEVEL and not P.get(i, 'WBbd') and real_birth_year(P, i) <= youngest
-                  and len(b.records_of[b.identity(i)]) == 1):      # not a second record of someone else in the game
+            elif self._spare_ok(i):
                 self.spare[pos].append(i)
         for pos in self.spare:
-            self.spare[pos].sort(key=lambda i: (real_birth_year(P, i), b.quality[P.get(i, 'zIBw')], i))
+            self.spare[pos].sort(key=self._order)
         # (head id, skin colour) pairs the base uses for players without a real head. Nothing says
         # what a new player looks like, so he gets one of the heads of the most common skin colour.
         skin = Counter()
@@ -81,19 +87,42 @@ class Donors:
         # the usual birth-state code per country (Ontario for Canada, ...)
         self.home_state = {c: cnt.most_common(1)[0][0] for c, cnt in home.items()}
 
-    def add_spare(self, prow):
-        """A record that just became free (a player of the game's own roster who retired in this
-        run): spare from now on, in its place in the oldest-first order."""
+    def _spare_ok(self, i):
+        """May this teamless record be taken over? Not a legend or well-rated player, nobody whose
+        NHL rights a team holds, nobody younger than MIN_AGE, no second record of someone else in the
+        game (national-team goalies)."""
         b, P = self.b, self.b.P
-        pid = P.get(prow, 'zIBw')
-        if pid not in b.quality or b.quality[pid] >= LEGEND_LEVEL or len(b.records_of[b.identity(prow)]) != 1:
-            return
-        if real_birth_year(P, prow) > b.data.season_year - MIN_AGE:
-            return
-        key = lambda i: (real_birth_year(P, i), b.quality[P.get(i, 'zIBw')], i)
-        spare = self.spare[P.get(prow, 'aljv')]
-        if prow not in spare:
-            bisect.insort(spare, prow, key=key)
+        pid = P.get(i, 'zIBw')
+        return (pid in b.quality and b.quality[pid] < LEGEND_LEVEL and not P.get(i, 'WBbd')
+                and real_birth_year(P, i, b.stale_years) <= b.data.season_year - MIN_AGE
+                and len(b.records_of[b.identity(i)]) == 1)
+
+    def _order(self, i):
+        return (real_birth_year(self.b.P, i, self.b.stale_years), self.b.quality[self.b.P.get(i, 'zIBw')], i)
+
+    def add_spare(self, prow):
+        """A record that just became free (a player who retired in this run): spare from now on, in
+        its place in the oldest-first order."""
+        spare = self.spare[self.b.P.get(prow, 'aljv')]
+        if self._spare_ok(prow) and prow not in spare:
+            bisect.insort(spare, prow, key=self._order)
+
+    def refresh(self):
+        """The spare records again, as a new Donors would choose them now: after the ratings step
+        changed players' quality (a retired player EA still rates drops below LEGEND_LEVEL). A second
+        run, which chooses them from this run's output, then finds exactly the same ones."""
+        b, R, P = self.b, self.b.R, self.b.P
+        live = b.live_entries()
+        fa = {R.link_to_pid.get(l) for l in b.fa_links}
+        self.spare = {pos: [] for pos in range(5)}
+        for i in range(P.cur_rec):
+            pid = P.get(i, 'zIBw')
+            if (live.get(pid) or pid in fa or i in b.created or pid in b.attached
+                    or 'ZZ' in P.get(i, 'RMbQ') or not self._spare_ok(i)):
+                continue
+            self.spare[P.get(i, 'aljv')].append(i)
+        for pos in self.spare:
+            self.spare[pos].sort(key=self._order)
 
     def available(self, pos):
         return len(self.blank[pos]) + len(self.spare[pos])

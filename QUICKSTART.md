@@ -18,16 +18,22 @@ from [Puck Peak](https://www.puckpeak.com).
 - **No roster needed:** start from a community roster, or from the game's own roster on your disc.
 - **Roster editor:** look at any team, edit players and teams, and keep your edits for every
   later update.
+- **Real free agents and drafts:** retired players gone, unsigned NHL players there, every player's
+  real draft, and draft prospects on real clubs where the game's draft finds them.
+- **Windows, macOS and Linux**, with RPCS3 or with just a folder of roster saves.
 - **Safe:** your rosters are never changed. Every update is saved as a **new** roster, and only
   after it passes a safety check.
 
 ## How to use it
 
-1. Download **`NHLLegacyRosterUpdater.exe`** from
-   [Releases](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest) and
-   start it. Windows may warn because the program is not signed: choose *More info > Run anyway*.
+1. Download from [Releases](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest):
+   **`NHLLegacyRosterUpdater.exe`** on Windows, **`...-macos.zip`** on a Mac,
+   **`...-linux.tar.gz`** on Linux, and start it. The program is not signed: on Windows choose
+   *More info > Run anyway*, on a Mac right-click it and choose *Open*.
 2. **Close RPCS3** if you want photos and logos.
-3. **Step 1:** pick the file `rpcs3.exe` in your RPCS3 folder.
+3. **Step 1:** pick the file `rpcs3.exe` in your RPCS3 folder (on a Mac or Linux the program finds
+   RPCS3 by itself). No RPCS3 on this computer? Use the link below it and pick the folder with your
+   roster saves.
 4. **Step 2:** pick the roster to start from. *The game's own roster* is at the end of the list if
    you have none yet.
 5. **Step 3:** leave everything switched on, or switch off what you don't want.

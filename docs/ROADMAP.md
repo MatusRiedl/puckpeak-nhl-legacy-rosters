@@ -1,6 +1,24 @@
 # Status and roadmap
 
-State on 2026-10-04, version 0.7.0. Update this file when something here changes.
+State on 2026-10-05, version 0.8.0 (released 2026-10-05). Update this file when something here changes.
+
+0.8.0 answers the testers' feedback on 0.7.0 (owner's decisions below):
+- **Free agents:** retired players go, last season's unsigned NHL players come (Reimer, Toews,
+  Quick), created if the save lacks them. Rule: `builder.would_retire` (data pack `nhl_last`).
+- **Real player data:** every player's real draft (`draft.py`, data pack `drafts`), NHL.com's
+  height, weight, hand and birthplace for every NHL player, stricter name matching (Will Smith,
+  the two Sebastian Ahos).
+- **Logos:** the game's own sizes (they covered the record and spilled out of the calendar), and
+  ESPN's dark-background logos (a white Tampa Bay bolt, Washington with white edges).
+- **Goalie gear** in the new club's colours.
+- **Your own team:** a custom team the player made, named after a club the game has no slot for
+  (Jokerit, Ajoie, Penticton, Coachella Valley ...), gets that club's players.
+- **Pictures not installed** are named in the List of changes; the Roster editor no longer calls
+  every player of the game's own roster "new to the game".
+- After the owner's own test: **prospects on real clubs** (`clubs._place_prospects`), juniors the
+  list leaves out stay (`STAY_AGE`), **more photos** (Extraliga, last season's CHL/AHL, shaded
+  backdrops cut out), **a window that keeps every step in view**, **macOS and Linux**, and **roster
+  saves without RPCS3** (`savedata.SaveFolder`).
 
 0.7.0 fixes two problems a tester had with 0.6.0: downloads from the NHL player search failed with
 a certificate error (the exe now carries its own list of trusted certificates), and the window
@@ -68,6 +86,19 @@ Only the project owner can run these. They decide when a part leaves `pipeline.E
 | 0.6.0: favourite-team logos | Waiting: with "Photos, logos and team names" on, "Choose Your Favorite Team" (a new game profile) and the favourite team in the settings show Utah's logo, not the Coyotes' |
 | 0.6.0: NHL.com positions | Waiting: Chicago has three right wings (Kane, Kantserov, Cole Smith); on the lines, left wings play left and right wings right |
 | 0.6.0: the game's own roster | Waiting: `NHLLegacyRosterUpdater-cli stock-test --rpcs3 "<rpcs3.exe>"` (writes two LAB rosters into RPCS3: "LAB game roster as is" and "LAB game roster updated"). Load each: the roster loads; Team Management opens an NHL club, Seattle (in the Green / Red slot) and a Liiga club; one Play Now game; the free agents list opens. If possible, first save the game's own roster once in the game (a new profile, Roster Management > Save Roster) and send it: it can be compared byte for byte with what `stock.from_disc` makes |
+| 0.8.0: free agents | Waiting: Be a GM > Free agents on a roster made from the game's own roster: no Datsyuk, Price or Rask; Reimer, Toews, Quick there; a new unsigned player opens and can be signed |
+| 0.8.0: draft data | Waiting: a player card of Will Smith (2023, round 1, 4th, San Jose) and of a junior (his draft year, undrafted); Be a GM's draft still runs |
+| 0.8.0: logo sizes | Waiting: Be a GM calendar (logos inside their cells), the team panel of "Next game" (the record readable under the logo), Tampa Bay and Washington visible |
+| 0.8.0: goalie gear | Waiting: a goalie who changed club (Play Now) wears the new club's colours on pads, blocker and glove |
+| 0.8.0: your own team | Waiting: make a custom team "Jokerit" in the game, save the roster, update it: the team has Jokerit's players and still opens |
+| Season mode crash (owner, 2026-10-04) | Open: Season Mode > Select Team > Arizona (Utah) crashed with roster "2026-10-04 21:24" (0.8.0 from ROSTER2526): the game looked up a player it could not find (offset 0x79, the position, compared with 4: a goalie), at 0x00381c24. Season mode was never tested before (SEASON_PLAN C1). Asked: does ROSTER2526 itself crash with Arizona, does the new roster crash with another team; after a crash leave RPCS3 open so its log can be read |
+| Draft test (`cli draft-test`) | Optional now: since 0.8.0 the update puts undrafted prospects on real clubs anyway (owner asked for the fix, 2026-10-05); the test still tells whether the draft also sees pools or free agents |
+| 0.8.0: pictures | Waiting: Extraliga players and juniors no list has any more (Landon DuPont, Everett) show photos; studio photos on a shaded backdrop are cut out like the rest |
+| 0.8.0: window | Waiting: after an update in a maximised window the rosters and every step stay visible (the logo folds away, the result scrolls) |
+| 0.8.0: without RPCS3 | Waiting: the tester in CrossOver picks the Mac RPCS3's savedata folder (via Z:) and loads the new roster in the Mac RPCS3 |
+| 0.8.0: macOS and Linux | Not tried on a real Mac or Linux PC: the GitHub workflow builds and tests there; a tester with a Mac or Linux should try the program |
+| 0.8.0: prospects in the draft | Waiting: Be a GM's draft list (or scouting) shows undrafted prospects of the next draft, from junior and European clubs |
+| Kaprizov's photo (tester, 0.7.0) | Open: shows on the owner's PC (EU and NA). Asked the tester which roster, the "Photos and logos" line and any "Skipped" lines; 0.8.0's List of changes names skipped pictures |
 | League test (LAB, `cli league-test`) | Waiting. The owner chose (2026-10-04) to wait for it rather than put Coachella and Henderson into the Norway slots |
 
 Check list for each new league (Roster Management > Load Roster > the new roster, then):
@@ -136,6 +167,18 @@ Check list for each new league (Roster Management > Load Roster > the new roster
    **no custom copies** of NHL teams.
 4. The window should not flicker or repaint slowly. The flags of the versions are pictures:
    Windows has no flag emoji.
+
+## Decisions taken (2026-10-04, testers' feedback on 0.7.0)
+
+1. **Retiring** follows NHL.com's last season: whoever played in the NHL last season stays, old free
+   agents who did not and whom no league lists retire. Also for community rosters.
+2. **Every unsigned NHL player** of last season is a free agent, created if the save lacks him (not
+   only regulars), although records are scarce.
+3. **A player's own custom team** named after a left-out club gets its players (it stays in the
+   Custom group until the league test is played).
+4. **Goalie gear** is painted in the new club's colours (not plain white).
+5. **Real data for every player** (draft first), fetched into the data pack, never by the players'
+   PCs.
 
 ## Open decisions for the owner
 
@@ -215,6 +258,24 @@ fields. That is untested, and `verify` forbids it everywhere except in this test
 4. If everything passes, the league steps can put Jokerit, Jukurit, Ajoie, Rapperswil-Jona,
    Penticton, Coachella and Henderson into custom slots moved into their leagues. Those slots come
    from the 16 spare ones that hold prospect pools today.
+
+### Draft test (the owner runs this once)
+
+Where must an undrafted prospect be for Be a GM's draft to see him? EA's own roster keeps its future
+draft classes on junior and European clubs with their draft year and round 0; the community roster
+keeps them in "Prospects" pools, which the update moves to custom teams, and the owner saw them
+missing from the draft.
+
+1. With a roster made by 0.8.0 or newer:
+   `NHLLegacyRosterUpdater-cli draft-test --rpcs3 "<rpcs3.exe>" [--source <that roster>]`
+   It saves "LAB draft test" and prints twelve names, two per place (also in
+   `%LOCALAPPDATA%\NHLLegacyRosterUpdater\reports\draft_test.txt`): left on the custom pool team,
+   free agent, on a Top Prospects team, on a WHL club, on a WHL club without a draft year, on a Liiga
+   club.
+2. In the game load it, start Be a GM and open the list of draft prospects (scouting or the draft;
+   if there is none before the draft, simulate to it).
+3. Report which names are in the list. The update then puts every undrafted prospect where the draft
+   sees him.
 
 ### Art test (done 2026-10-03; kept for reference)
 

@@ -25,7 +25,8 @@ def stock_bytes():
 @pytest.fixture(scope='module')
 def stock_built(stock_bytes, pack):
     data = Data(nhl_players=_nhl(pack), ea_ratings=pack['ea_ratings'], iihf=pack['iihf'], season_year=pack['season'],
-                leagues=pack['leagues'], nhl_logos=pack.get('nhl_logos'))
+                leagues=pack['leagues'], nhl_logos=pack.get('nhl_logos'), nhl_last=pack.get('nhl_last'),
+                drafts=pack.get('drafts'))
     return pipeline.build(stock_bytes, data, pipeline.steps_for(pack)), data
 
 
@@ -83,3 +84,34 @@ def test_clubs_in_switched_off_custom_slots_are_left_out(stock_bytes, pack):
     ahl = pipeline.usable_clubs(R, pack['leagues']['ahl'])
     assert not {234, 235} & {t['slot'] for t in ahl['teams']}
     assert {'Coachella Valley Firebirds', 'Henderson Silver Knights'} <= set(ahl['left_out'])
+
+
+def _rows(R, first, last):
+    return [r for r in range(R.P.cur_rec) if R.P.get(r, 'firstname') == first and R.P.get(r, 'lastname') == last]
+
+
+def test_retired_stars_go_and_unsigned_veterans_stay(stock_built):
+    """Testers, 0.7.0: Datsyuk, Price and Rask (on 2014's national teams) stayed free agents, and our
+    own rule retired Reimer, who played last season."""
+    res, _ = stock_built
+    R = Roster(res.data)
+    fa = {R.link_to_pid.get(R.Q.get(k, 'TWSX')) for k in range(R.Q.cur_rec)}
+    for first, last in (('Pavel', 'Datsyuk'), ('Carey', 'Price'), ('Tuukka', 'Rask')):
+        for r in _rows(R, first, last):
+            assert R.P.get(r, 'game_id') not in fa and not R.teams_of(r), last
+    for first, last in (('James', 'Reimer'), ('Jonathan', 'Toews'), ('Jonathan', 'Quick')):
+        assert any(R.P.get(r, 'game_id') in fa for r in _rows(R, first, last)), last
+
+
+def test_namesakes_are_not_mixed_up(stock_built):
+    """The game's own Moncton junior Will Smith (1996) is not San Jose's (2005); its two Sebastian Ahos
+    are told apart by birth year and position, each with his own draft."""
+    res, _ = stock_built
+    R = Roster(res.data)
+    sharks = [r for r in _rows(R, 'Will', 'Smith') if any(t == L.API_TO_SLOT['SJS'] for _, t in R.teams_of(r))]
+    assert len(sharks) == 1 and R.P.get(sharks[0], 'year') + 1910 == 2005
+    assert len(_rows(R, 'Will', 'Smith')) == 2
+    ahos = {R.P.get(r, 'position'): r for r in _rows(R, 'Sebastian', 'Aho')}
+    assert len(_rows(R, 'Sebastian', 'Aho')) == 2
+    assert R.P.get(ahos[3], 'draftyear') == 117 and R.P.get(ahos[0], 'draftyear') == 115
+    assert any(t == L.API_TO_SLOT['CAR'] for _, t in R.teams_of(ahos[0]))

@@ -200,6 +200,16 @@ that structure.
   "C:\Games\RPCS3\rpcs3.exe"`, then scale it to about 1000 px wide. Never publish a picture
   that shows a real user name, desktop or other programs.
 
+## macOS and Linux
+
+`savedata.find_rpcs3` accepts the RPCS3 program (rpcs3.exe, rpcs3, an AppImage, RPCS3.app) or, off
+Windows, RPCS3's data folder; the data is looked for next to the program, then in
+`savedata.data_folders()`. The program's own files go to `datasource.data_home()`
+(`~/Library/Application Support`, `$XDG_DATA_HOME` or `~/.local/share`). Folders and pages open with
+`savedata.open_path`. Tests simulate both layouts (`tests/test_savedata.py`). Build there with
+`bash packaging/build.sh`; `.github/workflows/build.yml` runs the tests on all three systems and
+builds the Mac and Linux programs (from the Actions tab, or on a tag `v*`).
+
 ## Building the exe
 
 ```
@@ -243,7 +253,26 @@ with a message). `build/` and `dist/` are git-ignored.
   - a player listed by two feeds (keep him with the first league: `b.placed`);
   - a feed listing a player twice;
   - estimating ratings EA would set once the record exists (`b.ea_rating_for`);
-  - fillers chosen from people who only become available later in the run.
+  - fillers chosen from people who only become available later in the run;
+  - a player retired after the first new player was made (his record is spare only for the next
+    update): retire in `settle_free_agents`, the NHL step or `retire_leftovers` only;
+  - a free agent the rule would retire (`would_retire`): the next update retires him. So a national
+    team never takes one, a rising-star swap never drops one, and places on NHL copies and national
+    teams do not stop a retirement (Pietrangelo, on Vegas and its copy);
+  - spare records chosen before the ratings step: a retired player EA still rates drops below the
+    legend line (Henrique), so `donors.refresh()` runs after it;
+  - a feed match that depends on records the same run creates (the DEL's age-only "Nicolas
+    Krämmer" became a second record of the game's "Nico", and the IIHF squad then named the new one).
+
+  - a step that changes a club after its league's step (it must happen inside the step, the way the
+    next run will see it: `_place_prospects` puts prospects into `leftovers`); and a prospect placed
+    on a slot that was a pool until this run is not that pool's player (`joined`);
+  - EA's rating matched by name alone (no birthdate) only reaches NHL and AHL players: a player who
+    leaves the AHL for Europe counts by his attributes from then on (`Builder.unrate_name_only`);
+  - ties in line-ups broken by the entry's row, which moves between runs: break them by player id.
+
+  `diff2`-style checking helps: build twice, compare every table field by field, and print the
+  second run's change log; the rows it still writes name the culprit.
 
   `test_a_second_run_with_club_leagues_changes_nothing` catches them. To find the cause, build twice
   and compare the tables record by record.
@@ -273,6 +302,10 @@ with a message). `build/` and `dist/` are git-ignored.
   requires the birthdate (the DEL, which gives ages, matches by full name and birth year);
   EA name-only matching is limited to NHL and AHL teams; `norm()` spells out ø, æ, ß, ł (otherwise
   "Øby-Olsen" loses a letter). Each rule came from a real mismatch.
+- **Draft data** (`draft.py`): `draftposition` is the overall pick, `draftteam` slot + 1 (Vegas cannot
+  be stored), a junior not drafted yet has his draft year and round 0. `real_birth_year` must not
+  move a junior's birth year with his draft year: a birth year that fits the draft year is the
+  record's own.
 - **Positions and styles**: defencemen have playing styles 1–4, forwards 5–10. A skater who
   changes between them needs a style of the new range (`Builder.set_position`).
 - **Engine messages are an interface** for the progress bar (`progress.py`).

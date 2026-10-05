@@ -222,6 +222,21 @@ def test_a_photo_becomes_a_portrait_where_the_games_own_are():
     assert r.crop((0, 280, 256, 512)).getextrema()[1] == 0
 
 
+def test_logos_stay_where_the_games_own_logos_are():
+    """Testers, 0.7.0: big logos covered the team's record, calendar logos spilled out of their cells.
+    Each kind now stays inside the area the disc's own logos of that kind fill (images.LOGO_BOX)."""
+    pytest.importorskip('PIL')
+    from legacy_roster.art import images
+    for logo in (head_photo(background=(0, 0, 0, 0)), head_photo()):
+        for kind, size in (('t', (256, 256)), ('s', (128, 64)), ('w', (256, 256)), ('c', (128, 128)), ('d', (128, 128))):
+            pic = images.logo(logo, kind, size)
+            box = pic.getchannel('A').point(lambda v: 255 if v > 40 else 0).getbbox()
+            l, t, r, b = images.LOGO_BOX[kind]
+            assert box[0] >= l * size[0] - 1 and box[1] >= t * size[1] - 1, kind
+            assert box[2] <= r * size[0] + 1 and box[3] <= b * size[1] + 1, kind
+            assert (box[2] - box[0]) >= 0.8 * (r - l) * size[0] or (box[3] - box[1]) >= 0.8 * (b - t) * size[1], kind
+
+
 def test_only_nhl_teams_get_the_favourite_team_logo():
     assert install.REFLECTION in install.logo_kinds(22) and install.REFLECTION in install.logo_kinds(31)
     assert install.REFLECTION not in install.logo_kinds(40) and install.REFLECTION not in install.logo_kinds(20073)

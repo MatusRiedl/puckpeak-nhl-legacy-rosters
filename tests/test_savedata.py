@@ -227,3 +227,58 @@ def test_names():
     assert savedata.clean_name('  My roster™ <1>  ') == 'My roster 1'
     assert savedata.clean_name('x' * 80) == 'x' * 40
     assert savedata.TOOL_NAME.match('R261002-2045') and not savedata.TOOL_NAME.match('ROSTER2526')
+
+
+def test_on_linux_and_macs_rpcs3s_data_folder_is_found(rpcs3, tmp_path, monkeypatch):
+    """Linux and Mac: RPCS3 keeps its data in a folder of its own (~/.config/rpcs3,
+    ~/Library/Application Support/rpcs3), away from the program (an AppImage, RPCS3.app)."""
+    monkeypatch.setattr(savedata, 'WINDOWS', False)
+    monkeypatch.setattr(savedata, 'data_folders', lambda: [str(rpcs3)])
+    sd = str(rpcs3 / 'dev_hdd0' / 'home' / '00000001' / 'savedata')
+    image = tmp_path / 'apps' / 'rpcs3-v0.0.43-linux64.AppImage'
+    image.parent.mkdir()
+    image.write_bytes(b'\x7fELF')
+    mac_app = tmp_path / 'Applications' / 'RPCS3.app'
+    (mac_app / 'Contents' / 'MacOS').mkdir(parents=True)
+    for program in (image, mac_app):
+        found = savedata.find_rpcs3(str(program))
+        assert (found.exe, found.folder, found.savedata, found.where) == (str(program), str(rpcs3), sd, str(program))
+    for pointed_at in (rpcs3, rpcs3 / 'dev_hdd0' / 'home'):    # the data folder itself, or a folder inside it
+        found = savedata.find_rpcs3(str(pointed_at))
+        assert (found.exe, found.where, found.savedata) == (None, str(rpcs3), sd)
+    assert savedata.default_rpcs3() == str(rpcs3)
+
+
+def test_a_running_rpcs3_is_seen_on_linux(tmp_path):
+    for pid, cmd in (('12', b'/usr/bin/bash\0'), ('40', b'/tmp/.mount_rpcs3Xy/usr/bin/rpcs3\0--no-gui\0'),
+                     ('self', b'x\0')):
+        (tmp_path / pid).mkdir()
+        (tmp_path / pid / 'cmdline').write_bytes(cmd)
+    assert savedata._running_posix(str(tmp_path)) == '/tmp/.mount_rpcs3Xy/usr/bin/rpcs3'
+    (tmp_path / '40' / 'cmdline').write_bytes(b'/usr/bin/vim\0')
+    assert savedata._running_posix(str(tmp_path)) is None
+
+
+def test_the_programs_own_folder_follows_the_system(monkeypatch, tmp_path):
+    from legacy_roster import datasource
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'share'))
+    home = datasource.data_home()
+    assert home in (str(tmp_path), str(tmp_path / 'share')) or home.endswith(os.path.join('Library', 'Application Support'))
+
+
+def test_roster_saves_work_without_rpcs3(rpcs3, tmp_path):
+    """Testers, 0.8.0: the program in CrossOver on a Mac, RPCS3 the Mac one: no rpcs3.exe to pick. A
+    folder with roster saves, or one roster save, will do; the game's own roster and photos need RPCS3."""
+    copied = tmp_path / 'copied saves'
+    shutil.copytree(rpcs3 / 'dev_hdd0' / 'home' / '00000001' / 'savedata', copied)
+    with pytest.raises(savedata.Rpcs3Error):
+        savedata.find_rpcs3(str(copied))
+    found, picked = savedata.open_saves(str(copied))
+    assert (found.savedata, found.where, found.plain, picked) == (str(copied), str(copied), True, None)
+    assert found.games() == ['BLES02153'] and found.disc_slots() == [] and found.game_folder('BLES02153') is None
+    assert [s.folder for s in savedata.list_rosters(found.savedata)] == ['BLES021530202']
+    found, picked = savedata.open_saves(str(copied / 'BLES021530202'))
+    assert (found.savedata, picked) == (str(copied), 'BLES021530202')
+    with pytest.raises(FileNotFoundError):
+        savedata.open_saves(str(tmp_path / 'nothing here'))

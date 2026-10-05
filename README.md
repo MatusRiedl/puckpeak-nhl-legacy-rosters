@@ -1,7 +1,9 @@
 # NHL Legacy Roster Updater
 
-**New here? Read the [Quick start](QUICKSTART.md)**, then download `NHLLegacyRosterUpdater.exe` from
-[Releases](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest).
+**New here? Read the [Quick start](QUICKSTART.md)**, then download the program from
+[Releases](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest):
+`NHLLegacyRosterUpdater.exe` (Windows), `...-macos.zip` (Mac) or `...-linux.tar.gz` (Linux).
+What changed: [CHANGELOG.md](CHANGELOG.md).
 
 Keeps the rosters of **NHL Legacy Edition** (PS3, played on RPCS3) up to date. You show it where
 RPCS3 is, switch on what you want updated, and it saves a **new** roster named with today's date
@@ -13,7 +15,9 @@ and time. Your existing rosters are never changed.
 
 | | What happens | Where the data comes from |
 |---|---|---|
-| NHL | Every player on his current team, at the position NHL.com lists, with jersey numbers, lines (left wings on the left, right wings on the right), captains, contracts | NHL.com, fetched when you press the button |
+| NHL | Every player on his current team, at the position NHL.com lists, with jersey numbers, lines (left wings on the left, right wings on the right), captains, contracts, and NHL.com's height, weight and hand | NHL.com, fetched when you press the button |
+| Free agents | Retired players leave the free-agent list; NHL players without a contract today are on it (added to the game if it did not have them) | NHL.com: who played in the NHL last season |
+| Draft | Every player's real draft: year, round, pick and team | NHL.com draft lists since 2005 |
 | Ratings | Player attributes for NHL players | EA NHL 27 ratings |
 | National teams | Squads refreshed; every empty national team filled (also the ones a community roster left empty) | IIHF 2026 rosters and NHL players by nationality |
 | Liiga | The 15 Finnish clubs with their real 2026-27 rosters, lines and captains | liiga.fi |
@@ -23,8 +27,10 @@ and time. Your existing rosters are never changed.
 | National League | 12 of the 14 Swiss clubs | nationalleague.ch |
 | Norway | Stavanger and Vålerenga, the two Norwegian clubs the game has | ehl.no |
 | AHL | All 32 AHL teams with their real rosters; players on NHL contracts belong to their NHL club | theahl.com (HockeyTech) |
-| CHL | The OHL, QMJHL and WHL clubs | the leagues' sites (HockeyTech) |
-| Photos, logos and team names | Today's player photos, club logos and real team names in the game's menus | the leagues' sites, downloaded on your PC (see below) |
+| CHL | The OHL, QMJHL and WHL clubs; a junior missing from his league's list stays with his club | the leagues' sites (HockeyTech) |
+| Draft prospects | Undrafted prospects of the next drafts play for a real club of their country (the CHL for North Americans), where the game's draft finds them, instead of on custom "Prospects" teams | the community roster's prospect lists |
+| Photos, logos and team names | Today's player photos, club logos and real team names in the game's menus (the National League publishes no photos) | the leagues' sites, downloaded on your PC (see below) |
+| Goalie equipment | A goalie who changed teams wears his new team's colours | the team's colours in the game |
 
 Everything is switched on to start with; switch off what you do not want. Every part passes the
 program's safety check; SHL, DEL, National League, Norway, AHL and CHL have not been played in the
@@ -38,12 +44,48 @@ the 2014-15 players, and brings it up to today:
 
 - Seattle and Vegas move into the All-Star teams' places. With "Photos, logos and team names" on,
   Utah, Seattle and Vegas show their names and logos in the NHL list.
-- Players of 2014 who are 30 or older and on no team any more retire. Their places in the save go
-  to today's players. Younger ones become free agents.
-- Coachella Valley and Henderson are left out: the game's own roster has no team for them.
+- Players of 2014 who are 30 or older and on no team any more retire, unless they played in the
+  NHL last season: those become free agents. Their places in the save go to today's players.
+  Younger ones become free agents.
+- The national teams are filled again with today's players.
+- Coachella Valley and Henderson are left out: the game's own roster has no team for them. Make a
+  team of your own with that name and the update fills it (below).
 - The first roster of a game that has no save yet gets the game's own icon.
 
 This is new in 0.6.0 and has not been played in the game yet. Tell us how it works.
+
+## Your own team for a missing club
+
+The game has no place for some real clubs: Jokerit and Jukurit (Liiga), Ajoie and Rapperswil-Jona
+(National League), Penticton (WHL), several Norwegian clubs, and, in the game's own roster,
+Coachella Valley and Henderson (AHL). Make a team in the game yourself, name it after the club
+("Jokerit", "Penticton Vees"), save the roster, then update it: your team gets the club's real
+players. It keeps the name, city and logo you gave it, and it stays with the other custom teams
+(for exhibition games), because the game does not let a custom team join a league. Do not rename
+one of the game's own teams instead: the update gives that team its real club back.
+
+## macOS and Linux
+
+The program runs on Windows, macOS and Linux. On a Mac or a Linux PC, RPCS3 keeps its saves in a
+folder of its own: `~/Library/Application Support/rpcs3` on a Mac, `~/.config/rpcs3` on Linux
+(`~/.var/app/net.rpcs3.RPCS3/config/rpcs3` for the Flatpak). The program finds that folder by
+itself; if it does not, press **Find RPCS3** and pick it.
+
+- **Download:** `NHLLegacyRosterUpdater-<version>-macos.zip` (Mac: unzip, right-click the app,
+  *Open*) and `NHLLegacyRosterUpdater-<version>-linux.tar.gz` (Linux: unpack, run
+  `./NHLLegacyRosterUpdater`), on the release page. They are built on GitHub's machines
+  (`.github/workflows/build.yml`) and attached to the release a few minutes after it appears.
+- **Or run it from source** (below) with Python 3.10 or newer and `pip install customtkinter pillow`
+  (on Linux also the `python3-tk` package).
+
+## Without RPCS3 (CrossOver, Wine, saves from elsewhere)
+
+No `rpcs3.exe` to pick, for example because the program runs in CrossOver on a Mac and RPCS3 is the
+Mac app? In step 1 press **"No RPCS3 on this computer? Pick a folder with roster saves instead."**
+and pick the folder that holds your roster saves (in RPCS3: `dev_hdd0/home/00000001/savedata`), or
+one roster save. The new roster is saved next to the others in that folder. Photos and logos and
+"The game's own roster" need RPCS3, so they are not offered then. On the command line use
+`--savedata <folder>` instead of `--rpcs3`.
 
 ## EU and NA
 

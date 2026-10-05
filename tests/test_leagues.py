@@ -15,7 +15,7 @@ from legacy_roster.roster import Roster
 @pytest.fixture(scope='module')
 def everything(base_bytes, data, pack):
     full = Data(nhl_players=data.nhl_players, ea_ratings=data.ea_ratings, iihf=data.iihf,
-                season_year=data.season_year, leagues=pack['leagues'])
+                season_year=data.season_year, leagues=pack['leagues'], drafts=pack.get('drafts'))
     return full, pipeline.build(base_bytes, full, steps=pipeline.steps_for(pack))
 
 
@@ -52,7 +52,7 @@ def test_every_club_has_its_real_name_and_its_listed_players(everything, pack):
     skipped = {norm(r[2]) for r in result.log if r[1] == 'skipped'}
     fillers = {}
     for r in result.log:
-        if r[1] in ('stays to fill the line-up', 'signed to fill the line-up'):
+        if r[1] in ('stays to fill the line-up', 'signed to fill the line-up', 'stays', 'prospect joined'):
             fillers.setdefault(r[0], []).append(r[2])
     on_some_club = set()
     for team in clubs_of(pack):
@@ -70,8 +70,9 @@ def test_every_club_has_its_real_name_and_its_listed_players(everything, pack):
         # was left for; it may hold extra players only to fill its line-up.
         missing = {p for p in listed - on_club if not near(p[1], {last for _, last in on_club})}
         assert {p for p in missing - in_the_nhl - on_some_club if p[0] + p[1] not in skipped} == set(), team['full']
-        filled = {(norm(n.split(' ', 1)[0]), norm(n.split(' ', 1)[1])) for n in fillers.get(team['abbr'], [])}
-        assert not {p for p in on_club - listed - filled if not near(p[1], {last for _, last in listed})}, team['full']
+        filled = {norm(n) for n in fillers.get(team['abbr'], [])}         # whole names: "Ian Luca" Scheerschmidt
+        assert not {p for p in on_club - listed if p[0] + p[1] not in filled
+                    and not near(p[1], {last for _, last in listed})}, team['full']
 
 
 def test_every_club_is_playable(everything, pack):
@@ -224,3 +225,95 @@ def test_club_matching_needs_the_birthdate_to_agree(base_bytes):
     match_club(R, [same, namesake, twin])
     assert same['row'] == row and not same['stale']
     assert namesake['row'] is None and twin['row'] is None
+
+
+def test_a_players_own_team_named_after_a_left_out_club_gets_its_players(base_bytes, pack):
+    """Point 7 of the testers (0.7.0): the game has no slot for Jokerit; a custom team the player made
+    and named after it gets Jokerit's players, and keeps its league, name and city."""
+    extra = {c['full']: c for c in pack['leagues']['liiga'].get('extra', [])}
+    assert 'Jokerit' in extra
+    R = Roster(base_bytes)
+    T = R.T
+    slot = next(t for t in pools.SPARE_SLOTS if not T.get(t, 'NYKk')
+                and not any(R.U.get(i, 'BSXd') == t for i in range(R.U.cur_rec)))
+    T.set(slot, 'NYKk', 1)
+    T.set(slot, 'JkmY', 'Jokerit Helsinki')
+    T.set(slot, 'shortname', 'HELSINKI')
+    league_before = T.get(slot, 'league')
+    res = pipeline.build(R.f.build(), Data(season_year=pack['season'], leagues=pack['leagues']), steps=['liiga'])
+    assert res.problems == []
+    after = Roster(res.data)
+    assert after.T.get(slot, 'league') == league_before == L.CUSTOM_LEAGUE
+    assert after.T.get(slot, 'JkmY') == 'Jokerit Helsinki' and after.T.get(slot, 'shortname') == 'HELSINKI'
+    names = {(norm(after.P.get(r, 'firstname')), norm(after.P.get(r, 'lastname'))) for r in members(after, slot)}
+    listed = {(norm(p['first']), norm(p['last'])) for p in extra['Jokerit']['players']}
+    assert len(names & listed) >= 20
+    assert any(r[1] == 'summary' and 'your own team' in str(r[2]) for r in res.log)
+
+
+def test_an_own_team_with_another_name_is_left_alone(base_bytes, pack):
+    R = Roster(base_bytes)
+    T = R.T
+    slot = next(t for t in pools.SPARE_SLOTS if not T.get(t, 'NYKk')
+                and not any(R.U.get(i, 'BSXd') == t for i in range(R.U.cur_rec)))
+    T.set(slot, 'NYKk', 1)
+    T.set(slot, 'JkmY', 'Bratislava Dragons')
+    res = pipeline.build(R.f.build(), Data(season_year=pack['season'], leagues=pack['leagues']), steps=['liiga'])
+    assert res.problems == [] and not members(Roster(res.data), slot)
+
+
+def test_a_junior_the_list_leaves_out_stays_with_his_club(everything):
+    """Testers, 0.8.0: the WHL's 2026-27 list has no Landon DuPont (2027's top prospect); as a free
+    agent the draft would not see him, so a junior under 20 stays with his club."""
+    _, result = everything
+    R = Roster(result.data)
+    rows = [r for r in range(R.P.cur_rec) if (R.P.get(r, 'firstname'), R.P.get(r, 'lastname')) == ('Landon', 'Dupont')]
+    assert rows and [R.team_name(t) for _, t in R.teams_of(rows[0])] == ['Everett Silvertips']
+    assert result.builder.league_stats['chl']['juniors kept'] > 0
+
+
+def test_the_draft_test_puts_prospects_in_six_places(everything, pack):
+    from legacy_roster.art import lab
+    _, result = everything
+    built, groups = lab.draft_lab(result.data, pack['season'])
+    assert len(groups) == len(lab.DRAFT_GROUPS) and all(len(names) == 2 for _, names in groups)
+    R = Roster(built)
+    fa = free_agents(R)
+    where = dict(zip([k for k, _ in lab.DRAFT_GROUPS], [names for _, names in groups]))
+    find = lambda name: next(r for r in range(R.P.cur_rec) if R.name(r) == name)
+    for name in where['fa']:
+        assert R.P.get(find(name), 'game_id') in fa and not R.teams_of(find(name))
+    for name in where['top']:
+        assert [t for _, t in R.teams_of(find(name))] == [lab.TOP_PROSPECTS_RED]
+    for name in where['whl-no-year']:
+        assert R.P.get(find(name), 'draftyear') == 255
+    for name in where['whl'] + where['liiga']:
+        assert R.P.get(find(name), 'draftyear') == pack['season'] + 1 - 1900
+
+
+def test_undrafted_prospects_play_for_real_clubs_of_their_country(everything, pack):
+    """Owner, 0.8.0: the community's prospect pools end up on custom teams, where the draft does not
+    look. Undrafted prospects of the next drafts join a real club of their country's league (the CHL
+    for the rest), as EA's own roster keeps its draft classes."""
+    from legacy_roster.leagues import clubs
+    _, result = everything
+    R = Roster(result.data)
+    P, T = R.P, R.T
+    season = pack['season']
+    joined = {(row[2], row[0]) for row in result.log if row[1] == 'prospect joined'}       # (name, club)
+    assert len(joined) > 150
+    league_of = {'shl': 2, 'liiga': 3, 'del': 4, 'extraliga': 5, 'nl': 6, 'norway': 7}
+    on_pools = 0
+    for prow in range(P.cur_rec):
+        year = P.get(prow, 'draftyear')
+        if (P.get(prow, 'draftround') or year == 255 or year + 1900 <= season
+                or season - (P.get(prow, 'year') + 1910) >= clubs.STAY_AGE):
+            continue
+        teams = [t for _, t in R.teams_of(prow) if t not in L.NATIONAL]
+        if any(pools.is_pool(R, t) for t in teams):
+            on_pools += 1
+        elif teams and (R.name(prow), T.get(teams[0], 'abbrname')) in joined:
+            home = clubs.HOME_LEAGUE.get(clubs.NATION_OF.get(P.get(prow, 'intlcountry')), 'chl')
+            want = {league_of[home]} if home in league_of else {9, 10, 11}
+            assert T.get(teams[0], 'league') in want, R.name(prow)
+    assert on_pools <= 40          # only those who found no club with room

@@ -4,7 +4,6 @@ import json
 import os
 from collections import Counter
 import queue
-import subprocess
 import sys
 import threading
 import traceback
@@ -37,7 +36,9 @@ UPDATE_TAB, EDITOR_TAB = "Update", "Roster editor"
 MIN_HEIGHT = 640
 SHORT_SCREEN = 900          # screens shorter than this (window units) show the result lines scrolling
 BANNER_LINES_SHORT = 64     # ... in this much height (about three lines)
+BANNER_LINES_MIN = 40       # the least height the result's lines get when the window has no more room
 DETAILS_HEIGHT = 150
+ROSTER_MIN = 150            # the roster list (step 2) never gets less than this (window units), result shown or not
 SITE = "https://www.puckpeak.com"
 SITE_LABEL = "www.puckpeak.com"
 TAGLINE = "NHL & hockey analytics like never before"
@@ -143,7 +144,8 @@ class App:
         body.pack(fill='both', expand=True, padx=6, pady=(4, 0))
         body.columnconfigure(0, weight=11, uniform='col')
         body.columnconfigure(1, weight=9, uniform='col')
-        body.rowconfigure(1, weight=1)
+        body.rowconfigure(1, weight=1, minsize=round(ROSTER_MIN * T.scaling(root)))
+        self.body = body
         self._card_rpcs3(body).grid(row=0, column=0, sticky='nsew', padx=(0, 6), pady=(0, 10))
         self._card_roster(body).grid(row=1, column=0, sticky='nsew', padx=(0, 6), pady=(0, 10))
         self._card_updates(body).grid(row=0, column=1, rowspan=2, sticky='nsew', padx=(6, 0), pady=(0, 10))
@@ -155,8 +157,8 @@ class App:
         self.editor.pack(fill='both', expand=True, padx=6, pady=(4, 0))
 
         root.bind('<Return>', lambda _e: self.start())
-        self.set_rpcs3(self.settings.get('rpcs3') or self.settings.get('folder') or savedata.running_rpcs3(),
-                       quiet=True)
+        self.set_rpcs3(self.settings.get('rpcs3') or self.settings.get('folder') or savedata.running_rpcs3()
+                       or savedata.default_rpcs3(), quiet=True)
         self.tick()
         self.poll()
 
@@ -164,16 +166,17 @@ class App:
     def _header(self):
         head = ctk.CTkFrame(self.root, fg_color='transparent')
         head.pack(fill='x', pady=(12, 0))
-        logo = tk.Label(head, image=T.logo(self.root), bg=T.BG, bd=0, cursor='hand2')
+        logo = self.logo = tk.Label(head, image=T.logo(self.root), bg=T.BG, bd=0, cursor='hand2')
         logo.pack()
         logo.bind('<Button-1>', lambda _e: open_site())
         link = ctk.CTkLabel(head, text=f"{TAGLINE}   ·   {SITE_LABEL}", font=T.font(14, 'semibold'),
                             text_color=T.ACCENT, cursor='hand2')
         link.pack(pady=(0, 2))
+        self.site_link, self.compact = link, False
         link.bind('<Button-1>', lambda _e: open_site())
         link.bind('<Enter>', lambda _e: link.configure(font=T.font(14, 'semibold', underline=True)))
         link.bind('<Leave>', lambda _e: link.configure(font=T.font(14, 'semibold')))
-        line = ctk.CTkFrame(head, fg_color='transparent')
+        line = self.title_line = ctk.CTkFrame(head, fg_color='transparent')
         line.pack(pady=(0, 6))
         ctk.CTkLabel(line, text="LEGACY ROSTER UPDATER", font=T.font(13, 'bold'), text_color=T.TEXT).pack(side='left')
         ctk.CTkLabel(line, text=f"   |   NHL Legacy Edition on RPCS3   |   version {__version__}",
@@ -194,10 +197,18 @@ class App:
         # the label's own size event (customtkinter's bind() would listen to its inner parts)
         tk.Frame.bind(self.path, '<Configure>', lambda _e: self.fit_path(), '+')
         self.change = GhostButton(row, "Change", self.browse, width=96, height=40)
-        self.find = PrimaryButton(row, "Find rpcs3.exe", self.browse, width=150, height=40)
+        self.find = PrimaryButton(row, "Find rpcs3.exe" if savedata.WINDOWS else "Find RPCS3", self.browse, width=150,
+                                  height=40)
         self.rpcs3_note = ctk.CTkLabel(card.body, text="", font=T.font(13), text_color=T.MUTED, anchor='w',
                                        justify='left', wraplength=470)
         self.rpcs3_note.pack(fill='x', pady=(8, 0))
+        # no RPCS3 here (CrossOver, Wine, saves copied from elsewhere): the saves themselves will do
+        other = ctk.CTkLabel(card.body, text="No RPCS3 on this computer? Pick a folder with roster saves instead.",
+                             font=T.font(13, 'semibold'), text_color=T.ACCENT, anchor='w', cursor='hand2')
+        other.pack(fill='x', pady=(4, 0))
+        other.bind('<Button-1>', lambda _e: self.browse_saves())
+        other.bind('<Enter>', lambda _e: other.configure(font=T.font(13, 'semibold', underline=True)))
+        other.bind('<Leave>', lambda _e: other.configure(font=T.font(13, 'semibold')))
         return card
 
     def _card_roster(self, master):
@@ -246,6 +257,7 @@ class App:
                         extra="RPCS3 must be closed. The game's own pictures are kept and can be put back.")
         row.pack(fill='x', pady=(0, 5), padx=(1, 10))
         self.switches.append(row)
+        self.photos_row = row               # needs RPCS3: off for a plain save folder (savedata.SaveFolder)
         self.use_edits = tk.BooleanVar(value=remembered.get(EDITS, True))
         row = SwitchRow(rows, "My edits", "Your changes from the Roster editor, applied after the update",
                         self.use_edits, self.refresh_state,
@@ -389,24 +401,66 @@ class App:
         self.root.update_idletasks()
         delta = round(self.banner.winfo_reqheight() / scale) + 10 - before
         if delta:
-            self.banner_grown += self.resize(delta)
+            got = self.resize(delta)
+            self.banner_grown += got
+            if got < delta:             # a maximised window or a short screen: the big logo folds away
+                self.compact_header(True)
+        self.fit_banner()
+
+    def fit_banner(self):
+        """The result's lines get only the height the steps leave free (they scroll in it), so the
+        rosters and every step stay in view (owner, 0.8.0: in a maximised window the result squeezed
+        the roster list away)."""
+        if not self.banner.winfo_ismapped():
+            return
+        for _ in range(3):              # the box's own size changes the layout around it: settle in a few steps
+            self.root.update_idletasks()
+            over = (self.body.winfo_reqheight() - self.body.winfo_height()) / T.scaling(self.root)
+            if over <= 1 or self.banner.lines_height <= BANNER_LINES_MIN:
+                break
+            self.banner.fit(max(BANNER_LINES_MIN, self.banner.lines_height - over))
+
+    def compact_header(self, on):
+        """Fold the big Puck Peak logo and its link line away (on) or show them again."""
+        if on == self.compact:
+            return
+        self.compact = on
+        if on:
+            self.logo.pack_forget()
+            self.site_link.pack_forget()
+        else:
+            self.logo.pack(before=self.title_line)
+            self.site_link.pack(pady=(0, 2), before=self.title_line)
 
     def hide_banner(self):
         if self.banner.winfo_ismapped():
             self.banner.grid_remove()
             self.resize(-self.banner_grown)
         self.banner_grown = 0
+        self.compact_header(False)
 
     # --- RPCS3 and its rosters ------------------------------------------------------------------
     def browse(self):
         start = self.rpcs3.folder if self.rpcs3 else os.path.expanduser('~')
-        path = filedialog.askopenfilename(parent=self.root, title="Where is rpcs3.exe?", initialdir=start,
-                                          filetypes=[("RPCS3", "rpcs3.exe"), ("Programs", "*.exe")])
+        if savedata.WINDOWS:
+            path = filedialog.askopenfilename(parent=self.root, title="Where is rpcs3.exe?", initialdir=start,
+                                              filetypes=[("RPCS3", "rpcs3.exe"), ("Programs", "*.exe")])
+        else:       # Linux, Mac: RPCS3 keeps its data in a folder of its own, which is what the program needs
+            path = filedialog.askdirectory(parent=self.root, initialdir=start, mustexist=True,
+                                           title="Where is RPCS3's folder? (" + ", ".join(savedata.data_folders()) + ")")
+        if path:
+            self.set_rpcs3(os.path.normpath(path))
+
+    def browse_saves(self):
+        """Pick a folder with roster saves (or one roster save) instead of RPCS3."""
+        start = self.rpcs3.savedata if self.rpcs3 else os.path.expanduser('~')
+        path = filedialog.askdirectory(parent=self.root, initialdir=start, mustexist=True,
+                                       title="Pick the folder with your NHL Legacy roster saves (or one roster save)")
         if path:
             self.set_rpcs3(os.path.normpath(path))
 
     def set_rpcs3(self, path, quiet=False):
-        """Find the saves behind `path` (rpcs3.exe or its folder) and list the rosters. Reading the
+        """Find the saves behind `path` (RPCS3 or its folder) and list the rosters. Reading the
         saves takes a moment each, so it happens in the background; the window stays as it is
         meanwhile, and saves already read (same file, size and time) are not read again."""
         self.scanning = True
@@ -416,12 +470,15 @@ class App:
         checked = dict(self.checked)
 
         def scan():
-            found, slots, usable, versions, problem = None, [], {}, [], None
+            found, slots, usable, versions, problem, picked = None, [], {}, [], None, None
             if path:
                 try:
                     found = savedata.find_rpcs3(path)
                 except (savedata.Rpcs3Error, OSError) as err:
-                    problem = str(err)
+                    try:                    # not RPCS3: a folder with roster saves will do (savedata.SaveFolder)
+                        found, picked = savedata.open_saves(path)
+                    except (FileNotFoundError, OSError):
+                        problem = str(err) + " Or pick a folder with roster saves (the link below)."
             if found:
                 slots = savedata.list_rosters(found.savedata)
                 versions = found.games()
@@ -443,20 +500,23 @@ class App:
                 slots = slots + found.disc_slots()
             running = savedata.running_rpcs3() is not None if found else False
             self.queue.put(('ui', lambda: self._scanned(found, slots, usable, versions, problem, quiet, running,
-                                                        checked)))
+                                                        checked, picked)))
         threading.Thread(target=scan, daemon=True).start()
 
-    def _scanned(self, found, slots, usable, versions, problem, quiet, running, checked):
-        """The rosters read by set_rpcs3, shown (on the window's thread)."""
+    def _scanned(self, found, slots, usable, versions, problem, quiet, running, checked, picked=None):
+        """The rosters read by set_rpcs3, shown (on the window's thread). `picked`: the roster save
+        the player pointed at directly, selected."""
         self.scanning = False
+        if picked:
+            self.selected = picked
         self.checked = checked
         self.rpcs3, self.slots, self.usable, self.versions = found, slots, usable, versions
         if self.rpcs3:
-            self.settings['rpcs3'] = self.rpcs3.exe
+            self.settings['rpcs3'] = self.rpcs3.where
             self.settings.pop('folder', None)
             save_settings(self.settings)
-            if self.path_full != self.rpcs3.exe:
-                self.show_path(self.rpcs3.exe, T.TEXT)
+            if self.path_full != self.rpcs3.where:
+                self.show_path(self.rpcs3.where, T.TEXT)
             configure_if_changed(self.rpcs3_note, text=self.found_text() + (" RPCS3 is running." if running else ""),
                                  text_color=T.GREEN)
             if self.find.winfo_manager():
@@ -468,7 +528,7 @@ class App:
             configure_if_changed(
                 self.rpcs3_note,
                 text=problem if problem and not quiet else
-                "Pick the file rpcs3.exe in your RPCS3 folder. The program finds your saves from there.",
+                savedata.PICK_RPCS3 + " The program finds your saves from there.",
                 text_color=T.RED if problem and not quiet else T.MUTED)
             if self.change.winfo_manager():
                 self.change.grid_remove()
@@ -479,6 +539,10 @@ class App:
     def found_text(self):
         """'Found 9 rosters of NHL Legacy: 8 EU, 1 NA.' and a word on a version without rosters."""
         saves = [s for s in self.slots if not getattr(s, 'disc', False)]
+        if self.rpcs3 is not None and self.rpcs3.plain:
+            n = len(saves)
+            return (f"Found {n} roster{'s' if n != 1 else ''} of NHL Legacy in this folder. Without RPCS3 the new roster "
+                    "is saved next to them; photos and the game's own roster need RPCS3.")
         if not saves:
             return ("No roster is saved in RPCS3 yet. Start from the game's own roster (listed below): it is "
                     "made from your game disc and brought up to today.")
@@ -604,11 +668,12 @@ class App:
         if not self.busy and not self.banner.winfo_ismapped():
             self.set_status("Looking for your rosters..." if self.scanning else
                             "Ready." if ready and any_step else
-                            "Start with step 1: find rpcs3.exe." if self.rpcs3 is None else
+                            "Start with step 1: find RPCS3." if self.rpcs3 is None else
                             "Switch on at least one thing to update." if slot is not None else
                             "None of the rosters found can be updated.")
+        plain = self.rpcs3 is not None and self.rpcs3.plain
         for row in self.switches:
-            row.enable(not self.busy)
+            row.enable(not self.busy and not (plain and row is self.photos_row))
         configure_if_changed(self.name_entry, state='normal' if not self.busy else 'disabled')
         configure_if_changed(self.change, state='normal' if not self.busy else 'disabled')
         self.settings['steps'] = {k: v.get() for k, v in self.steps.items()}
@@ -637,7 +702,7 @@ class App:
         self.go.configure(text="Updating...")
         self.set_status("0%   Starting...", T.BODY)
         self.clear_details()
-        art = self.rpcs3 if self.photos.get() else None
+        art = self.rpcs3 if self.photos.get() and not self.rpcs3.plain else None
         self.photos_running = art is not None
         mine = (my_edits.load(), my_edits.load_teams()) if self.use_edits.get() else (None, None)
         threading.Thread(target=self.work, args=(self.rpcs3.savedata, slot, steps, name, art, mine,
@@ -684,7 +749,7 @@ class App:
     def finish(self):
         self.busy = False
         self.go.configure(text="Update roster")
-        self.set_rpcs3(self.rpcs3.exe if self.rpcs3 else None, quiet=True)
+        self.set_rpcs3(self.rpcs3.where if self.rpcs3 else None, quiet=True)
 
     def failed(self, title, lines):
         self.set_bar(0)
@@ -715,7 +780,7 @@ class App:
         self.set_bar(1)
         self.set_status(f"Done: saved as \"{result.slot.name}\".", T.GREEN)
         buttons = [("List of changes", self.show_report), ("Open save folder", self.show_folder)]
-        if not rpcs3_running:
+        if not rpcs3_running and not self.rpcs3.plain:
             buttons.append(("Start RPCS3", self.start_rpcs3))
         where = f"New save: {result.saved_where()}."
         self.say(where)
@@ -745,15 +810,15 @@ class App:
 
     def show_folder(self):
         if self.rpcs3:
-            os.startfile(self.rpcs3.savedata)
+            savedata.open_path(self.rpcs3.savedata)
 
     def show_report(self):
         if self.last_report and os.path.exists(self.last_report):
-            os.startfile(self.last_report)
+            savedata.open_path(self.last_report)
 
     def start_rpcs3(self):
         if self.rpcs3 and not savedata.running_rpcs3():
-            subprocess.Popen([self.rpcs3.exe], cwd=self.rpcs3.folder)
+            self.rpcs3.start()
 
 
 def main():
@@ -763,10 +828,10 @@ def main():
         root.withdraw()
         messagebox.showerror(
             "Legacy Roster Updater",
-            "Some of this program's files are missing from Windows' temporary folder. An antivirus "
+            "Some of this program's files are missing from the system's temporary folder. An antivirus "
             "or a cleaning program may have removed them.\n\n"
-            "Close this message and start NHLLegacyRosterUpdater.exe again. If it keeps happening, "
-            "allow NHLLegacyRosterUpdater.exe in your antivirus.", parent=root)
+            "Close this message and start the program again. If it keeps happening, "
+            "allow NHLLegacyRosterUpdater in your antivirus.", parent=root)
         root.destroy()
         return
     T.load_fonts(root)

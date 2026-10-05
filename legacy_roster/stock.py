@@ -17,9 +17,10 @@ calls it the 'stock' layout):
     and Vegas move in there, as in the community roster;
   * birth years move to the convention the rest of the program writes (year - 1910);
   * spare player records ("ZZ") for new players, as many as the community roster added
-    (the game is known to read a roster of 6,745 players), and old free agents (30 and older)
-    retire: their records become spare too. The update retires 2014's players of that age who
-    lose their team as well (builder.retires).
+    (the game is known to read a roster of 6,745 players).
+The update then retires free agents of 30 and older and 2014's players of that age who lose their
+team, unless they played in the NHL last season (builder.settle_free_agents, builder.retires), and
+rebuilds the 2014 national teams (builder.clear_national).
 No custom copies of NHL teams are made (owner, 2026-10-04): Utah, Seattle and Vegas show in the
 NHL list with "Photos, logos and team names" on.
 
@@ -51,8 +52,9 @@ ALL_STAR = (30, 31)
 SPARE_RECORDS = {0: 247, 1: 210, 2: 209, 3: 336, 4: 111}
 MOST_PLAYERS = 6745
 # players of the game's 2014 roster this old today retire when they are off a team (and free agents
-# this old retire at once): their records become spare. Younger ones become free agents; at 35 the
-# free-agent list (1,767 at most) overflowed with 2014's juniors
+# this old retire at once) unless they played in the NHL last season: their records become spare.
+# Younger ones become free agents; at 35 the free-agent list (1,767 at most) overflowed with 2014's
+# juniors
 RETIRE_AGE = 30
 GAME_ID_BITS = 14
 
@@ -115,10 +117,22 @@ def from_disc(disc):
 
 # --- making the game's own roster updatable ---------------------------------------------------------
 def is_stock(R):
-    """The game's own layout (no community roster): the custom teams are switched off and empty."""
+    """The game's own layout (no community roster): no custom team is a copy of an NHL team. (They
+    are all switched off and empty, unless the player made a team of his own in one: it is named
+    after no NHL team and shares no players with one.)"""
     U = R.U
-    used = {U.get(i, 'BSXd') for i in range(U.cur_rec)}
-    return not any(t in used for t in L.MIRROR_OF) and not R.T.get(222, 'NYKk')
+    members = {}
+    for i in range(U.cur_rec):
+        members.setdefault(U.get(i, 'BSXd'), set()).add(R.link_to_pid.get(U.get(i, 'TWSX')))
+    for m, prim in L.MIRROR_OF.items():
+        if not R.T.get(m, 'NYKk') and not members.get(m):
+            continue
+        if R.team_name(m).replace('®', '').strip() == L.MIRROR_NAMES[m]:
+            return False
+        a, b = members.get(prim, set()), members.get(m, set())
+        if b and len(a & b) >= 0.6 * len(b):
+            return False
+    return True
 
 
 def prepared(R):
@@ -137,7 +151,7 @@ def prepare(R, season_year):
     if prepared(R):
         return []
     done = []
-    U, P, Q = R.U, R.P, R.Q
+    U, P = R.U, R.P
     # 1. the All-Star teams: their entries go (the players are on their own teams too)
     gone = [i for i in range(U.cur_rec) if U.get(i, 'BSXd') in ALL_STAR]
     for i in reversed(gone):
@@ -147,23 +161,9 @@ def prepare(R, season_year):
     for i in range(P.cur_rec):
         P.set(i, 'dnFq', max(0, P.get(i, 'dnFq') - 10))
     done.append(("Birth years moved to the game's 2015 calendar", f"{P.cur_rec} players"))
-    # 3. old free agents retire: off the free-agent list, their records become spare
+    # 3. spare records for new players (old free agents retire in the update: builder.settle_free_agents,
+    # which knows who played in the NHL last season)
     R.reindex()
-    keep, retired = [], 0
-    for k in range(Q.cur_rec):
-        link = Q.get(k, 'TWSX')
-        prow = R.p_by_id.get(R.link_to_pid.get(link))
-        if prow is not None and P.get(prow, 'dnFq') + 1910 <= season_year - RETIRE_AGE:
-            retired += 1
-            for f in ('BSXd', 'GDhI', 'dhKk', 'IrlK', 'IzRv', 'WBbd'):
-                P.set(prow, f, 0)
-            continue
-        keep.append(link)
-    Q.cur_rec = 0
-    for link in keep:
-        Q.add_record({'TWSX': link})
-    done.append(("Free agents of 2014 who retired", f"{retired} players"))
-    # 4. spare records for new players
     done.append(("Spare player records added", f"{add_spares(R)} records"))
     R.reindex()
     return done
@@ -213,12 +213,13 @@ def add_spares(R):
 
 
 def retire_leftovers(b, leagues):
-    """Before the club leagues are rebuilt (the game's own roster only): players of 2014 on the
-    clubs about to be rebuilt whom no league and NHL.com list any more, and who are RETIRE_AGE or
-    older, leave now and retire, so their records are spare for the leagues' new players. (Retired
-    later, at the end of a league, they would only be used by the next update, which would then
-    differ from the first.) Everyone the leagues list is reserved: his record is never reused.
-    `leagues`: {step: league} as the leagues will be built. Returns how many retired."""
+    """Before the club leagues are rebuilt: players on the clubs about to be rebuilt whom no league
+    and NHL.com list any more, and who would retire (builder.would_retire: b.retire_age or older,
+    not in the NHL last season), leave now and retire, so their records are spare for the leagues'
+    new players. (Retired later, at the end of a league, they would only be used by the next
+    update, which would then differ from the first.) Everyone the leagues list is reserved: his
+    record is never reused. `leagues`: {step: league} as the leagues will be built. Returns how
+    many retired."""
     from .leagues import clubs
     from .matching import match_club
     R, U = b.R, b.U
@@ -246,10 +247,9 @@ def retire_leftovers(b, leagues):
                 have[g] += 1
                 needed.add(pid)
     retired = 0
-    from .donors import real_birth_year
     for pid, ents in sorted(leaving.items()):
         prow = R.p_by_id[pid]
-        if pid in needed or real_birth_year(b.P, prow) > b.data.season_year - RETIRE_AGE:
+        if pid in needed or not b.would_retire(pid):
             continue
         others = [x for x in R.entries_by_pid.get(pid, []) if x not in b.deleted and x not in ents]
         if others:                       # still on another team (a national team): he stays

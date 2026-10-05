@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import ssl
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -34,9 +35,19 @@ ROSTER_TTL = 20 * 60          # seconds a downloaded NHL roster set stays fresh
 MISSING_TTL = 6 * 3600
 
 
+def data_home():
+    """Where programs keep their own files on this system: %LOCALAPPDATA% on Windows,
+    ~/Library/Application Support on a Mac, $XDG_DATA_HOME (~/.local/share) on Linux."""
+    home = os.path.expanduser('~')
+    if os.name == 'nt':
+        return os.environ.get('LOCALAPPDATA') or home
+    if sys.platform == 'darwin':
+        return os.path.join(home, 'Library', 'Application Support')
+    return os.environ.get('XDG_DATA_HOME') or os.path.join(home, '.local', 'share')
+
+
 def app_dir(*parts):
-    base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~')
-    path = os.path.join(base, 'NHLLegacyRosterUpdater', *parts)
+    path = os.path.join(data_home(), 'NHLLegacyRosterUpdater', *parts)
     os.makedirs(os.path.dirname(path) if os.path.splitext(path)[1] else path, exist_ok=True)
     return path
 
@@ -284,7 +295,9 @@ def gather(R, steps, pack, progress=None, offline=False, fresh=False):
                 iihf=pack.get('iihf') if pipeline.NATIONAL in steps else None,
                 season_year=season,
                 leagues={k: v for k, v in pack.get('leagues', {}).items() if k in steps},
-                nhl_logos=pack.get('nhl_logos') if pipeline.NHL in steps else None)
+                nhl_logos=pack.get('nhl_logos') if pipeline.NHL in steps else None,
+                nhl_last=pack.get('nhl_last') if pipeline.NHL in steps else None,
+                drafts=pack.get('drafts'))
 
 
 def load_research_dir(folder):

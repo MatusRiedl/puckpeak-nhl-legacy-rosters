@@ -108,13 +108,15 @@ def apply_teams(b, teams, say=None):
         say(f"My edits: {len(teams)} teams")
 
 
-def birth_of(P, prow):
-    return (P.get(prow, 'dnFq') + 1910, P.get(prow, 'pLKJ') + 1, P.get(prow, 'iwsK') + 1)
+def birth_of(P, prow, base=1910):
+    """A record's birthdate. `base` 1900: the game's own roster before stock.prepare moved its
+    birth years to this program's convention."""
+    return (P.get(prow, 'dnFq') + base, P.get(prow, 'pLKJ') + 1, P.get(prow, 'iwsK') + 1)
 
 
-def who_of(P, prow):
+def who_of(P, prow, base=1910):
     """The person key of a player record (what an edit names him by)."""
-    return person_key(P.get(prow, 'PedH'), P.get(prow, 'RMbQ'), birth_of(P, prow))
+    return person_key(P.get(prow, 'PedH'), P.get(prow, 'RMbQ'), birth_of(P, prow, base))
 
 
 def people(b):

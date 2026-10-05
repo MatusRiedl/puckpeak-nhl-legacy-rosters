@@ -136,6 +136,36 @@ def _background_mask(rgb):
     return mask, head(mask)
 
 
+def _shaded_background_mask(rgb, step=14):
+    """(mask of the player, its head) for a studio photo on a shaded backdrop (light in the middle,
+    darker towards the edges: the CHL's and AHL's), or None. The backdrop is grown from the top and
+    the upper sides pixel by pixel while each pixel is close to its neighbour, so a smooth shade
+    counts as backdrop and the sharp edge of hair or a jersey stops it (a flood fill compares with
+    the seed's colour, which a shade soon leaves behind: Landon DuPont's WHL photo)."""
+    w, h = rgb.size
+    px = rgb.load()
+    back = bytearray(w * h)
+    todo = [(x, 0) for x in range(w)] + [(x, y) for x in (0, w - 1) for y in range(h * 2 // 5)]
+    for x, y in todo:
+        back[y * w + x] = 1
+    while todo:
+        x, y = todo.pop()
+        c = px[x, y]
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < w and 0 <= ny < h and not back[ny * w + nx]:
+                n = px[nx, ny]
+                if abs(n[0] - c[0]) + abs(n[1] - c[1]) + abs(n[2] - c[2]) < step:
+                    back[ny * w + nx] = 1
+                    todo.append((nx, ny))
+    mask = Image.frombytes('L', (w, h), bytes(0 if b else 255 for b in back))
+    share = sum(mask.histogram()[255:]) / (w * h)
+    if not 0.2 < share < 0.9:
+        return None
+    k = max(3, (min(w, h) // 60) | 1)
+    mask = _keep_player(mask.filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k)))
+    return mask, head(mask)
+
+
 # where the head usually is in a league's square headshot, as shares of the picture:
 # (top of the hair, middle, head width); used when the backdrop cannot be removed
 HEADSHOT = (0.05, 0.5, 0.47)
@@ -154,6 +184,10 @@ def prepare(photo):
         return (img, found) if found else None
     w, h = img.size
     cut = _background_mask(img.convert('RGB'))
+    if cut is None or not _clean(*cut):          # a shaded backdrop: grow it by neighbours instead
+        shaded = _shaded_background_mask(img.convert('RGB'))
+        if shaded is not None and _clean(*shaded):
+            cut = shaded
     if cut is not None and _clean(*cut):
         img.putalpha(cut[0].filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1.2)))
         return img, cut[1]
@@ -297,38 +331,64 @@ def _reflected(img, size):
     return canvas
 
 
+# where the game's own logos sit in each kind of picture (left, top, right, bottom as shares of its
+# width and height; medians over the disc's NHL logos, alpha above 40). Ours filled 88-100 % of the
+# picture, so big logos covered the team's record and the calendar's spilled out of their cells
+# (testers, 0.7.0)
+LOGO_BOX = {'t': (0.16, 0.20, 0.84, 0.79), 'd': (0.14, 0.19, 0.86, 0.83), 'c': (0.05, 0.05, 0.70, 0.62),
+            'w': (0.09, 0.11, 0.89, 0.90), 's': (0.05, 0.14, 0.95, 0.86)}
+
+
+def _box(size, kind):
+    """The game's area for a kind of logo: (x, y, width, height) in pixels."""
+    l, t, r, b = LOGO_BOX[kind]
+    return round(size[0] * l), round(size[1] * t), round(size[0] * (r - l)), round(size[1] * (b - t))
+
+
+def _in_box(img, size, kind):
+    """`img` (already drawn for the box's size) placed into the game's area of a picture."""
+    x, y, w, h = _box(size, kind)
+    canvas = Image.new('RGBA', size, (0, 0, 0, 0))
+    canvas.alpha_composite(img, (x + (w - img.width) // 2, y + (h - img.height) // 2))
+    return canvas
+
+
 def logo(img, kind, size, colours=((60, 60, 60), (20, 20, 20))):
     """One of the game's logo pictures: kind 't' plain, 'd' dynasty, 'c' calendar, 'w' wide
-    watermark, 's' small banner (in the team's colours), 'r' with a reflection (favourite team)."""
+    watermark, 's' small banner (in the team's colours), 'r' with a reflection (favourite team).
+    Each fills the area the game's own logos of that kind fill (LOGO_BOX)."""
     clean = _trim(img)
     if kind == 'r':
         return _reflected(clean, size)
-    if kind == 't':
-        return _centred(_outlined(_fit(clean, size[0] * 0.78, size[1] * 0.78), max(2, size[0] // 64)), size, 0.94)
-    if kind == 'd':
-        return _centred(_outlined(_fit(clean, size[0] * 0.8, size[1] * 0.8), 2), size, 0.96)
-    if kind == 'c':
-        out = _centred(clean, size, 1.25, (0.42, 0.5))
-        fade = Image.linear_gradient('L').rotate(90).resize(size)  # clear on the right
-        out.putalpha(ImageChops.multiply(out.getchannel('A'), fade.point(lambda v: min(255, 80 + v))))
-        return out
-    if kind == 'w':
-        out = _centred(clean, size, 2.2, (0.45, 0.5))
-        out.putalpha(ImageChops.multiply(out.getchannel('A'), _round(size)))
-        return out
-    if kind == 's':
-        w, h = size
+    if kind in ('t', 'd'):                  # the whole logo on a white edge and a soft shadow
+        _, _, w, h = _box(size, kind)
+        edge = max(2, size[0] // 64) if kind == 't' else 2
+        mark = _outlined(_fit(clean, w - 6 * edge, h - 6 * edge), edge)
+        mark = mark.crop(mark.getchannel('A').getbbox() or (0, 0, mark.width, mark.height))
+        return _in_box(_fit(mark, w, h) if mark.width > w or mark.height > h else mark, size, kind)
+    if kind == 'c':                         # an enlarged piece of the logo, fading out on the right
+        x, y, w, h = _box(size, kind)
+        piece = _centred(clean, (w, h), 1.25, (0.42, 0.5))
+        fade = Image.linear_gradient('L').rotate(90).resize((w, h))
+        piece.putalpha(ImageChops.multiply(piece.getchannel('A'), fade.point(lambda v: min(255, 80 + v))))
+        return _in_box(piece, size, kind)
+    if kind == 'w':                         # a big zoomed piece, faded to a circle
+        x, y, w, h = _box(size, kind)
+        piece = _centred(clean, (w, h), 2.2, (0.45, 0.5))
+        piece.putalpha(ImageChops.multiply(piece.getchannel('A'), _round((w, h), inset=0.06, soft=0.08)))
+        return _in_box(piece, size, kind)
+    if kind == 's':                         # a banner in the team's colours with part of the logo
+        x, y, w, h = _box(size, kind)
         top, bottom = colours
-        band = Image.new('RGBA', size, (0, 0, 0, 0))
-        grad = Image.linear_gradient('L').resize(size)
-        band = Image.composite(Image.new('RGBA', size, bottom + (255,)), Image.new('RGBA', size, top + (255,)), grad)
-        mask = Image.new('L', size, 0)
-        ImageDraw.Draw(mask).rounded_rectangle((1, 1, w - 2, h - 2), radius=h // 6, fill=230)
+        grad = Image.linear_gradient('L').resize((w, h))
+        band = Image.composite(Image.new('RGBA', (w, h), bottom + (255,)), Image.new('RGBA', (w, h), top + (255,)), grad)
+        mask = Image.new('L', (w, h), 0)
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=h // 6, fill=230)
         band.putalpha(mask)
         mark = _fit(clean, w * 0.9, h * 1.6)
-        layer = Image.new('RGBA', size, (0, 0, 0, 0))
+        layer = Image.new('RGBA', (w, h), (0, 0, 0, 0))
         layer.paste(mark, (w - mark.width + w // 10, (h - mark.height) // 2))
         layer.putalpha(ImageChops.multiply(layer.getchannel('A'), mask))
         band.alpha_composite(layer)
-        return band
+        return _in_box(band, size, kind)
     raise ValueError(f"unknown logo kind {kind}")

@@ -11,7 +11,7 @@ from collections import Counter
 from . import layout as L
 from . import lines
 from . import ratings
-from .donors import Donors
+from .donors import Donors, real_birth_year
 from .matching import match, norm, same_first_name
 
 
@@ -28,16 +28,23 @@ class ChangeLog(list):
 class Data:
     """Everything the builder needs from outside the save."""
 
-    def __init__(self, nhl_players=None, ea_ratings=None, iihf=None, season_year=2026, leagues=None, nhl_logos=None):
+    def __init__(self, nhl_players=None, ea_ratings=None, iihf=None, season_year=2026, leagues=None, nhl_logos=None,
+                 nhl_last=None, drafts=None):
         self.nhl_players = nhl_players or []   # flat list, see datasource.flatten_nhl()
         self.ea_ratings = ea_ratings           # [{'name','team','position','birth','ovr','attrs'}] or None
         self.iihf = iihf                       # {'AUT': [player, ...]} or None
         self.season_year = season_year         # the year the season starts in
         self.leagues = leagues or {}           # club leagues: {'liiga': {'teams': [{'slot', 'players', ...}]}}
         self.nhl_logos = nhl_logos or {}       # NHL.com team code -> logo link (photos and logos)
+        self.nhl_last = nhl_last or []         # who played in the NHL last season; 'team' None: unsigned now
+        self.drafts = drafts or []             # NHL draft picks (draft.py)
 
 
 LINK_LIMIT = 16000      # player link ids from here up are the game's own
+# a free agent or a player leaving his team retires at this age when he did not play in the NHL last
+# season and no league lists him (the game's own roster: stock.RETIRE_AGE)
+FA_RETIRE_AGE = 35
+FREE_AGENTS = "Free agents"     # the part of the list of changes for retired and unsigned free agents
 
 
 def stock_retire_age():
@@ -62,9 +69,12 @@ class Builder:
         self.data = data
         self.layout = layout
         self.mirrors = L.mirrors(layout)    # custom copies kept in step with their NHL team
-        # the game's own roster: players of 2014 who leave a team at this age retire (their records
-        # become spare) instead of filling the free-agent list
-        self.retire_age = None if layout == L.COMMUNITY else stock_retire_age()
+        # players who leave a team, or are free agents, at this age retire (their records become
+        # spare) unless they played in the NHL last season: in the game's own roster from 30
+        # (stock.RETIRE_AGE: its 2014 players), in a community roster from FA_RETIRE_AGE
+        self.retire_age = FA_RETIRE_AGE if layout == L.COMMUNITY else stock_retire_age()
+        # records still in EA's year - 1900 (donors.real_birth_year): only community rosters have them
+        self.stale_years = layout == L.COMMUNITY
         self.progress = progress or (lambda msg: None)
         self.U, self.P, self.C, self.Q = R.U, R.P, R.C, R.Q
         U = self.U
@@ -118,8 +128,18 @@ class Builder:
         self.records_of = {}    # identity -> records (one person can have two: national-team goalies)
         for r in range(self.P.cur_rec):
             self.records_of.setdefault(self.identity(r), []).append(r)
+        # who played in the NHL last season (never retired; the unsigned ones are free agents)
+        self.last_season_people = match(R, [dict(p, birth=tuple(p['birth'])) for p in data.nhl_last])
+        self.last_season = {self.P.get(p['row'], 'zIBw') for p in self.last_season_people if p['row'] is not None}
+        self.listed_rows = set()    # records the club leagues list (reserve_listed): never retired
+        self.league_rows = set()    # of them, the ones a club league lists (not an IIHF squad)
+        self.api_pids = set()       # pids on the NHL.com rosters (nhl_rosters)
+        self.national_gaps = {}     # national team -> position groups of members who retired
+        self.rebuild_national = False   # the NHL step first empties the national teams (clear_national)
         self.donors = Donors(self)
+        self.donors.reserve(data.nhl_last)      # not for reuse, even when on no team in the save
         self.orig_club = self.club_teams()
+        self.orig_home = self.home_teams()
         # each team's original line structure: (class, slot set) of its dressed players, best first.
         # The class is the one the slots are for (a centre on a wing's line slot leaves a wing's set)
         self.orig_slot_sets = {}
@@ -138,6 +158,18 @@ class Builder:
             if self.P.get(prow, 'BSXd') and not self.same_team(self.P.get(prow, 'BSXd') - 1) & on.get(pid, set())}
 
     # --- helpers ----------------------------------------------------------
+    def home_teams(self):
+        """pid -> the club a player plays for (his lowest team that is no national team, NHL copy or
+        event team), for players who have one."""
+        U, out = self.U, {}
+        for i in range(U.cur_rec):
+            t = U.get(i, 'BSXd')
+            if i in self.deleted or t in L.NATIONAL or t in L.MIRROR_OF or t in L.EVENTS:
+                continue
+            pid = self.pid_of_entry(i)
+            out[pid] = min(out.get(pid, t), t)
+        return out
+
     def club_teams(self):
         """pid -> set of club teams (NHL, AHL) the player has a roster entry on."""
         U, out = self.U, {}
@@ -271,20 +303,37 @@ class Builder:
             self.fa_links.append(self.U.get(e, 'TWSX'))
         return True
 
-    def retires(self, pid):
-        """The game's own roster only: a player of 2014 who has left his team, is on no team at all
-        any more and is RETIRE_AGE or older retires instead of becoming a free agent. His record is
-        cleared of its contract and NHL rights and becomes a spare record for a new player. False
-        for everyone else. Only the NHL step and stock.retire_leftovers() retire players: both run
-        before any new player is made, so a second run finds no spare record the first did not."""
-        if self.retire_age is None:
+    def would_retire(self, pid):
+        """Is this player old enough to retire (retire_age) and nobody's player any more? Not when
+        he played in the NHL last season (an unsigned veteran is a free agent: Reimer), is on an
+        NHL.com roster, is listed by a club league, or was placed in this run."""
+        prow = self.R.p_by_id.get(pid)
+        if prow is None or pid in self.last_season or pid in self.api_pids or prow in self.listed_rows:
             return False
-        if any(x not in self.deleted for x in self.R.entries_by_pid.get(pid, [])):
+        return real_birth_year(self.P, prow, self.stale_years) <= self.data.season_year - self.retire_age and pid not in self.attached
+
+    def retires(self, pid):
+        """A player who has left his team (or is a free agent), is on no club team any more and
+        would_retire() retires instead of staying a free agent. His record is cleared of its
+        contract and NHL rights and becomes a spare record for a new player; his places on national
+        teams are freed (national_teams() fills them). False for everyone else. Only
+        settle_free_agents(), the NHL step and stock.retire_leftovers() retire players: all run
+        before any new player is made, so a second run finds no spare record the first did not."""
+        ents = [x for x in self.R.entries_by_pid.get(pid, []) if x not in self.deleted]
+        copies = [x for x in ents if self.U.get(x, 'BSXd') in L.MIRROR_OF]
+        ents = [x for x in ents if x not in copies]
+        if any(self.U.get(x, 'BSXd') not in L.NATIONAL for x in ents) or not self.would_retire(pid):
             return False
         prow = self.R.p_by_id[pid]
-        from .donors import real_birth_year
-        if real_birth_year(self.P, prow) > self.data.season_year - self.retire_age or pid in self.attached:
-            return False
+        for e in copies:        # places on the custom copies of his NHL team go with it (sync_mirrors)
+            self.deleted.add(e)
+        for e in ents:          # national teams: a 2014 squad of the game's own roster (Datsyuk, Price)
+            team = self.U.get(e, 'BSXd')
+            self.depart(e)
+            self.deleted.add(e)
+            self.national_gaps.setdefault(team, []).append({3: 'D', 4: 'G'}.get(self.P.get(prow, 'aljv'), 'F'))
+            self.log.append([self.R.T.get(team, 'RPbr'), 'national team: removed', self.R.name(prow), 'retired',
+                             self.U.get(e, 'tRVs')])
         for f in ('BSXd', 'GDhI', 'dhKk', 'IrlK', 'IzRv', 'WBbd'):
             self.P.set(prow, f, 0)
         self.fa_links = [l for l in self.fa_links if self.R.link_to_pid.get(l) != pid]
@@ -324,11 +373,13 @@ class Builder:
         self.created.add(prow)
         return prow
 
-    def create_player(self, p):
+    def create_player(self, p, required=True):
         P = self.P
         pos = L.POS_CODE[p['pos']]
         name = f"{p['first']} {p['last']}"
-        prow = self.take_record(pos, name, target=self.depth[pos == 4])
+        prow = self.take_record(pos, name, target=self.depth[pos == 4], required=required)
+        if prow is None:
+            return None
         old = self.R.name(prow)
         y, m, d = p['birth']
         self.donors.reset_identity(prow, name, L.NAT_CODE.get(p.get('country')), y)
@@ -339,16 +390,118 @@ class Builder:
         P.set(prow, 'iwsK', d - 1)
         P.set(prow, 'pLKJ', m - 1)
         P.set(prow, 'dnFq', y - 1910)
+        self.nhl_bio(prow, p)
+        if p.get('num'):
+            P.set(prow, 'tRVs', p['num'])
+        self.log.append([p['team'], 'created', name, f"reused record of {old}", p.get('num') or ''])
+        return prow
+
+    def nhl_bio(self, prow, p):
+        """NHL.com's height, weight, hand and birthplace, for every NHL player (not only new ones:
+        the game's own roster has 2014's)."""
+        P = self.P
         if p.get('height_in'):
             P.set(prow, 'QBpy', max(0, min(31, p['height_in'] - 54)))
         if p.get('weight_lb'):
             P.set(prow, 'WZNs', max(0, min(255, p['weight_lb'] - 120)))
         if p.get('shoots') in ('L', 'R'):
             P.set(prow, 'pkRG', 0 if p['shoots'] == 'L' else 1)
-        if p.get('num'):
-            P.set(prow, 'tRVs', p['num'])
-        self.log.append([p['team'], 'created', name, f"reused record of {old}", p['num']])
-        return prow
+        if p.get('city'):
+            self.set_text(prow, 'JzFM', p['city'])
+
+    def former_photos(self):
+        """Players on a team or the free-agent list whom no list gave a photo get last season's, from
+        the leagues' `former` lists (name and birthdate): a junior the list leaves out stays with his
+        club and keeps a picture (Landon DuPont, testers 0.8.0)."""
+        index = {}
+        for league in self.data.leagues.values():
+            for p in league.get('former') or []:
+                index.setdefault((norm(p['first']), norm(p['last']), tuple(p['birth'])), p['photo'])
+        if not index:
+            return 0
+        P, R = self.P, self.R
+        fa = {R.link_to_pid.get(l) for l in self.fa_links}
+        live = self.live_entries()
+        added = 0
+        for prow in range(P.cur_rec):
+            pid = P.get(prow, 'zIBw')
+            if prow in self.photos or not (live.get(pid) or pid in fa):
+                continue
+            key = (norm(P.get(prow, 'PedH')), norm(P.get(prow, 'RMbQ')),
+                   (P.get(prow, 'dnFq') + 1910, P.get(prow, 'pLKJ') + 1, P.get(prow, 'iwsK') + 1))
+            if key in index:
+                self.photos[prow] = index[key]
+                added += 1
+        return added
+
+    # --- free agents --------------------------------------------------------------
+    def reserve_listed(self, leagues):
+        """The players the club leagues list (`leagues`: {step: league} as they will be built) and the
+        IIHF's national squads: their records are never reused or retired, even before their league
+        or national team places them."""
+        from .leagues import clubs
+        from .matching import match_club
+        people = [p for league in leagues.values() for p in clubs.listed(league['teams'])]
+        self.donors.reserve(people)
+        match_club(self.R, people)
+        squads = [dict(p, birth=tuple(p['birth'])) for players in (self.data.iihf or {}).values() for p in players]
+        self.donors.reserve(squads)
+        match(self.R, squads)
+        self.listed_rows = {p['row'] for p in people + squads if p['row'] is not None}
+        self.league_rows = {p['row'] for p in people if p['row'] is not None}      # a league places these
+
+    def settle_free_agents(self):
+        """Free agents who would_retire() retire: off the list, their records spare (Rask, Getzlaf,
+        Price, who last played in 2022). Runs before any player is made (see retires())."""
+        R = self.R
+        section, self.log.section = self.log.section, FREE_AGENTS
+        for link in list(self.fa_links):
+            pid = R.link_to_pid.get(link)
+            prow = R.p_by_id.get(pid)
+            if prow is None or link not in self.fa_links:
+                continue
+            age = self.data.season_year - real_birth_year(self.P, prow, self.stale_years)
+            if self.retires(pid):
+                self.log.append(['FA', 'free agent retired', R.name(prow), f"{age}, not in the NHL last season", ''])
+        self.log.section = section
+
+    def add_unsigned(self):
+        """Everyone who played in the NHL last season and is unsigned now is a free agent: the ones
+        the save has get onto the list, the others are created (owner, 2026-10-04: all of them)."""
+        R, P = self.R, self.P
+        section, self.log.section = self.log.section, FREE_AGENTS
+        on_rosters = {p.get('nhl_id') for p in self.api if p.get('nhl_id')}
+        live = self.live_entries()
+        fa = {R.link_to_pid.get(l) for l in self.fa_links}
+        added = created = 0
+        for p in sorted(self.last_season_people, key=lambda p: p['nhl_id'] or 0):
+            if p.get('team') or p.get('nhl_id') in on_rosters:
+                continue
+            name = f"{p['first']} {p['last']}"
+            row = p['row']
+            if row is not None:
+                pid = P.get(row, 'zIBw')
+                if pid in fa or pid in self.api_pids or any(e not in self.deleted for e in live.get(pid, [])):
+                    continue                    # a free agent already, or with a club in the save
+                detail = 'unsigned, in the NHL last season'
+                added += 1
+            else:
+                row = self.create_player(dict(p, team='FA', num=None, birth=tuple(p['birth'])), required=False)
+                if row is None:
+                    self.log.append(['FA', 'skipped', name, 'no free player record left', ''])
+                    continue
+                pid = P.get(row, 'zIBw')
+                detail = 'unsigned, in the NHL last season: new to the game'
+                created += 1
+            self.fa_links.append(self.new_link(pid))
+            fa.add(pid)
+            if p.get('photo'):
+                self.photos[row] = p['photo']
+            self.log.append(['FA', 'free agent added', name, detail, ''])
+        if added or created:
+            self.log.append(['ALL', 'summary', 'unsigned NHL players made free agents', f"{added + created} "
+                             f"({created} new to the game)", ''])
+        self.log.section = section
 
     # --- NHL ------------------------------------------------------------------
     def nhl_rosters(self):
@@ -359,7 +512,12 @@ class Builder:
         self.api_rows = {p['row'] for p in api if p['row'] is not None}
         self.api_country = {p['row']: p.get('country') for p in api if p['row'] is not None}
         api_pids = {self.P.get(p['row'], 'zIBw') for p in api if p['row'] is not None}
+        self.api_pids = api_pids
         target_entry = {}
+        if self.rebuild_national:      # the game's own roster, first update (clear_national)
+            self.clear_national()
+        # 0. free agents who retired since: before anything else, so their records are spare now
+        self.settle_free_agents()
 
         # 1. players leaving the NHL: remove their NHL entries, free agent unless still on another pro team
         for e in range(U.cur_rec):
@@ -373,7 +531,7 @@ class Builder:
                 status = 'free agent'
                 if other:
                     status = 'stays with ' + R.team_name(U.get(other[0], 'BSXd'))
-                elif self.retire_age is not None and self.retires(pid):
+                elif self.retires(pid):
                     status = 'retired'
                 elif U.get(e, 'TWSX') not in self.fa_links:
                     self.fa_links.append(U.get(e, 'TWSX'))
@@ -398,6 +556,7 @@ class Builder:
             self.set_pro_team(p['row'], target)
             self.nhl_position(p)
             self.nhl_birthdate(p)
+            self.nhl_bio(p['row'], p)
             pid = self.P.get(p['row'], 'zIBw')
             ents = [x for x in R.entries_by_pid.get(pid, []) if x not in self.deleted]
             here = [x for x in ents if U.get(x, 'BSXd') == target]
@@ -428,6 +587,8 @@ class Builder:
         for p in api:
             if p.get('photo') and p['row'] is not None:
                 self.photos[p['row']] = p['photo']
+        # 2b. last season's NHL players who are unsigned now: free agents
+        self.add_unsigned()
 
         # 3. jersey numbers from the official rosters, resolving clashes
         for team in L.NHL_PRIMARY:
@@ -688,6 +849,7 @@ class Builder:
         # then on AHL teams (EA lists a club's farm players too); only an unambiguous match counts.
         # Other leagues are left out: a name alone is not enough among thousands of club players.
         by_name, elsewhere = {}, {}
+        name_only = set()           # records rated by name alone: only while on an NHL or AHL team
         U = self.U
         for e in range(U.cur_rec):
             if e in self.deleted:
@@ -707,8 +869,10 @@ class Builder:
                 cands = [c for c in cands if c[1] == L.team_code(p.get('team'))]
             if len(cands) == 1:
                 matched.append((p, cands[0][0]))
+                name_only.add(cands[0][0])
             elif not cands and len(elsewhere.get(key, ())) == 1:
                 matched.append((p, next(iter(elsewhere[key]))))
+                name_only.add(next(iter(elsewhere[key])))
         # the same person can have several records (national-team goalies): rate all of them
         same_person = {}
         for r in range(P.cur_rec):
@@ -736,6 +900,7 @@ class Builder:
                 stats['players rated'] += 1
         self._ratings()
         self.ea_rated = rated
+        self.ea_name_only = {P.get(r, 'zIBw') for r in name_only} & rated
         for k, v in sorted(stats.items()):
             self.log.append(['ALL', 'EA ratings', k, v, ''])
         self.rating_stats = dict(stats)
@@ -763,6 +928,21 @@ class Builder:
             return found[0]
         listed = no_birth.get((fn, norm(last)), []) if by_name else []
         return listed[0] if len(listed) == 1 else None
+
+    def unrate_name_only(self, pid):
+        """A player EA's rating reached by name alone (no birthdate: only on NHL and AHL teams) who now
+        joins a club elsewhere: from now on he counts as the next run will see him, by his attributes
+        (they stay as EA's rating wrote them). Otherwise lines dealt on EA's overall in this run
+        differ from the next run's (Joona Koppanen, 75 by EA, 74.5 by his attributes, at Luleå)."""
+        if pid not in getattr(self, 'ea_name_only', ()):
+            return
+        self.ea_name_only.discard(pid)
+        self.ea_rated.discard(pid)
+        self.ovr.pop(pid, None)
+        for tname in ('yvSd', 'yuHm'):
+            row = self.ai_row[tname].get(pid)
+            if row is not None:
+                self.quality[pid] = ratings.level(self.R.f[tname], row) + self.ovr_offset[tname == 'yuHm']
 
     def write_ea_rating(self, prow, p):
         """Give a player EA's published attributes (see apply_ea_ratings). False if he has no rating row."""
@@ -864,7 +1044,8 @@ class Builder:
             have = {self.person(m[0]) for m in members if isinstance(m[0], int)}
             others = sorted((prow for k, prow in elsewhere.items()
                              if k not in have and k not in nhl_now and P.get(prow, 'hleL') == L.NAT_CODE[code]
-                             and P.get(prow, 'dnFq') + 1910 >= self.data.season_year - 38),
+                             and P.get(prow, 'dnFq') + 1910 >= self.data.season_year - 38
+                             and not self.would_retire(P.get(prow, 'zIBw'))),
                             key=lambda r: (-quality(r), r))
             for prow in others:
                 g = group(prow)
@@ -888,6 +1069,34 @@ class Builder:
                 self.log.append([code, 'national team: added', R.name(prow), src, n])
             lines.build_lines(self, team)
             self.set_letters(team)
+
+    def clear_national(self):
+        """The game's own roster, first update: its national teams are 2014's, so they are emptied and
+        filled again like the ones the community left empty (fill_empty_national). Their members who
+        are on no other team retire (would_retire) or become free agents: never a teamless record,
+        which the next update would reuse and so differ from this one."""
+        self.rebuild_national = False
+        R, U = self.R, self.U
+        gone = set()
+        for e in range(U.cur_rec):
+            if e not in self.deleted and U.get(e, 'BSXd') in L.NATIONAL:
+                self.deleted.add(e)
+                gone.add(self.pid_of_entry(e))
+        live = self.live_entries()
+        fa = {R.link_to_pid.get(l) for l in self.fa_links}
+        retired = freed = 0
+        for pid in sorted(p for p in gone if p in R.p_by_id):
+            if any(e not in self.deleted for e in live.get(pid, [])) or pid in fa:
+                continue
+            if self.retires(pid):
+                retired += 1
+            else:
+                link = next((l for l in R.pid_to_links.get(pid, []) if l in self.link_row), None)
+                self.fa_links.append(link if link is not None else self.new_link(pid))
+                fa.add(pid)
+                freed += 1
+        self.log.append(['ALL', 'summary', "2014's national teams emptied, to be filled again",
+                         f"{len(gone)} players: {retired} retired, {freed} free agents", ''])
 
     def _national_estimate(self, p, code, prof):
         """(rating table, attribute profile, adjustment, quality) for an IIHF player EA does not
@@ -1007,14 +1216,21 @@ class Builder:
                 repl = next((v for v in pool if group(v[0]) == g), None)
                 if repl:
                     add(*repl, reason=f"replaces {R.name(self.prow_of_entry(e))}")
-            # up to `max_swaps` rising stars who rate above the weakest member at their position
+            # places of members who retired in this run (retires())
+            for g in self.national_gaps.pop(t, []):
+                repl = next((v for v in pool if group(v[0]) == g), None)
+                if repl:
+                    add(*repl, reason="replaces a retired player")
+            # up to `max_swaps` rising stars who rate above the weakest member at their position (never
+            # one who would retire as a free agent: the next update would retire him, and differ)
             swaps = 0
             for prow, ce in list(pool):
                 if swaps >= max_swaps:
                     break
                 if P.get(prow, 'dnFq') + 1910 < rising_star_born:
                     continue
-                same = [e for e in members if e not in added and group(self.prow_of_entry(e)) == group(prow)]
+                same = [e for e in members if e not in added and group(self.prow_of_entry(e)) == group(prow)
+                        and not self.would_retire(self.pid_of_entry(e))]
                 if not same:
                     continue
                 weakest = min(same, key=nq)
@@ -1049,6 +1265,48 @@ class Builder:
                     self.U.set(e, f, 0)
             return
         self.set_letters(team)
+
+    # --- goalie equipment ------------------------------------------------------------
+    GEAR_PARTS = ('pads', 'blocker', 'trapper')
+
+    def goalie_gear(self):
+        """A goalie who changed club (or is new: a record taken over) wears his old club's colours:
+        EA painted each goalie's pads, blocker and glove (exhibitiongoalieequipment) in his 2014
+        team's colours on white. The coloured parts are painted in the new club's colours: the first
+        colour becomes its primary, the second its secondary; white, grey and black stay. A goalie
+        whose club did not change is left alone, so a second run changes nothing."""
+        R, P, T = self.R, self.P, self.R.T
+        G = R.f['lVMf']
+        rows = {G.get(i, 'zIBw'): i for i in range(G.cur_rec)}
+        now = self.home_teams()
+        painted = 0
+        for pid, team in sorted(now.items()):
+            prow = R.p_by_id.get(pid)
+            if prow is None or P.get(prow, 'aljv') != 4 or pid not in rows:
+                continue
+            if self.orig_home.get(pid) == team and prow not in self.created:
+                continue
+            club = [tuple(T.get(team, f"{k}color_{c}") for c in 'rgb') for k in ('primary', 'secondary')]
+            g = rows[pid]
+            order = []          # the gear's own colours, in the order they first appear
+            for part in self.GEAR_PARTS:
+                for z in range(1, 10):
+                    colour = tuple(G.get(g, f"{part}zone{z}color_{c}") for c in 'rgb')
+                    if max(colour) - min(colour) >= 40 and colour not in order:
+                        order.append(colour)
+            if not order:
+                continue
+            for part in self.GEAR_PARTS:
+                for z in range(1, 10):
+                    colour = tuple(G.get(g, f"{part}zone{z}color_{c}") for c in 'rgb')
+                    if colour in order:
+                        for c, v in zip('rgb', club[order.index(colour) % 2]):
+                            G.set(g, f"{part}zone{z}color_{c}", v)
+            painted += 1
+        self.gear_painted = painted
+        if painted:
+            self.log.append(['ALL', 'summary', "goalie equipment painted in the new club's colours",
+                             f"{painted} goalies", ''])
 
     # --- contracts -----------------------------------------------------------------
     def contracts(self):

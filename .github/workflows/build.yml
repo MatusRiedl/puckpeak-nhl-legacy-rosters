@@ -1,0 +1,75 @@
+# The tests on Linux, macOS and Windows, and the Linux and Mac programs. Started by hand from the
+# Actions tab, or by pushing a tag v*: then the Mac zip and the Linux tar.gz are attached to that
+# tag's release (made on the owner's PC with the Windows exe; this waits for it to exist).
+# The base roster is not in git, so the tests that need it are skipped here; the others run.
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write           # attaching files to the release
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest pillow
+      - run: python -m pytest -q -p no:cacheprovider
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+      - name: photo pack (every picture inside the program)
+        run: |
+          python -m venv .venv-build
+          .venv-build/bin/python -m pip install --quiet pillow
+          .venv-build/bin/python tools/build_photopack.py
+      - run: bash packaging/build.sh
+      - name: package
+        run: |
+          version=$(.venv-build/bin/python -c "import legacy_roster; print(legacy_roster.__version__)")
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            tar czf "dist/NHLLegacyRosterUpdater-$version-linux.tar.gz" -C dist NHLLegacyRosterUpdater NHLLegacyRosterUpdater-cli
+          else
+            (cd dist && zip -q "NHLLegacyRosterUpdater-$version-macos-cli.zip" NHLLegacyRosterUpdater-cli)
+          fi
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NHLLegacyRosterUpdater-${{ runner.os }}
+          path: |
+            dist/*-linux.tar.gz
+            dist/*-macos.zip
+            dist/*-macos-cli.zip
+      - name: attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 60); do
+            gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break
+            echo "waiting for the release $GITHUB_REF_NAME"; sleep 30
+          done
+          gh release upload "$GITHUB_REF_NAME" dist/*-linux.tar.gz dist/*-macos.zip dist/*-macos-cli.zip --clobber 2>/dev/null \
+            || gh release upload "$GITHUB_REF_NAME" $(ls dist/*-linux.tar.gz dist/*-macos.zip dist/*-macos-cli.zip 2>/dev/null) --clobber

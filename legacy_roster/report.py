@@ -139,8 +139,9 @@ def html_page(result, heading, leagues=None, csv_name=None, when=None):
     parts = {}
     for row in result.log:
         parts.setdefault(P.section_of(row), []).append(row)
-    order = ([P.SECTION_STOCK, P.SECTION_NHL, P.SECTION_RATINGS, P.SECTION_NATIONAL] + [P.LEAGUE_NAMES[k] for k in P.LEAGUE_ORDER]
-             + [P.SECTION_POOLS, P.SECTION_EDITS, P.SECTION_CONTRACTS])
+    order = ([P.SECTION_STOCK, P.SECTION_NHL, P.SECTION_FREE_AGENTS, P.SECTION_RATINGS, P.SECTION_NATIONAL]
+             + [P.LEAGUE_NAMES[k] for k in P.LEAGUE_ORDER]
+             + [P.SECTION_POOLS, P.SECTION_EDITS, P.SECTION_PLAYER_DATA, P.SECTION_CONTRACTS, P.SECTION_PICTURES])
     order += sorted(k for k in parts if k not in order)
     summary = dict(lines)
     for part in order:

@@ -4,9 +4,9 @@ import datetime
 import os
 from collections import Counter
 
-from . import datasource, savedata, stock
+from . import datasource, draft, savedata, stock
 from . import layout as L
-from .builder import Builder
+from .builder import FREE_AGENTS, Builder
 from .leagues import clubs, pools
 from .roster import Roster
 from .verify import verify
@@ -28,6 +28,8 @@ LEAGUE_NAMES = {'liiga': "Liiga", 'extraliga': "Extraliga", 'shl': "SHL", 'del':
 SECTION_NHL, SECTION_RATINGS, SECTION_NATIONAL = "NHL", "Player ratings", "National teams"
 SECTION_POOLS, SECTION_EDITS, SECTION_CONTRACTS = "Prospect pools", "My edits", "Contracts"
 SECTION_STOCK = "The game's own roster"
+SECTION_FREE_AGENTS, SECTION_PLAYER_DATA = FREE_AGENTS, "Player data"
+SECTION_PICTURES = "Pictures not installed"
 
 
 def usable_clubs(R, league):
@@ -40,7 +42,19 @@ def usable_clubs(R, league):
     out = dict(league)
     out['teams'] = [t for t in league['teams'] if t not in off]
     out['left_out'] = list(league.get('left_out') or []) + [t['full'] for t in off]
+    out['extra'] = list(league.get('extra') or []) + off       # for a player's own team of that name
     return out
+
+
+def with_own_teams(R, league, taken, mirrors):
+    """The league with the player's own custom teams named after its left-out clubs added
+    (clubs.own_teams). `taken`: slots already used, grown by the ones given out here."""
+    own = clubs.own_teams(R, league, taken, mirrors)
+    taken.update(t['slot'] for t in league['teams'])
+    if not own:
+        return league
+    taken.update(t['slot'] for t in own)
+    return dict(league, teams=list(league['teams']) + own)
 
 
 def section_of(row):
@@ -50,8 +64,12 @@ def section_of(row):
 # the window no longer marks them and they are on by default like the rest (owner, 2026-10-04).
 # Liiga and Extraliga were confirmed in the game on 2026-10-03.
 # 'stock' is starting from the game's own roster (stock.py), 'positions' NHL.com's positions and wing
-# sides on the lines, 'favourite logos' the reflection logos (art/install.REFLECTION), all new in 0.6.0
-EXPERIMENTAL = {'shl', 'del', 'nl', 'norway', 'ahl', 'chl', 'stock', 'positions', 'favourite logos'}
+# sides on the lines, 'favourite logos' the reflection logos (art/install.REFLECTION), all new in 0.6.0.
+# New in 0.8.0: 'free agents' (retired ones go, unsigned NHL players come), 'goalie gear' (painted in
+# the new club's colours), 'draft' (real draft data), 'own teams' (a player's own team named after a
+# club the game has no slot for gets its players)
+EXPERIMENTAL = {'shl', 'del', 'nl', 'norway', 'ahl', 'chl', 'stock', 'positions', 'favourite logos',
+                'free agents', 'goalie gear', 'draft', 'own teams'}
 ALL_STEPS = CORE_STEPS      # what build() and update() run when no steps are given
 
 
@@ -105,6 +123,10 @@ class BuildResult:
             out.append((SECTION_NHL, f"{c['moved']} traded, {joined}, {c['left NHL roster']} left"))
         if getattr(self.builder, 'positions_changed', 0):
             out.append(("Positions", f"{self.builder.positions_changed} NHL players moved to NHL.com's position"))
+        retired, signable, new = self.free_agent_counts()
+        if retired or signable:
+            out.append((SECTION_FREE_AGENTS, f"{retired} retired, {signable} unsigned NHL "
+                        f"player{'s' if signable != 1 else ''} added" + (f" ({new} new)" if new else "")))
         stats = getattr(self.builder, 'rating_stats', None)
         if stats:
             out.append((SECTION_RATINGS, f"{stats.get('players rated', 0)} players rated"))
@@ -129,10 +151,24 @@ class BuildResult:
             out.append((LEAGUE_NAMES[key], text))
         if getattr(self.builder, 'pool_released', 0):
             out.append((SECTION_POOLS, f"{self.builder.pool_released} without room, now free agents"))
+        for club, team in getattr(self.builder, 'own_teams', ()):
+            out.append(("Your own team", f"{team} got {club}'s players"))
         edited = sum(1 for r in self.log if r[1] in ('edited', 'team edited', 'created') and section_of(r) == SECTION_EDITS)
         if edited:
             out.append((SECTION_EDITS, f"{edited} of your changes applied"))
+        data = [f"{n} {what}" for n, what in ((getattr(self.builder, 'drafted', 0), "real drafts"),
+                                               (getattr(self.builder, 'gear_painted', 0), "goalies' gear repainted"))
+                if n]
+        if data:
+            out.append((SECTION_PLAYER_DATA, ", ".join(data)))
         return out
+
+    def free_agent_counts(self):
+        """(players who retired, unsigned NHL players made free agents, of them new to the game)."""
+        retired = sum(1 for r in self.log if r[1] == 'free agent retired'
+                      or (r[1] in ('left NHL roster', 'left the club') and r[3] == 'retired'))
+        added = [r for r in self.log if r[1] == 'free agent added']
+        return retired, len(added), sum(1 for r in added if 'new to the game' in str(r[3]))
 
     def headline(self):
         """The size of each step's work on one line (the sentences are in summary())."""
@@ -172,6 +208,10 @@ class BuildResult:
         empty = [r[2] for r in self.log if r[1] == 'national team: left empty']
         if empty:
             lines.append(f"National teams left empty, not enough players of that country found: {', '.join(empty)}.")
+        retired, signable, new = self.free_agent_counts()
+        if retired or signable:
+            lines.append(f"Free agents: {retired} players retired; {signable} NHL players without a contract can be "
+                         f"signed ({new} of them new to the game).")
         if not lines:
             lines.append("Nothing needed changing.")
         return lines
@@ -203,6 +243,8 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
         from . import edits
         edits.restore(R, my_edits)      # renamed players carry their real names through the update
         R.reindex()
+    drafts = draft.Drafts(data.drafts, data.season_year, stale=kind == L.COMMUNITY)
+    drafted = draft.apply(R, drafts, data.season_year)     # before the builder looks at anyone's age
     b = Builder(R, data, progress=say, layout=kind)
     if prepared:
         b.maintain = False              # its national teams are 2014's: brought up to date like a first run
@@ -210,6 +252,22 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     log.section = SECTION_STOCK
     for what, detail in prepared:
         log.append(['ALL', 'summary', what, detail, ''])
+    # the club leagues as they will be built (with the player's own teams named after left-out clubs):
+    # their players' records are reserved from the start
+    leagues = [key for key in LEAGUE_ORDER if key in steps and key in data.leagues]
+    taken = set(L.MIRROR_OF) if b.mirrors else set()
+    league_data = {key: with_own_teams(R, usable_clubs(R, data.leagues[key]), taken, set(L.MIRROR_OF) if b.mirrors else ())
+                   for key in leagues}
+    own = [(t['full'], R.team_name(t['slot'])) for key in leagues for t in league_data[key]['teams'] if t.get('own')]
+    for club, team in own:
+        log.append(['ALL', 'summary', f"your own team {team}", f"gets {club}'s players", ''])
+    b.reserve_listed(league_data)
+    b.league_keys = set(leagues)        # where undrafted prospects can go (clubs._place_prospects)
+    # the game's own roster, first update: its 2014 national teams are filled again from scratch (the NHL
+    # step empties them once it knows NHL.com's players)
+    b.rebuild_national = bool(prepared) and NATIONAL in steps
+    if b.rebuild_national and NHL not in steps:
+        b.clear_national()
     rebuilt = set()
     if NHL in steps:
         log.section = SECTION_NHL
@@ -219,6 +277,7 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
         log.section = SECTION_RATINGS
         say("Ratings: writing player attributes")
         b.apply_ea_ratings()
+        b.donors.refresh()              # ratings move players across the legend line of spare records
     if NHL in steps:
         log.section = SECTION_NHL
         say("NHL: lines and mirror teams")
@@ -230,11 +289,9 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
         log.section = SECTION_NATIONAL
         say("Filling the empty national teams")
         b.fill_empty_national()
-    leagues = [key for key in LEAGUE_ORDER if key in steps and key in data.leagues]
-    league_data = {key: usable_clubs(R, data.leagues[key]) for key in leagues}
-    if kind == L.STOCK and leagues:     # 2014's players the leagues no longer list retire first
-        log.section = SECTION_STOCK
-        say("The game's own roster: retiring the players of 2014 the leagues no longer list")
+    if leagues:                         # old players the leagues no longer list retire first
+        log.section = SECTION_FREE_AGENTS
+        say("Retiring the old players the leagues no longer list")
         stock.retire_leftovers(b, league_data)
     # player records are scarce: every league's clubs get a dressable 20 before any league's depth
     needs = {key: clubs.core_needs(b, league_data[key]) for key in leagues}
@@ -246,6 +303,7 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     if leagues:
         log.section = SECTION_POOLS
         b.pool_released = pools.settle(b, say)
+        b.former_photos()               # last season's photos for players no list gave one
     if NATIONAL in steps:
         log.section = SECTION_NATIONAL
         say("National teams")
@@ -259,8 +317,17 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     if team_edits:
         from . import edits
         edits.apply_teams(b, team_edits, say)
+    log.section = SECTION_PLAYER_DATA
+    b.goalie_gear()
     log.section = SECTION_CONTRACTS
     b.contracts()
+    log.section = SECTION_PLAYER_DATA
+    # the real draft for everyone (again: players made or renamed in this run)
+    drafted += draft.apply(R, drafts, data.season_year)
+    if drafted:
+        log.append(['ALL', 'summary', 'players given their real draft (year, round, pick, team)', drafted, ''])
+    b.drafted = drafted
+    b.own_teams = own
     b.finish()
     art = None
     if art_registry is not None:
@@ -381,15 +448,35 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         slot = savedata.install(folder, source, result.data, name, title_id=title_id)
         saved.append(slot)
         say(f"Saved as \"{slot.name}\" in {slot.folder} ({slot.region})")
-    report = report_as(f"{saved[0].folder}_{stamp}")
+    title = f"{saved[0].folder}_{stamp}"
+    report = report_as(title)
     art = None
     if result.art is not None and art_rpcs3 is not None:
         art_registry.save()             # the new roster uses these ids now
         portraits_, logos, names = result.art
+        skipped = []
         try:
             art = install.install(art_rpcs3, art_title, portraits_, logos, say, names=names,
-                                  also=[t for t in targets if t != art_title])
+                                  also=[t for t in targets if t != art_title], skipped=skipped)
         except install.ArtError as err:  # the roster is saved; only the pictures are missing
             say(str(err))
             art = str(err)
+        if skipped:                     # in the list of changes, by name: a player can tell us who
+            note_skipped(result, skipped)
+            report = report_as(title)
     return UpdateResult(result, saved[0], report, name, art, slots=saved)
+
+
+def note_skipped(result, skipped):
+    """Rows in the list of changes for the pictures that could not be made, with the players' or
+    clubs' names."""
+    b = result.builder
+    R = Roster(result.data)
+    who = {}
+    for prow, url in b.photos.items():
+        who.setdefault(url, []).append(R.name(prow))
+    for slot, url in b.logos.items():
+        who.setdefault(url, []).append(R.team_name(slot))
+    for what, url, why in sorted(skipped):
+        for name in sorted(who.get(url, [url])):
+            result.log.append(['', f"{what} not installed", name, why, '', SECTION_PICTURES])

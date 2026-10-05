@@ -90,18 +90,28 @@ def structure(R, full_lineup=FULL_LINEUP):
             if sig(prim) != sig(m):
                 out[('mirror', m)] = f"{R.team_name(m)} (team {m}) is not an exact copy of {R.team_name(prim)}"
 
-    # free agents are not on NHL teams and carry no contract
+    # free agents are listed once, are not on NHL teams and carry no contract
     nhl_pids = {pid(i) for t in range(32) for i in by_team.get(t, [])}
+    listed = Counter(R.link_to_pid.get(Q.get(k, 'TWSX')) for k in range(Q.cur_rec))
     for k in range(Q.cur_rec):
         p = R.link_to_pid.get(Q.get(k, 'TWSX'))
         prow = R.p_by_id.get(p)
         if prow is None:
             out[('fa link', Q.get(k, 'TWSX'))] = "a free-agent entry points at no player"
             continue
+        if listed[p] > 1:
+            out[('fa twice', p)] = f"free agent {R.name(prow)} is on the free-agent list twice"
         if p in nhl_pids:
             out[('fa on team', p)] = f"free agent {R.name(prow)} is also on an NHL team"
         if any(P.get(prow, f) for f in ('BSXd', 'GDhI', 'dhKk', 'IrlK', 'IzRv')):
             out[('fa contract', p)] = f"free agent {R.name(prow)} still has contract data"
+
+    # draft: a pick has a year, a round and an overall pick; an undrafted player (255) none
+    for prow in range(P.cur_rec):
+        year, rnd, overall = P.get(prow, 'WzKY'), P.get(prow, 'Ujcc'), P.get(prow, 'WfTt')
+        if (rnd > 0) != (overall > 0) or (rnd > 0 and year == 255) or (year == 255 and P.get(prow, 'uWgv')):
+            out[('draft', P.get(prow, 'zIBw'))] = (f"{R.name(prow)}: draft year {year}, round {rnd}, pick {overall} "
+                                                   "do not fit together")
 
     # NHL teams: three letters (one captain at most), every player under contract
     for t in range(32):

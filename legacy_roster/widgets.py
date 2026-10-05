@@ -106,9 +106,9 @@ class Card(ctk.CTkFrame):
         super().__init__(master, fg_color=T.CARD, border_color=T.BORDER, border_width=1, corner_radius=T.RADIUS)
         head = ctk.CTkFrame(self, fg_color='transparent')
         head.pack(fill='x', padx=16, pady=(12, 6))
-        ctk.CTkLabel(head, text=str(number), width=24, height=24, corner_radius=12, fg_color=T.ACCENT,
-                     text_color='#ffffff', font=T.font(13, 'bold')).pack(side='left')
-        ctk.CTkLabel(head, text=title.upper(), font=T.font(12, 'bold'), text_color=T.MUTED).pack(side='left', padx=(10, 0))
+        ctk.CTkLabel(head, text=str(number), width=28, height=28, corner_radius=14, fg_color=T.ACCENT,
+                     text_color='#ffffff', font=T.font(15, 'bold')).pack(side='left')
+        ctk.CTkLabel(head, text=title.upper(), font=T.font(13, 'bold'), text_color=T.TEXT).pack(side='left', padx=(10, 0))
         self.aside = ctk.CTkLabel(head, text='', font=T.font(12), text_color=T.FAINT)
         self.aside.pack(side='right')
         self.body = ctk.CTkFrame(self, fg_color='transparent')
@@ -248,22 +248,22 @@ class Banner(ctk.CTkFrame):
         self.items = ctk.CTkScrollableFrame(self, fg_color='transparent', height=40,
                                             scrollbar_button_color=T.BORDER_STRONG,
                                             scrollbar_button_hover_color=T.FAINT)
-        self.items.grid(row=1, column=0, columnspan=2, sticky='ew', padx=(10, 6), pady=(6, 0))
-        self.text = ctk.CTkLabel(self, text='', font=T.font(13), text_color=T.BODY, anchor='w', justify='left',
-                                 wraplength=930)
-        self.text.grid(row=2, column=0, columnspan=2, sticky='ew', padx=16, pady=(4, 12))
+        self.items.grid(row=1, column=0, columnspan=2, sticky='ew', padx=(10, 6), pady=(6, 10))
+        self.lines_height = 40          # the scrolling area's height (window units), set by fit()
 
     def show(self, good, title, lines, buttons=(), items=()):
         soft, line, strong = (T.GREEN_SOFT, T.GREEN_LINE, T.GREEN) if good else (T.RED_SOFT, T.RED_LINE, T.RED)
         self.configure(fg_color=soft, border_color=line)
         self.items.configure(fg_color=soft)
         self.title.configure(text=title, text_color=strong)
-        self.text.configure(text='\n'.join(lines))
         for child in self.buttons.winfo_children() + self.items.winfo_children():
             child.destroy()
         for label, command in buttons:
             GhostButton(self.buttons, label, command, height=30).pack(side='left', padx=(6, 0))
-        self._items(list(items))
+        rows = self._items(list(items))
+        # the plain lines scroll with the rest, so a short window can always show the whole box
+        ctk.CTkLabel(self.items, text='\n'.join(lines), font=T.font(13), text_color=T.BODY, anchor='w', justify='left',
+                     wraplength=920).grid(row=rows, column=0, columnspan=4, sticky='ew', padx=(6, 0), pady=(6, 0))
 
     def fit(self, limit=None):
         """Show all the lines, or at most `limit` pixels (window units) of them with a scroll bar."""
@@ -271,6 +271,7 @@ class Banner(ctk.CTkFrame):
         need = self.items.winfo_reqheight() / max(self.items._get_widget_scaling(), 0.1)
         height = need if limit is None else min(need, limit)
         self.items.configure(height=max(20, round(height)))
+        self.lines_height = max(20, round(height))
         bar = getattr(self.items, '_scrollbar', None)
         if bar is not None:
             bar.configure(height=max(20, round(height)))       # its own default (200) would stretch the box
@@ -280,11 +281,10 @@ class Banner(ctk.CTkFrame):
                 bar.grid_remove()
 
     def _items(self, items):
-        """(title, text) pairs: the title in bold, its text beside it, one pair per line."""
+        """(title, text) pairs: the title in bold, its text beside it, one pair per line. Returns
+        the number of grid rows used."""
         if not items:
-            self.items.grid_remove()
-            return
-        self.items.grid()
+            return 0
         columns = 2 if len(items) >= self.COLUMNS_FROM else 1
         per = (len(items) + columns - 1) // columns
         for c in range(columns):
@@ -297,6 +297,7 @@ class Banner(ctk.CTkFrame):
             ctk.CTkLabel(self.items, text=text, font=T.font(13), text_color=T.BODY, anchor='nw', justify='left',
                          height=18, wraplength=330 if columns == 2 else 760
                          ).grid(row=r, column=2 * c + 1, sticky='nw', pady=1)
+        return per
 
     def dim(self, title):
         """While a new update runs: the last result stays (the window keeps its size), greyed out."""

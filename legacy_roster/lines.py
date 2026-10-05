@@ -91,7 +91,8 @@ def build_lines(b, team):
             return sum(b.R.f['yvSd'].get(row, n) for n in fields) / len(fields)
         return f
     off, dfn, sho = score(OFFENCE), score(DEFENCE), score(SHOOTOUT)
-    by_q = lambda group: sorted(group, key=lambda e: (-b.q(e), e))
+    # ties go by the player's id, which never changes (an entry's row does, between runs)
+    by_q = lambda group: sorted(group, key=lambda e: (-b.q(e), b.pid_of_entry(e), e))
 
     goalies = by_q(e for e in ents if pos[e] == 4)
     defence = by_q(e for e in ents if pos[e] == 3)
@@ -122,7 +123,7 @@ def build_lines(b, team):
         slots[f"l{k + 1}ld"], slots[f"l{k + 1}rd"] = ld, rd
     slots['g1'], slots['g2'] = goalies[0], goalies[1]
 
-    best = lambda group, key: sorted(group, key=lambda e: (-key(e), -b.q(e), e))
+    best = lambda group, key: sorted(group, key=lambda e: (-key(e), -b.q(e), b.pid_of_entry(e), e))
     # power play: the two most dangerous centres, the four most dangerous other forwards
     pp_c = best(centres, off)[:2]
     pp_w = best([e for e in f12 if e not in pp_c], off)[:4]

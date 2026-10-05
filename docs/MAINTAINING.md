@@ -47,7 +47,12 @@ feed typo that makes an AHL player 15.
 | `del` | penny-del.org `/teams/<club>/kader` | same | one page per club; the page must link the current main round (`hauptrunde-2627`); ages only |
 | `nl` | nationalleague.ch `/api/teams`, `/api/player/team/<id>` | same | 15 requests; no nationality, height, weight or hand |
 | `ahl`, `ohl`, `qmjhl`, `whl` (pack key `chl`) | HockeyTech `lscluster.hockeytech.com/feed/` (`modulekit` views) | same | one request per club; public keys in `tools/providers/hockeytech.py` |
-| `nhl` | NHL.com | with every release | only used when the player is offline; `nhl_logos` (ESPN's PNG logo links) is written with it |
+| `nhl` | NHL.com | with every release | only used when the player is offline; `nhl_logos` (ESPN's PNG logos for dark backgrounds, `500-dark`) is written with it |
+| `nhl_last` | NHL.com statistics (`api.nhle.com/stats/rest/en/{skater,goalie}/bios`, last regular season) | with `nhl` (and after free agency settles in the summer) | 2 requests plus one per unsigned player (photo); decides who is retired and who is an unsigned free agent (`tools/providers/nhl_facts.py`). A new season: it takes the season before `SEASON` |
+| `drafts` | NHL.com draft lists (`api-web.nhle.com/v1/draft/picks/<year>/all`) | with `nhl`; once a year after the draft | one request per year since `FIRST_DRAFT` (2005), 22 today |
+| league `extra` | the league's feed (same caches) | with the league | the clubs the game has no slot for, with their players (a player's own custom team of that name gets them) |
+| league `former` | HockeyTech, last season's rosters (AHL, OHL, QMJHL, WHL) | with the league | players on no list now, with their photo (one more request per club) |
+| Extraliga `photo` | hokej.cz player pages | with the league | about 400 pages the first time, remembered in `tools/cache/extraliga_photos.json` (delete it to look again) |
 | club `logo` | the feed (HockeyTech, Liiga), else English Wikipedia | with the league | links remembered in `tools/cache/logos.json`; delete an entry to look it up again. Wikipedia throttles: a "429" line means that club has no logo in this pack; build again later and the cache fills in |
 
 After a refresh: run the tests (they build with the bundled pack) and `tools/capacity.py`, then
@@ -67,6 +72,8 @@ refreshing the data pack, and before building:
 - **What it prints.** The size (about 60–100 MB) and the failed links. A few failures are normal:
   dead links, or photos without a recognisable head.
 - **Then build.** `packaging\build.ps1` refuses to build without the zip.
+- **Logo drawing.** When `images.logo` changes how logos look, raise `install.LOGO_DRAWING`: players
+  who have the old pictures then get every logo drawn again once.
 - **Git.** The zip is not committed (`.gitignore`); it travels inside the exe.
 - **Players' PCs.** Pictures the pack lacks (players new since it was built) are downloaded by the
   program and kept in `%LOCALAPPDATA%\NHLLegacyRosterUpdater\art\pictures\`, so each is downloaded
@@ -141,10 +148,15 @@ go-ahead (ROADMAP.md).
      it starts from `disc:NA` and passes every check.
 6. If the release changes what is written into the save: the project owner loads a new roster
    in the game (Roster Management, Team Management, lines, one game) before release.
-7. Release notes for players: what is new, what to expect, known issues. Keep the README's
-   "What it updates" table in step.
-8. Publish (only with the owner's go-ahead): a GitHub Release with both exes and their SHA-256
-   checksums (`Get-FileHash dist\*.exe`).
+7. Release notes for players: what is new, what to expect, known issues. Add the version to
+   CHANGELOG.md (the release text is made from it) and keep the README's "What it updates" table
+   in step.
+8. Publish (only with the owner's go-ahead): commit, tag `vX.Y.Z`, push, then a GitHub Release
+   with `NHLLegacyRosterUpdater.exe` and its `.sha256` (`Get-FileHash`). There is no `gh` on the
+   owner's PC: the release is made through GitHub's REST API with git's stored login (`git
+   credential fill`; 0.6-0.8 did it that way). Pushing the tag also starts
+   `.github/workflows/build.yml`, which tests on three systems and attaches the Mac zip and the
+   Linux tar.gz to the release (it waits for the release to exist).
 
 ## When a data source changes
 

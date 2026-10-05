@@ -48,6 +48,15 @@ switch is on; both exes carry it). The window adds
 [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) on top of tkinter. PyInstaller is
 used only to build.
 
+## Without RPCS3
+
+`savedata.SaveFolder` stands in for an RPCS3 when the player picks a folder with roster saves (or
+one roster save) instead: the window's link under step 1, or a remembered path that is no RPCS3
+(`App.set_rpcs3` falls back to `savedata.open_saves`). It has the save folder and the versions
+found there, but no game folder and no game disc, so the photos switch is off, "The game's own
+roster" is not listed and there is no "Start RPCS3". The new roster goes next to the others
+(`savedata.install`). For a tester running the Windows exe in CrossOver with the Mac RPCS3 (0.8.0).
+
 ## What happens when the user presses "Update roster"
 
 1. **Window** (`gui.App.start`): locks the controls, then runs `App.work` in a worker thread.
@@ -96,15 +105,17 @@ Steps run in this fixed order, whatever order they are given in:
 
 | # | Step key | Code | What it does |
 |---|---|---|---|
-| 0 | – | `Roster(src)`, `check_base`, `stock.prepare` (game's own roster only), `Builder(R, data, layout=)` | Parse, check the layout, index entries, links and ratings, detect maintain mode, prepare donors. Every change-log row is tagged with its part (`builder.ChangeLog`, `log.section`) |
-| 1 | `nhl` | `Builder.nhl_rosters()` | Players on no official NHL roster leave their NHL entry (free agent unless still on another pro team; on the game's own roster, 30 and older, they retire: `Builder.retires`). Every listed player goes onto his team: his entry there, his entry moved from another NHL team, an AHL/pool/junior entry promoted (`source_rank`), a new entry, or a new player record (`create_player`). A matched skater gets NHL.com's position (`nhl_position`, 0.6.0), and one matched without his birthdate gets NHL.com's (`nhl_birthdate`). Jersey numbers from NHL.com; a clash goes to the official number, then to whoever already wears it, then to the better player, and the loser keeps his old number so a re-run changes nothing |
-| 2 | `ratings` | `Builder.apply_ea_ratings()` | EA attributes written exactly: stored = rating − 36, field per attribute in `schema.EA_SKATER` / `EA_GOALIE`. Players with only an overall are shifted until their level matches it. Fields EA does not publish (potential, growth, traits) are left alone. Rated players go into `b.ea_rated` |
+| 0 | – | `Roster(src)`, `check_base`, `stock.prepare` (game's own roster only), `draft.apply`, `Builder(R, data, layout=)`, `reserve_listed` | Parse, check the layout, write everyone's real draft (0.8.0, `draft.py`), index entries, links and ratings, detect maintain mode, prepare donors. The club leagues are worked out here (`usable_clubs`, `with_own_teams`: a player's own custom team named after a left-out club joins its league), and the players they and the IIHF squads list are reserved (`b.listed_rows`: never reused, never retired). Every change-log row is tagged with its part (`builder.ChangeLog`, `log.section`) |
+| 1 | `nhl` | `Builder.nhl_rosters()` | (Game's own roster, first update: its 2014 national teams are emptied, `clear_national`.) Free agents who `would_retire` retire first (`settle_free_agents`, 0.8.0). Players on no official NHL roster leave their NHL entry (free agent unless still on another pro team; one who `would_retire` retires: `Builder.retires`). Every listed player goes onto his team: his entry there, his entry moved from another NHL team, an AHL/pool/junior entry promoted (`source_rank`), a new entry, or a new player record (`create_player`). A matched skater gets NHL.com's position (`nhl_position`, 0.6.0), and one matched without his birthdate gets NHL.com's (`nhl_birthdate`); every NHL player gets NHL.com's height, weight, hand and birthplace (`nhl_bio`, 0.8.0). Then last season's NHL players who are unsigned now become free agents, created if the save lacks them (`add_unsigned`, data pack `nhl_last`). Jersey numbers from NHL.com; a clash goes to the official number, then to whoever already wears it, then to the better player, and the loser keeps his old number so a re-run changes nothing |
+| 2 | `ratings` | `Builder.apply_ea_ratings()` | EA attributes written exactly: stored = rating − 36, field per attribute in `schema.EA_SKATER` / `EA_GOALIE`. Players with only an overall are shifted until their level matches it. Fields EA does not publish (potential, growth, traits) are left alone. Rated players go into `b.ea_rated`. Then `donors.refresh()` chooses the spare records again with the new ratings (a retired player EA still rates can drop below the legend line; a second run must find the same spares) |
 | 3 | `nhl` | `nhl_lines()`, `sync_mirrors()` | Departed players' line slots and letters go to newcomers, then lines are re-dealt by rating within each team's own structure (a team without one gets `lines_from_scratch`). A slot set's class comes from its even-strength slots (`lines.slot_role`), and a wing's set goes to a winger of its side first (`lines.wing_side`, unless the other side's winger is `lines.SIDE_MARGIN` better). Custom teams 222–233 are made identical copies of their NHL team (`Builder.mirrors`: none on the game's own roster); a player who was only on the copy becomes a free agent |
 | 4 | `national` | `fill_empty_national()` | Fills every national team the source leaves empty (the base's 8, and squads a community roster emptied): the IIHF roster, NHL players by nationality, then the country's players elsewhere in the save where positions are short; at most 26. A country that cannot dress 2 G + 18 skaters stays empty (summary line). Runs before the club leagues because its new players need records, and the junior leagues, last in line, are the ones that run short |
-| 5 | league keys | `clubs.core_needs()`, then `leagues/clubs.update_league()` per league in `pipeline.LEAGUE_ORDER` | Club names on the slots; players matched (`match_club`) or created; former occupants become free agents; displaced prospect pools move to spare slots (`pools.relocate`); short clubs topped up to a dressable 20 (`_fill_lineup`); numbers, lines (`lines.build_lines`), letters. Records for later leagues' line-ups are held back from depth players (`b.core_reserve`) |
+| 5 | league keys | `stock.retire_leftovers()` (every roster since 0.8.0), `clubs.core_needs()`, then `leagues/clubs.update_league()` per league in `pipeline.LEAGUE_ORDER` | Club names on the slots (not on a player's own team, `own`); players matched (`match_club`) or created; old players the league no longer lists retire before any of this (`retire_leftovers`); former occupants become free agents; displaced prospect pools move to spare slots (`pools.relocate`); short clubs topped up to a dressable 20 (`_fill_lineup`); numbers, lines (`lines.build_lines`), letters. Records for later leagues' line-ups are held back from depth players (`b.core_reserve`) |
 | 6 | (any league) | `leagues/pools.settle()` | Pool slots trimmed to 40, best prospects kept, overflow moved to pools with room or made free agents; lines for changed pools |
-| 7 | `national` | `national_teams()`, `national_lines()` | Keeps national squads current: a member no longer active in the NHL makes room for the best eligible NHL player of his position (eligible = the save's nationality and NHL.com's birth country agree). On a first build, up to 4 rising stars (24 or younger) per team replace the weakest member; not in maintain mode and not for squads filled in step 4. Removed players with no club become free agents. A squad with players but no line slots (Czech Republic and Denmark in the 2026-27 community roster) gets lines dealt from scratch |
+| 7 | `national` | `national_teams()`, `national_lines()` | Keeps national squads current: a member no longer active in the NHL makes room for the best eligible NHL player of his position (eligible = the save's nationality and NHL.com's birth country agree). Places of members who retired in this run are filled the same way (`national_gaps`). On a first build, up to 4 rising stars (24 or younger) per team replace the weakest member who would not retire; not in maintain mode and not for squads filled in step 4. Removed players with no club become free agents. A squad with players but no line slots (Czech Republic and Denmark in the 2026-27 community roster) gets lines dealt from scratch |
+| 7b | always | `goalie_gear()` | A goalie whose club changed (or a new one) gets the coloured parts of his pads, blocker and glove (`lVMf`) in the club's colours; white, grey and black stay (0.8.0) |
 | 8 | always | `contracts()` | Contract team (`cPbu.team` = team + 1) must be a team the player is on; free agents have no contract fields (their NHL rights in `proteam` stay) |
+| 8b | always | `draft.apply()` again | The real draft for players made or renamed in this run |
 | 9 | always | `finish()` | Drops deleted entries, renumbers `key = team × 40 + slot` without gaps, rewrites the free-agent list, and drops the player links (`caBZ`) of removed entries that nothing (entries, free agents, draft picks) uses any more. New links take the lowest free id below 16,000 (`LINK_LIMIT`). Without this every update used more of the 9,955 links |
 | 10 | always | `RosterFile.build()` (`tdb.py`) | Packs the tables, recomputes the checksum chain, compresses, writes the wrapper CRCs |
 | 11 | always | `verify()` | See "Safety net" |
@@ -132,10 +143,19 @@ Steps run in this fixed order, whatever order they are given in:
    - **Contract:** contract team is the club. In the AHL, players the feed marks `nhl_contract` get
      the parent club's rights (`affiliates()`) and a two-way deal (`_nhl_contract`).
 4. **Former occupants of the slots:**
-   - club players become free agents (`b.release`);
+   - club players become free agents (`b.release`), except players under 20 (`STAY_AGE`), who stay
+     with their club when the league's list leaves them out (0.8.0: the WHL's 2026-27 list has no
+     Landon DuPont; as a free agent the draft would not see him);
    - pool players go to `pools.relocate`.
 
-   Before that, `_fill_lineup()` keeps former players of a missing position. Then it signs from the
+   Before that, `_place_prospects()` brings in the undrafted prospects of this league's country
+   (`HOME_LEAGUE`; the CHL takes everyone else) who are in a prospect pool, on the free-agent list or
+   on no team: they join the club with the most room (fewer than `PROSPECT_ROOM`) as if they had been
+   there, so the next run, which finds them as former players who stay, takes exactly the same path.
+   Prospects a league lists are left to it (`b.league_rows`). EA's own roster keeps its draft classes
+   on junior and European clubs; the community's pools end up on custom teams, which the draft does
+   not see (owner, 0.8.0).
+   Then `_fill_lineup()` keeps former players of a missing position. Then it signs from the
    prospect pools or free agents (junior-age only for the CHL). A second run therefore keeps the same
    fillers.
 5. **Per slot:**
@@ -158,11 +178,22 @@ Steps run in this fixed order, whatever order they are given in:
   second record of someone (`records_of`). **Nobody is dropped without a team:** a record that
   became teamless and is not a free agent would be reused on the next run, and that run would no
   longer be byte-identical.
+- **Retiring** (0.8.0). `would_retire(pid)`: `retire_age` or older (30 on the game's own roster, 35
+  otherwise, `FA_RETIRE_AGE`), not in the NHL last season (`last_season`, from `nhl_last`), not on an
+  NHL.com roster, not listed by a league or an IIHF squad (`listed_rows`). `retires()` then clears his
+  contract and rights, frees his places on national teams (`national_gaps`) and NHL copies, and makes
+  the record spare. **Every retirement happens before any player is created:** free agents
+  (`settle_free_agents`), NHL leavers (step 1), club leftovers (`retire_leftovers`, before the leagues).
+  A record freed later could only be used by the next update, which would then differ. For the same
+  reason a national team is never filled with, and a rising-star swap never drops, a player who would
+  retire.
 - `donors` (`donors.py`): where a new player's record comes from. The player table cannot
   grow, so a new player takes over:
   1. a blanked "ZZ" record;
   2. else a teamless record of a former player, oldest first (`real_birth_year`: records from EA's
-     2015 database read ten years young, and their draft year gives them away).
+     2015 database read ten years young, and their draft year gives them away; a birth year that fits
+     the draft year is the record's own, and the game's own roster has no such records:
+     `b.stale_years`).
 
   Never taken:
   - legends (level ≥ 84);
@@ -188,9 +219,12 @@ Steps run in this fixed order, whatever order they are given in:
 Feed players are matched to records by normalised name (accents and punctuation folded, letters
 like ø, æ, ß, ł spelled out: `norm()`) plus birthdate. `match()` (NHL) tolerates nicknames and spelling variants; when several
 records share last name and birthdate it requires the first names to agree, so twins do not
-collapse into one record. `match_club()` (European clubs) requires the birthdate to agree and
+collapse into one record. A full-name match needs a birth year within 2 (or ten years late: an
+EA-era record), and among namesakes the closest birth year wins (0.8.0: the game's own roster has a
+Moncton junior Will Smith born 1996, and two Sebastian Ahos). `match_club()` (European clubs) requires the birthdate to agree and
 marks EA-era records whose birth year is off by ten (`stale`); those get their year fixed and
-are re-rated. EA ratings without a birthdate are matched by name among NHL and AHL teams only.
+are re-rated. The DEL gives ages only: full name and birth year, else a short or long form of the
+first name (Nico / Nicolas). EA ratings without a birthdate are matched by name among NHL and AHL teams only.
 
 ### Ratings for players nobody rates (`estimate.py`)
 
@@ -200,6 +234,17 @@ gap + age + role + a small fixed spread". `LEAGUE_GAP` (per league and position 
 it shipped. In the junior leagues age counts relative to 18 (`YOUTH_AGE`), because their gap was
 measured on teenagers. The attribute shape (a centre takes face-offs, a defenceman blocks shots)
 is the median shape of NHL players at the same position.
+
+### Pictures for players no list gives one
+
+`Builder.former_photos()` (after the pools): a player on a team or the free-agent list without a
+photo link gets last season's from the leagues' `former` lists (HockeyTech: last season's rosters of
+players on no list now), matched by name and birthdate. Extraliga photos come from each player's
+page on hokej.cz (the provider remembers them in `tools/cache/extraliga_photos.json`). A studio
+photo on a shaded backdrop (the CHL's, the AHL's) is cut out by growing the backdrop from pixel to
+neighbour (`images._shaded_background_mask`) when the plain flood fill fails; only what neither can
+cut out is shown in a soft oval. `install.PORTRAIT_DRAWING` redraws installed portraits once when
+that changes.
 
 ## Safety net: `verify.py`
 
@@ -213,7 +258,7 @@ roster. `verify(built, source, nhl_players, rebuilt)` re-reads the built save an
 - structure (`structure()`): no line slot held twice, dressed exactly when holding a slot, NHL and
   national teams (and every rebuilt club) dress a legal 20 with all slots filled, mirrors equal
   their primary, three letters per NHL team, at most 40 per team, consecutive entry ids, free
-  agents without contracts;
+  agents listed once and without contracts, draft year, round and pick that fit together;
 - contracts point at a team the player is on, and nobody is on two club teams.
 
 Checks are relative to the source: a flaw the source already had is not blamed on the update.
@@ -250,8 +295,17 @@ that is set (empty today; see MAINTAINING.md). Gzipped JSON:
                 "extraliga": {...}, "shl": {...}, "del": {...}, "nl": {...}, "norway": {...},
                 "ahl": {...}, "chl": {... "country": null, no league-wide league_id}},
   "nhl":       {"ANA": <NHL.com roster response>, ...},
-  "nhl_logos": {"ANA": "<logo link>", ...}
+  "nhl_logos": {"ANA": "<logo link>", ...},
+  "nhl_last":  [{"first", "last", "birth", "pos", "team" (null: unsigned now), "gp", "nhl_id", "shoots",
+                 "height_in", "weight_lb", "country", "city", "photo"}],
+  "drafts":    [["first", "last", "position", year, round, overall pick, "team code"], ...]
 }
+```
+
+Each league also has `extra`: the clubs its feed lists that have no slot (Jokerit, Ajoie, Penticton
+...), with their players, for a player's own custom team of that name (`clubs.own_teams`).
+
+```
 ```
 
 - **Photos and logos.** `photo` and `logo` are links only (or null); the pictures are downloaded on
@@ -286,10 +340,13 @@ section 6).
   then hold no All-Star copies):
   - empties the All-Star slots 30/31 (Seattle, Vegas);
   - moves birth years to year − 1910;
-  - retires 2014's free agents of `RETIRE_AGE` (30) and older;
   - adds spare "ZZ" records cloned per position, up to the 6,745 players the community roster shows
     the game reads.
-- **During the build.**
+- **During the build.** Free agents of `RETIRE_AGE` (30) and older retire unless they played in the
+  NHL last season (`settle_free_agents`; before 0.8.0 `prepare` retired them by age alone, and
+  Reimer with them). On the first update its 2014 national teams are emptied and filled again
+  (`clear_national`): their members were blocking retirements (Datsyuk, Price, Rask stayed free
+  agents in 0.7.0).
   - No mirrors (`layout.mirrors(STOCK)` is empty: no custom copies, owner's decision).
   - `pipeline.usable_clubs` leaves out clubs whose slot is a switched-off custom team (Coachella
     Valley and Henderson).
@@ -325,22 +382,28 @@ version (`_Writer` over several folders). The pipeline passes the versions in `t
      the exact link), else from the photo pack, else downloads it (6 at a time), draws it and keeps
      it in the cache. Drawing with Pillow (`images.py`): background removed from studio photos
      (flood fill from the edges), head found (top, middle, width) and placed where the game's own
-     portraits have it; logos in the five styles (`t`, `s`, `w`, `c`, `d`), and for the 32 NHL slots
-     the sixth, `r` (logo on its reflection, 256×512, the favourite-team screens;
-     `install.logo_kinds`);
+     portraits have it; logos in the five styles (`t`, `s`, `w`, `c`, `d`), each inside the area the
+     disc's own logos of that kind fill (`images.LOGO_BOX`, 0.8.0: before, big logos covered the
+     team's record and calendar logos spilled out of their cells), and for the 32 NHL slots the sixth,
+     `r` (logo on its reflection, 256×512, the favourite-team screens; `install.logo_kinds`). NHL
+     logos are ESPN's versions for dark backgrounds (`500-dark`: a white Tampa Bay bolt, as on the
+     disc, and Washington with white edges);
    - encodes them (Pillow's DXT5 for portraits, plain 32-bit for logos) into a copy of the template
      (`bigf.ArtFile.with_image`) and writes them as loose files (portraits in `p0_4000`,
      `p4001_8000` or `p8001_12000`);
    - backs up any file it replaces and lists every file with its link in `art\installed.json`,
      per game folder (`{'games': {folder: {file: {'source', 'backup', 'stamp'}}}}`; version 0.4's
-     single `{'game_dir', 'files'}` is read too). A file already made from the same link is skipped.
+     single `{'game_dir', 'files'}` is read too). A file already made from the same link is skipped;
+     a logo's source carries the drawing version too (`install.LOGO_DRAWING`), so a new way of
+     drawing redraws every installed logo once.
      Rules for the copies (`_Writer.write`, `_keep`, `ours`):
      - a kept copy is never overwritten by one of the program's own files (after a lost
        `installed.json` the file there is ours, and the original stays);
      - `stamp` (size, time) tells our file from one put there later, for example another picture
        pack: that one is copied aside first and comes back with "Restore";
      - `remove()` leaves a file it did not write and has no copy of.
-   A failed download leaves the player with his old picture or the silhouette.
+   A failed download leaves the player with his old picture or the silhouette; the List of changes
+   names him under "Pictures not installed" (`pipeline.note_skipped`, 0.8.0).
 4. **Team names** (`portraits.names()`, `install.install_names()`, `loc.py`).
    - For every rebuilt club, NHL slots 22/30/31 (Utah, Seattle, Vegas) and every team the player
      renamed, the art code's five name keys are written into each language's text file.

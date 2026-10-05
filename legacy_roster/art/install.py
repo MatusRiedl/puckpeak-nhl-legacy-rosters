@@ -40,6 +40,12 @@ LOGO_KINDS = lab.LOGO_KINDS          # (folder, file prefix): plain, small banne
 # (art ids 0-29); Seattle and Vegas in the All-Star slots 30/31 get one made from Anaheim's file
 REFLECTION = ('teamlogosreflection', 'r')
 PORTRAIT_TEMPLATE = 100              # the disc portrait whose file new portraits are made from
+# how logos are drawn (images.logo); a change redraws every installed logo once. '#2': the game's own
+# sizes (images.LOGO_BOX), 0.8.0
+LOGO_DRAWING = '#2'
+# the same for portraits: '#2', 0.8.0: studio photos on a shaded backdrop are cut out too (images.
+# _shaded_background_mask), no longer shown in an oval
+PORTRAIT_DRAWING = '#2'
 
 
 def logo_kinds(artid):
@@ -291,12 +297,13 @@ def install_names(disc, writer, names, say):
 
 
 def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=None, names=None, also=(),
-            cache=None):
+            cache=None, skipped=None):
     """Make and install the pictures. `portraits` {artid: photo link}, `logos` {team artid:
     (logo link, colours)} (from portraits.plan()). Pictures come from the program's photo pack
     (`pack`; default: the bundled one, if this edition has it; False: none) or are downloaded.
     `names` (portraits.names()) go into the game's text files. Templates come from the disc of
     `title_id`; `also` are further versions of the game (title ids) that get every file as well.
+    `skipped` (a list) gets (what, link, why) of every picture that could not be made.
     Returns (written, already there, failed)."""
     check(rpcs3, title_id)
     if os.path.exists(lab.manifest_path()):
@@ -314,12 +321,13 @@ def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=
         finally:
             writer.save()
 
-    jobs = []           # (description, function, [(relative path, key in the result)], link)
+    jobs = []           # (description, function, [(relative path, key in the result)], link, source in the manifest)
     bundled = kept = 0
     for aid, url in sorted(portraits.items()):
         rels = [(ART + (k, portrait_folder(aid), f"p{aid}.big"), k) for k in PORTRAIT_KINDS]
-        if not all(writer.current(rel, url) for rel, _k in rels):
-            jobs.append(('photo', lambda u=url: make_portrait(u, p_templates, pack, cache), rels, url))
+        source = url + PORTRAIT_DRAWING
+        if not all(writer.current(rel, source) for rel, _k in rels):
+            jobs.append(('photo', lambda u=url: make_portrait(u, p_templates, pack, cache), rels, url, source))
             if cache and _cacheable(url) and (cache.portrait(url, (256, 128)) is not None or cache.headless(url)):
                 kept += 1
             else:
@@ -328,8 +336,10 @@ def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=
         templates = {(f, p): disc.logo(f, p, aid) or disc.logo(f, p, 0) for f, p in logo_kinds(aid)}
         templates = {k: v for k, v in templates.items() if v}
         rels = [(ART + (f, f"{p}{aid}.big"), (f, p)) for f, p in templates]
-        if not all(writer.current(rel, url) for rel, _k in rels):
-            jobs.append(('logo', lambda u=url, c=colours, t=templates: make_logo(u, c, t, pack, cache), rels, url))
+        source = url + LOGO_DRAWING     # a logo drawn another way is drawn again
+        if not all(writer.current(rel, source) for rel, _k in rels):
+            jobs.append(('logo', lambda u=url, c=colours, t=templates: make_logo(u, c, t, pack, cache), rels, url,
+                         source))
             if cache and _cacheable(url) and cache._name(url, 'l'):
                 kept += 1
             else:
@@ -347,9 +357,9 @@ def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=
     say(f"Photos and logos: making {len(jobs)} pictures ({already} are installed already; {source})")
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(fn): (what, rels, url) for what, fn, rels, url in jobs}
+            futures = {pool.submit(fn): (what, rels, url, source) for what, fn, rels, url, source in jobs}
             for k, fut in enumerate(concurrent.futures.as_completed(futures), 1):
-                what, rels, url = futures[fut]
+                what, rels, url, source = futures[fut]
                 try:
                     made = fut.result()
                     why = "no head found in it" if made is None else ""
@@ -358,9 +368,11 @@ def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=
                 if made is None:
                     failed += 1
                     say(f"Skipped the {what} {url}: {why}")
+                    if skipped is not None:
+                        skipped.append((what, url, why))
                 else:
                     for rel, key in rels:
-                        writer.write(rel, made[key], url)
+                        writer.write(rel, made[key], source)
                     written += 1
                 if k % 25 == 0 or k == len(jobs):
                     say(f"Photos and logos: {k} of {len(jobs)} pictures made")

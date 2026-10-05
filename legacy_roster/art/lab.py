@@ -254,6 +254,90 @@ def league_test(rpcs3, source=None, say=print):
     return lab
 
 
+# --- the draft test: where must a prospect be for Be a GM's draft to see him? ---------------------------
+DRAFT_LAB_NAME = "LAB draft test"
+TOP_PROSPECTS_RED = 214
+# (where the two prospects of a group go, what the owner reads in the list)
+DRAFT_GROUPS = (('pool', "on a custom team (a prospect pool)"), ('fa', "a free agent"),
+                ('top', "on a Top Prospects team"), ('whl', "on a WHL club"),
+                ('whl-no-year', "on a WHL club, without a draft year"), ('liiga', "on a Liiga club"))
+
+
+def draft_lab(src, season_year):
+    """(new SYS-DATA bytes, [(group text, [player names])]): the 12 best undrafted prospects of the
+    next draft on junior and European clubs of `src` (an updated roster: draft.py gives them their
+    draft year, clubs._place_prospects their club), two per group of DRAFT_GROUPS. Their records stay
+    as they are; only where they play changes (and one group loses its draft year)."""
+    from .. import layout as L
+    from ..builder import Builder, Data
+    from ..leagues import pools
+    R = Roster(src)
+    b = Builder(R, Data(season_year=season_year), layout=L.check_base(R))
+    P, U, T = R.P, R.U, R.T
+    upcoming = season_year + 1 - 1900
+    live = b.live_entries()
+    found = []
+    clubs_ = L.CHL | L.EUROPE
+    for e in range(U.cur_rec):
+        prow, t = b.prow_of_entry(e), U.get(e, 'BSXd')
+        if (t in clubs_ and not pools.is_pool(R, t) and len(live.get(b.pid_of_entry(e), [])) == 1
+                and P.get(prow, 'Ujcc') == 0 and P.get(prow, 'WzKY') == upcoming):
+            found.append((-b.q(e), e))
+    need = 2 * len(DRAFT_GROUPS)
+    if len(found) < need:
+        raise RuntimeError(f"only {len(found)} undrafted prospects of the {season_year + 1} draft are on junior or European "
+                           f"clubs in this roster; make a roster with version 0.8.0 or newer first and start from it")
+    fewest = lambda league: min((t for t in range(T.cur_rec) if T.get(t, 'league') == league),
+                                key=lambda t: (len(b.entries_on(t)), t))
+    pool = min((t for t in L.SPARE if T.get(t, 'NYKk') and pools.is_pool(R, t)), key=lambda t: (len(b.entries_on(t)), t),
+               default=None)
+    if pool is None:
+        raise RuntimeError("this roster has no prospect pool on a custom team to compare with")
+    clubs = {'pool': pool, 'top': TOP_PROSPECTS_RED, 'whl': fewest(11), 'whl-no-year': fewest(11), 'liiga': fewest(3)}
+    picked = [e for _, e in sorted(found)[:need]]
+    groups = []
+    for k, (key, text) in enumerate(DRAFT_GROUPS):
+        names = []
+        for e in picked[2 * k:2 * k + 2]:
+            prow = b.prow_of_entry(e)
+            names.append(R.name(prow))
+            if key == 'fa':
+                b.release(e, live)
+            else:
+                b.move_entry(e, clubs[key])
+            if key == 'whl-no-year':
+                P.set(prow, 'WzKY', 255)
+        where = f" ({R.team_name(clubs[key])})" if key in clubs else ''
+        groups.append((text + where, names))
+    b.contracts()
+    b.finish()
+    built = R.f.build()
+    problems, _ = verify(built, Roster(src))
+    if problems:
+        raise RuntimeError("the LAB roster did not pass the checks: " + "; ".join(problems[:3]))
+    return built, groups
+
+
+def draft_test(rpcs3, source=None, say=print):
+    """Save "LAB draft test" (draft_lab) next to the roster it starts from (default: the newest), and
+    list who went where, also in the program's reports folder (draft_test.txt)."""
+    slots = savedata.list_rosters(rpcs3.savedata)
+    slot = next((s for s in slots if source in (s.folder, s.name)), None) if source else (slots[0] if slots else None)
+    if slot is None:
+        raise FileNotFoundError(f"roster save {source or ''} not found")
+    with open(slot.sys_data, 'rb') as f:
+        src = f.read()
+    built, groups = draft_lab(src, datasource.load_pack(offline=True).get('season', 2026))
+    lab = savedata.install(rpcs3.savedata, slot, built, DRAFT_LAB_NAME)
+    lines = [f"\"{lab.name}\" ({lab.folder}), made from \"{slot.name}\". The prospects of the next draft:"]
+    lines += [f"  {text}: {', '.join(names)}" for text, names in groups]
+    with open(datasource.app_dir('reports', 'draft_test.txt'), 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines) + '\n')
+    for line in lines:
+        say(line)
+    return lab
+
+
 def remove(say=print):
     """Put every file the test replaced back, delete the ones it added. Returns how many."""
     if not os.path.exists(manifest_path()):

@@ -3,7 +3,7 @@ from collections import Counter
 import pytest
 
 from legacy_roster import layout as L
-from legacy_roster import lines, pipeline, ratings, schema
+from legacy_roster import draft, lines, pipeline, ratings, schema
 from legacy_roster.builder import Builder, Data
 from legacy_roster.matching import match
 from legacy_roster.roster import Roster
@@ -88,15 +88,19 @@ def test_fields_nobody_publishes_are_left_alone(built, base_bytes):
             assert not changed, (tname, field)
 
 
-def test_new_players_do_not_inherit_the_previous_owner_of_their_record(built):
+def test_new_players_do_not_inherit_the_previous_owner_of_their_record(built, data):
     R = Roster(built.data)
+    drafts = draft.Drafts(data.drafts, data.season_year)
     assert built.builder.created
     for prow in built.builder.created:
         P = R.P
         assert 'ZZ' not in P.get(prow, 'lastname')
         assert (P.get(prow, 'hasportrait'), P.get(prow, 'artid'), P.get(prow, 'audioid')) == (0, 0, 0)
         assert P.get(prow, 'headid') >= 60000
-        assert P.get(prow, 'draftyear') == 255 and P.get(prow, 'nhlgamesplayedcareer') == 0
+        assert P.get(prow, 'nhlgamesplayedcareer') == 0
+        # his own draft (draft.py), or none: never the previous owner's
+        want = drafts.wanted(P, prow) or (255, 0, 0, 0)
+        assert tuple(P.get(prow, f) for f in draft.FIELDS) == want, R.name(prow)
 
 
 def test_roster_entries_carry_the_players_own_style(built):
@@ -200,6 +204,12 @@ def test_verify_reports_what_it_is_given(built, base_bytes, data):
     assert verify(b'not a save', src)[0][0].startswith("the save cannot be read back")
 
 
+def young_free_agent(R):
+    """The link of the youngest free agent (an old one may retire in the update)."""
+    links = [R.Q.get(k, 'TWSX') for k in range(R.Q.cur_rec)]
+    return max(links, key=lambda l: (R.P.get(R.p_by_id[R.link_to_pid[l]], 'year'), -l))
+
+
 def community_style(base_bytes):
     """The base roster changed the way the community's 2026-27 roster is: the Ducks copy (225) out
     of step with Anaheim (half its players gone, a free agent on it), Italy and France emptied,
@@ -208,7 +218,7 @@ def community_style(base_bytes):
     U = R.U
     flags = [n for n, f in U.fields.items() if f.bits == 1 and n != 'jZSh']
     ducks = [i for i in range(U.cur_rec) if U.get(i, 'BSXd') == 225]
-    U.set(ducks[0], 'TWSX', R.Q.get(0, 'TWSX'))           # someone who is only on the copy
+    U.set(ducks[0], 'TWSX', young_free_agent(R))          # someone who is only on the copy
     gone = ducks[1:13] + [i for i in range(U.cur_rec) if U.get(i, 'BSXd') in (139, 142)]
     for i in range(U.cur_rec):
         if U.get(i, 'BSXd') == 136:
@@ -229,7 +239,7 @@ def test_a_community_roster_with_unfinished_teams_is_updated(base_bytes, data):
     for team in (136, 139, 142):                           # Czech lines dealt; Italy, France refilled (IIHF)
         assert res.info['teams'][team]['dressed'] == 20 and res.info['teams'][team]['slots'] == 71, team
     fa = {R.link_to_pid.get(R.Q.get(i, 'TWSX')) for i in range(R.Q.cur_rec)}
-    alone = Roster(src).link_to_pid[Roster(src).Q.get(0, 'TWSX')]
+    alone = Roster(src).link_to_pid[young_free_agent(Roster(src))]
     assert alone in fa and not [i for i in range(R.U.cur_rec) if R.link_to_pid.get(R.U.get(i, 'TWSX')) == alone]
     assert pipeline.build(res.data, data).data == res.data
 
@@ -268,3 +278,66 @@ def test_overall_only_players_land_on_their_overall(built, pack):
         assert abs(p['ovr'] - k - ratings.level(S, rows[R.P.get(found[0], 'game_id')])) <= 0.5, p['name']
         seen += 1
     assert seen > 200
+
+
+def find(R, first, last):
+    return [r for r in range(R.P.cur_rec) if R.P.get(r, 'firstname') == first and R.P.get(r, 'lastname') == last]
+
+
+def test_free_agents_are_players_who_can_still_sign(built, data):
+    """Nobody on the free-agent list would retire; last season's unsigned NHL players are on it
+    (testers, 0.7.0: retired free agents stayed, Reimer was missing)."""
+    R, b = Roster(built.data), built.builder
+    fa = {R.link_to_pid.get(R.Q.get(k, 'TWSX')) for k in range(R.Q.cur_rec)}
+    assert not [R.name(R.p_by_id[p]) for p in fa if b.would_retire(p)]
+    for first, last in (('James', 'Reimer'), ('Jonathan', 'Toews'), ('Jonathan', 'Quick')):
+        assert any(R.P.get(r, 'game_id') in fa for r in find(R, first, last)), last
+    unsigned = [p for p in data.nhl_last if not p['team']]
+    assert unsigned and any(r[1] == 'free agent added' for r in built.log)
+
+
+def test_players_get_their_real_draft(built):
+    R = Roster(built.data)
+    for (first, last), want in ((('Will', 'Smith'), (123, 1, 4, 26)), (('Aleksander', 'Barkov'), (113, 1, 2, 13)),
+                                (('Macklin', 'Celebrini'), (124, 1, 1, 26))):
+        rows = [r for r in find(R, first, last) if R.teams_of(r)]
+        assert rows and tuple(R.P.get(rows[0], f) for f in draft.FIELDS) == want, last
+
+
+def test_nhl_players_get_nhl_com_size_and_hand(built, data):
+    R = Roster(built.data)
+    people = match(R, [dict(p) for p in data.nhl_players])
+    checked = 0
+    for p in people:
+        if p['row'] is None or not p.get('height_in') or not p.get('weight_lb'):
+            continue
+        P = R.P
+        assert P.get(p['row'], 'QBpy') == max(0, min(31, p['height_in'] - 54)), p['last']
+        assert P.get(p['row'], 'WZNs') == max(0, min(255, p['weight_lb'] - 120)), p['last']
+        if p.get('shoots') in ('L', 'R'):
+            assert P.get(p['row'], 'pkRG') == (p['shoots'] == 'R'), p['last']
+        checked += 1
+    assert checked > 700
+
+
+def test_a_goalie_who_changed_club_wears_its_colours(built):
+    R, b = Roster(built.data), built.builder
+    G, T = R.f['lVMf'], R.T
+    rows = {G.get(i, 'game_id'): i for i in range(G.cur_rec)}
+    now = b.home_teams()
+    moved = [(pid, team) for pid, team in now.items() if R.P.get(R.p_by_id[pid], 'position') == 4 and pid in rows
+             and (b.orig_home.get(pid) != team or R.p_by_id[pid] in b.created)]
+    assert moved
+    for pid, team in moved:
+        club = {tuple(T.get(team, f"{k}color_{c}") for c in 'rgb') for k in ('primary', 'secondary')}
+        for part in b.GEAR_PARTS:
+            for z in range(1, 10):
+                colour = tuple(G.get(rows[pid], f"{part}zone{z}color_{c}") for c in 'rgb')
+                assert max(colour) - min(colour) < 40 or colour in club, (R.name(R.p_by_id[pid]), part, z)
+
+
+def test_verify_finds_a_free_agent_listed_twice(built, base_bytes):
+    R = Roster(built.data)
+    R.Q.add_record({'TWSX': R.Q.get(0, 'TWSX')})
+    problems, _ = verify(R.f.build(), Roster(base_bytes))
+    assert any('free-agent list twice' in p for p in problems)

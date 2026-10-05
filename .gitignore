@@ -19,6 +19,7 @@ legacy_roster/data/photopack.zip.tmp
 __pycache__/
 *.pyc
 .venv/
+.venv-build/
 .pytest_cache/
 
 # Build output

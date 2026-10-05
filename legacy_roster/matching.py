@@ -70,7 +70,15 @@ def match(R, people):
                 rows = [r for r in rows if same_first_name(norm(P.get(r, 'PedH')), fn)] or rows
                 p['row'] = best_row(R, rows)
             continue
-        rows = _same_kind(P, p, by_name.get((fn, ln)))
+        # the full name, with a birth year that can be his: within 2, or ten years late (a record
+        # still in EA's year - 1900). The game's own roster has a Moncton junior Will Smith, born
+        # 1996, who is not San Jose's, born 2005 (testers, 0.7.0)
+        off = lambda r: min(abs(P.get(r, 'dnFq') + 1910 - p['birth'][0]), abs(P.get(r, 'dnFq') + 1900 - p['birth'][0]))
+        rows = [r for r in _same_kind(P, p, by_name.get((fn, ln))) or ()
+                if abs(P.get(r, 'dnFq') + 1910 - p['birth'][0]) <= 2
+                or abs(P.get(r, 'dnFq') + 1900 - p['birth'][0]) <= 1]
+        if len(rows) > 1:   # namesakes (the game's two Sebastian Ahos, 1996 and 1997): the closer birth year
+            rows = [r for r in rows if off(r) == min(map(off, rows))]
         how = 'name'
         if not rows:  # same birthdate and a near-identical last name (spelling variants)
             how = 'birth+similar'
@@ -103,15 +111,22 @@ def match_club(R, people):
     for (ln, b), rs in by_lb.items():
         by_birth.setdefault(b, []).extend((ln, r) for r in rs)
     P = R.P
+    by_last = {}
+    for (f2, l2), rs in by_name.items():
+        by_last.setdefault(l2, []).append((f2, rs))
     for p in people:
         fn, ln = norm(p['first']), norm(p['last'])
         y, m, d = p['birth']
         rows, stale = None, False
         if p.get('birth_approx'):
             # the league gives the age only (DEL): the full name and a birth year that fits it
-            # (born in year y or y - 1); a match brings the save's exact birthdate with it
+            # (born in year y or y - 1), else a short or long form of his first name (the DEL's
+            # Nicolas Krämmer is the game's Nico); a match brings the save's exact birthdate with it
             for shift in (0, 10):
-                rows = [r for r in by_name.get((fn, ln), []) if P.get(r, 'dnFq') + 1910 - shift in (y, y - 1)]
+                fits = lambda r: P.get(r, 'dnFq') + 1910 - shift in (y, y - 1)
+                rows = [r for r in by_name.get((fn, ln), []) if fits(r)]
+                if not rows:
+                    rows = [r for f2, rs in by_last.get(ln, []) if same_first_name(f2, fn) for r in rs if fits(r)]
                 if rows:
                     stale = shift == 10
                     break

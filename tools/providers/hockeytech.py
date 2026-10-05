@@ -54,8 +54,10 @@ def parse_player(row):
 
 
 def fetch(season_year, sources=(), log=print, client='ahl'):
-    """{club name in the feed: [player, ...]} for every club of the league's regular season, and
-    '_logos': {club name: logo link}."""
+    """{club name in the feed: [player, ...]} for every club of the league's regular season,
+    '_logos': {club name: logo link}, and '_former': last season's players who are on no club's
+    list now, with their photo (a junior the list leaves out stays with his club and keeps a picture:
+    Landon DuPont, testers 0.8.0)."""
     season = regular_season(client, season_year)
     clubs, logos = {}, {}
     for team in call(client, 'teamsbyseason', season_id=season)['Teamsbyseason']:
@@ -66,4 +68,18 @@ def fetch(season_year, sources=(), log=print, client='ahl'):
             logos[team['name']] = team['team_logo_url']
         log(f"{client}: {team['name']}: {len(players)} players")
     clubs['_logos'] = logos
+    now = {(p['first'].lower(), p['last'].lower(), tuple(p['birth'])) for players in clubs.values()
+           if isinstance(players, list) for p in players}
+    former = {}
+    try:
+        last = regular_season(client, season_year - 1)
+        for team in call(client, 'teamsbyseason', season_id=last)['Teamsbyseason']:
+            for p in (parse_player(r) for r in call(client, 'roster', season_id=last, team_id=team['id'])['Roster']):
+                key = (p['first'].lower(), p['last'].lower(), tuple(p['birth'])) if p else None
+                if p and p.get('photo') and key not in now:
+                    former[key] = {'first': p['first'], 'last': p['last'], 'birth': p['birth'], 'photo': p['photo']}
+    except (OSError, ValueError, KeyError) as err:        # last season's lists are a bonus
+        log(f"{client}: last season's rosters not read: {err}")
+    clubs['_former'] = [former[k] for k in sorted(former)]
+    log(f"{client}: {len(former)} players of last season who are on no list now (photos kept)")
     return clubs

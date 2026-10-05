@@ -9,15 +9,25 @@ players become free agents.
 New players need spare records (donors.py). If those run out, every club first gets the players
 it needs to dress a full line-up; the rest of the depth is skipped and listed in the report.
 """
+import re
+import unicodedata
 from collections import Counter
 
 from .. import layout as L
 from .. import lines, ratings
+from ..donors import UNDRAFTED
 from ..estimate import Estimator
 from ..matching import match_club, norm
 from . import pools
 
 CORE = {'G': 2, 'D': 6, 'F': 12}    # a dressed line-up: created before any club's depth players
+STAY_AGE = 20                       # a player this young whom his league's list leaves out stays with his club
+PROSPECT_ROOM = 36                  # an undrafted prospect joins a club only while it keeps fewer players than this
+# where an undrafted prospect of the next drafts plays, by nationality (EA's own roster keeps its draft
+# classes on junior and European clubs); everyone else goes to the CHL
+HOME_LEAGUE = {'SWE': 'shl', 'FIN': 'liiga', 'CZE': 'extraliga', 'SVK': 'extraliga', 'DEU': 'del', 'AUT': 'del',
+               'CHE': 'nl', 'NOR': 'norway'}
+NATION_OF = {code: iso for iso, code in L.NAT_CODE.items()}
 JUNIOR_AGE = {'chl': 20}            # free agents a junior club may sign to fill its line-up are this young
 
 
@@ -43,6 +53,46 @@ def listed(teams):
             q.update(birth=tuple(q['birth']), slot=t['slot'], team=t['abbr'])
             people.append(q)
     return people
+
+
+# words that do not tell clubs apart ("Silver Knights", "Lakers"), and feed names that are not what
+# a player would call the club
+COMMON_WORDS = {'hockey', 'ishockey', 'club', 'team', 'lakers', 'silver', 'knights', 'valley', 'panthers', 'the'}
+CLUB_ALIASES = {'SCRJ Lakers': 'Rapperswil-Jona Lakers'}
+
+
+def _words(text):
+    plain = unicodedata.normalize('NFKD', text or '').encode('ascii', 'ignore').decode().lower()
+    return set(re.findall(r'[a-z0-9]+', plain))
+
+
+def own_teams(R, league, taken, mirrors=()):
+    """A player's own custom teams named after a club the game has no slot for (Jokerit, Ajoie,
+    Penticton, Coachella Valley in the game's own roster ...): [club with 'slot' = his team's slot
+    and 'own' True], so the league step gives them that club's players. A custom slot counts when it
+    is switched on and is no NHL copy (`mirrors`), prospect pool or slot already used (`taken`);
+    its name, city or abbreviation must contain a word of the club's name that tells it apart. The
+    team keeps its league (Custom) and the name, city and logo the player gave it."""
+    clubs_ = [c for c in league.get('extra') or [] if c.get('players')]
+    if not clubs_:
+        return []
+    T = R.T
+    words = {}
+    for slot in range(min(L.MIRROR_OF), L.TEAM_COUNT):
+        if (slot in taken or slot in mirrors or not T.get(slot, 'NYKk') or pools.is_pool(R, slot)
+                or T.get(slot, 'league') != L.CUSTOM_LEAGUE):
+            continue
+        words[slot] = (_words(R.team_name(slot)) | _words(T.get(slot, 'JkmY'))
+                       | _words(T.get(slot, 'shortname').replace('_', ' ')) | _words(T.get(slot, 'nnsx')))
+    out = []
+    for club in clubs_:
+        name = CLUB_ALIASES.get(club['full'], club['full'])
+        mark = {w for w in _words(name) | _words(club['short']) if len(w) >= 4 and w not in COMMON_WORDS}
+        slot = next((s for s in sorted(words) if mark & words[s]), None)
+        if slot is not None:
+            out.append(dict(club, slot=slot, own=True))
+            del words[slot]
+    return out
 
 
 def core_needs(b, league):
@@ -93,6 +143,8 @@ def update_league(b, key, league, say):
     leftovers = {e: slot for slot in slots for e in b.entries_on(slot)}
     was_pool = {slot: ((T.get(slot, 'JkmY'), T.get(slot, 'RPbr')) if pools.is_pool(R, slot) else None) for slot in slots}
     for t in teams:
+        if t.get('own'):                            # a player's own team: his name, city and logo stay
+            continue
         T.set(t['slot'], 'JkmY', t['full'])
         L.set_city(T, t['slot'], t['short'])        # custom slots (Coachella, Henderson): a key, see layout
         T.set(t['slot'], 'nnsx', t['abbr'])
@@ -156,6 +208,8 @@ def update_league(b, key, league, say):
             leftovers.pop(e, None)
             b.drop_fa(pid)
             _feed_position(b, row, p, live, name)
+            if key != 'ahl':
+                b.unrate_name_only(pid)     # EA's rating will not reach him here next time
             if key == 'ahl' and pid not in b.ea_rated and b.data.ea_ratings:
                 # EA rates NHL and AHL players; one who just came down from the NHL was on neither
                 # when the ratings were written
@@ -218,6 +272,10 @@ def update_league(b, key, league, say):
         numbers[e] = p.get('num')
         letters[e] = p.get('letter')
 
+    # undrafted prospects of this league's country who are in prospect pools, on the free-agent list or on
+    # no team join its clubs, as if they had been there: a second run finds them as former players who stay
+    joined = _place_prospects(b, key, slots, leftovers, was_pool, live, stats)
+
     # a club the feed leaves short at a position (its listed defencemen are with the NHL club, its
     # goalies could not get a record): a former player of that position stays, else a free agent signs
     for slot in slots:
@@ -227,8 +285,18 @@ def update_league(b, key, league, say):
     displaced = {}
     for e, slot in sorted(leftovers.items()):
         changed.add(slot)
+        if e in joined:                 # a prospect who just joined (on a slot that may have been a pool): he stays
+            continue
         if was_pool[slot] is not None:
             displaced.setdefault(was_pool[slot], []).append(e)
+        elif _young(b, b.prow_of_entry(e)):
+            # a young player the league's list leaves out stays with his club (testers, 0.8.0: the WHL's 2026-27
+            # list has no Landon DuPont, a 2027 first-round prospect; as a free agent the draft would not see him)
+            if e not in joined:
+                b.log.append([T.get(slot, 'nnsx'), 'stays', R.name(b.prow_of_entry(e)),
+                              "a young player the league's list leaves out", U.get(e, 'tRVs')])
+                stats['juniors kept'] += 1
+            P.set(b.prow_of_entry(e), 'BSXd', slot + 1)      # his contract team is the club he stays with
         else:
             name = R.name(b.prow_of_entry(e))
             became_fa = b.release(e, live)
@@ -291,6 +359,90 @@ def update_league(b, key, league, say):
         b.log.append([league['label'], 'summary', k, v, ''])
     b.league_stats[key] = dict(stats)
     return rebuilt
+
+
+def _young(b, prow):
+    return b.data.season_year - (b.P.get(prow, 'dnFq') + 1910) < STAY_AGE
+
+
+def _prospect(b, prow):
+    """An undrafted player of a draft still to come (draft.py gives him its year and round 0), young,
+    whom no club league lists (that league places him), not even under his name with another
+    birthdate (it then makes him anew: the CHL's Arjun Nanubhai)."""
+    P = b.P
+    year = P.get(prow, 'WzKY')
+    return (not P.get(prow, 'Ujcc') and year != UNDRAFTED and year + 1900 > b.data.season_year and _young(b, prow)
+            and 'ZZ' not in P.get(prow, 'RMbQ') and prow not in b.league_rows
+            and b.person(prow) not in b.donors.reserved)
+
+
+def _place_prospects(b, key, slots, leftovers, was_pool, live, stats):
+    """Undrafted prospects whose home league (HOME_LEAGUE; the CHL for the rest, and when their own
+    league is not updated) is this one, and who are in a prospect pool, on the free-agent list or on
+    no team, join the club of this league with the most room, best of the earliest draft first. They
+    go into `leftovers` like former players, so this run treats them exactly as the next run will
+    (they stay: _young). Testers, 0.8.0: the pools sit on custom teams, where the draft does not
+    look. Returns their entries."""
+    R, U, P, T = b.R, b.U, b.P, b.R.T
+    keys = getattr(b, 'league_keys', None) or {key}
+
+    def home(prow):
+        k = HOME_LEAGUE.get(NATION_OF.get(P.get(prow, 'hleL')), 'chl')
+        return k if k in keys else 'chl'
+
+    def elsewhere(pid, e=None):          # on a club that is no prospect pool (a national team does not count)
+        return any(U.get(x, 'BSXd') not in L.NATIONAL and x != e for x in live.get(pid, []))
+
+    stays = lambda e: was_pool[leftovers[e]] is None and _young(b, b.prow_of_entry(e))
+    size = {s: sum(1 for e in b.entries_on(s) if e not in leftovers or stays(e)) for s in slots}
+    found = []                  # (order, pid, how, entry or link)
+    for e in range(U.cur_rec):
+        if e in b.deleted:
+            continue
+        t = U.get(e, 'BSXd')
+        if not ((e in leftovers and was_pool[leftovers[e]] is not None) or (t not in slots and pools.is_pool(R, t))):
+            continue
+        prow, pid = b.prow_of_entry(e), b.pid_of_entry(e)
+        if pid not in b.placed and _prospect(b, prow) and home(prow) == key and not elsewhere(pid, e):
+            found.append(((P.get(prow, 'WzKY'), -b.quality.get(pid, 0), pid), pid, 'pool', e))
+    fa = {R.link_to_pid.get(l): l for l in b.fa_links}
+    for prow in range(P.cur_rec):
+        pid = P.get(prow, 'zIBw')
+        if pid in b.placed or elsewhere(pid) or not _prospect(b, prow) or home(prow) != key:
+            continue
+        if pid not in fa and any(x not in b.deleted for x in live.get(pid, [])):
+            continue            # on a national team only: left alone
+        found.append(((P.get(prow, 'WzKY'), -b.quality.get(pid, 0), pid), pid, 'fa' if pid in fa else 'none', fa.get(pid)))
+    joined = set()
+    for _, pid, how, x in sorted(found):
+        room = [s for s in slots if size[s] < PROSPECT_ROOM and not pools.is_pool(R, s)]
+        if not room:
+            break
+        club = min(room, key=lambda s: (size[s], s))
+        prow = R.p_by_id[pid]
+        if how == 'pool':
+            frm = T.get(U.get(x, 'BSXd'), 'JkmY')
+            leftovers.pop(x, None)
+            b.move_entry(x, club)
+            e = x
+        else:
+            frm = 'free agent' if how == 'fa' else 'no team'
+            e = b.new_entry(club, x if how == 'fa' else b.new_link(pid), prow)
+            b.arrivals.setdefault(club, []).append(e)
+            live.setdefault(pid, []).append(e)
+            b.drop_fa(pid)
+        leftovers[e] = club
+        joined.add(e)
+        size[club] += 1
+        b.placed.add(pid)
+        P.set(prow, 'BSXd', club + 1)
+        if not P.get(prow, 'WBbd'):
+            for f in ('GDhI', 'dhKk', 'IrlK', 'IzRv'):
+                P.set(prow, f, 0)
+        b.log.append([T.get(club, 'nnsx'), 'prospect joined', R.name(prow),
+                      f"{P.get(prow, 'WzKY') + 1900} draft prospect, from {frm}", U.get(e, 'tRVs')])
+        stats['prospects placed'] += 1
+    return joined
 
 
 def _fill_lineup(b, slot, leftovers, live, abbr, stats, max_age=None):

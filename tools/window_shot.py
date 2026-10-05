@@ -27,6 +27,8 @@ options:
     --all               switch on every league before a done/details update
     --disc PATH         your own game disc image (read only): the editor's card then shows the players'
                         pictures instead of saying where the game is
+    --saves             step 1 points at a copied folder of roster saves instead of RPCS3 (no RPCS3:
+                        CrossOver, Wine, saves from elsewhere)
 
 The window paints itself into the picture (PrintWindow), so it comes out right even when the
 screen is locked or covered. Windows only; needs Pillow (in .venv).
@@ -118,6 +120,7 @@ def main():
     ap.add_argument('--show-path')
     ap.add_argument('--all', action='store_true')
     ap.add_argument('--disc')
+    ap.add_argument('--saves', action='store_true')
     args = ap.parse_args()
     if not os.path.exists(os.path.join(BASE, 'SYS-DATA')):
         sys.exit("no base roster save: set LEGACY_ROSTER_BASE to a roster save folder (see docs/DEVELOPING.md)")
@@ -134,6 +137,10 @@ def main():
         from legacy_roster import theme as T
 
         exe = pretend_rpcs3(work, args.disc)
+        if args.saves:                                # the saves copied out of RPCS3: no RPCS3 above them
+            copied = os.path.join(work, 'copied saves')
+            shutil.copytree(os.path.join(os.path.dirname(exe), 'dev_hdd0', 'home', '00000001', 'savedata'), copied)
+            exe = copied
         gui.load_settings = lambda: {} if args.state == 'none' else {'rpcs3': exe}
         gui.save_settings = lambda values: None
         savedata.running_rpcs3 = lambda: None         # a running RPCS3 on this PC must not be picked up

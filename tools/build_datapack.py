@@ -11,6 +11,9 @@ The pack holds everything the updater does not fetch live:
     iihf         rosters for the national teams the base roster leaves empty
     leagues      club rosters per league, already placed into the game's team slots (tools/club_slots.json)
     nhl          a snapshot of the NHL rosters, used only when the user is offline
+    nhl_last     everyone who played in the NHL last season (birthdate, size, hand, team now): who is
+                 retired and who is an unsigned free agent (refreshed with nhl)
+    drafts       every NHL draft pick since FIRST_DRAFT (refreshed with nhl)
 
 Before writing, every part is compared with the pack being replaced: a part that is gone or has
 lost more than 40% of its entries stops the build (a feed that changed its layout looks like that).
@@ -31,7 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from legacy_roster import datasource  # noqa: E402
 from legacy_roster.layout import API_TO_SLOT  # noqa: E402
-from providers import czech, ea_ratings, hockeytech, iihf, liiga, penny_del, sportality, swiss, wiki_logo  # noqa: E402
+from providers import czech, ea_ratings, hockeytech, iihf, liiga, nhl_facts, penny_del, sportality, swiss, wiki_logo  # noqa: E402
 
 # one feed per part of a league (club_slots.json); a part's cache is tools/cache/<part>.json
 FEEDS = {'liiga': liiga.fetch, 'extraliga': czech.fetch,
@@ -51,7 +54,10 @@ MAX_DROP = 0.4                  # a part that loses more than this share of its 
 MIN_AGE, MAX_AGE = 15, 45       # club players outside these ages are typos in the feed
 LEAGUE_MIN_AGE = {'ahl': 17}    # juniors may be 15 (exceptional status), AHL players not
 MAX_SHARED_PHOTO = 3            # this many players with the same photo link: it is a placeholder
-NHL_LOGO = "https://a.espncdn.com/i/teamlogos/nhl/500/{}.png"
+# ESPN's logos for dark backgrounds (the game's menus are dark): only Tampa Bay's and Washington's differ
+# from the plain ones, and those two were hard to see (testers, 0.7.0)
+NHL_LOGO = "https://a.espncdn.com/i/teamlogos/nhl/500-dark/{}.png"
+FIRST_DRAFT = 2005              # the oldest players still playing were drafted about then
 ESPN_CODE = {'UTA': 'utah', 'TBL': 'tb', 'NJD': 'nj', 'SJS': 'sj', 'LAK': 'la'}
 
 
@@ -94,7 +100,7 @@ def parts_of(conf, key):
 
 def build_league(key, conf, refresh):
     """The pack entry of one club league from its parts' caches (fetched first if asked), or None."""
-    teams, left_out, dates = [], [], []
+    teams, left_out, extra, former, dates = [], [], [], [], []
     for part, league_id, slots in parts_of(conf, key):
         cache = os.path.join(CACHE, f"{part}.json")
         if key in refresh or part in refresh:
@@ -107,30 +113,42 @@ def build_league(key, conf, refresh):
         with open(cache, encoding='utf-8') as f:
             clubs = json.load(f)
         feed_logos = clubs.pop('_logos', {})
+        former += clubs.pop('_former', [])      # last season's players on no list now: their photos
         sources = [c['source'] for c in slots.values()]
         if len(set(sources)) != len(sources):
             sys.exit(f"{part}: a club is mapped to two slots in club_slots.json")
-        for slot, club in sorted(slots.items(), key=lambda kv: int(kv[0])):
-            if club['source'] not in clubs:
-                sys.exit(f"{part}: no club named {club['source']!r} in the feed (clubs: {sorted(clubs)})")
+        def plausible(club_name, roster):
             players = []
-            for p in clubs[club['source']]:
+            for p in roster:
                 if SEASON - MAX_AGE <= p['birth'][0] <= SEASON - LEAGUE_MIN_AGE.get(part, MIN_AGE):
                     players.append(p)
                 else:           # a typo in the feed (born 2011 in the AHL): left out rather than guessed
-                    print(f"{part}: {club['full']}: left out {p['first']} {p['last']}, birthdate {p['birth']} "
+                    print(f"{part}: {club_name}: left out {p['first']} {p['last']}, birthdate {p['birth']} "
                           "is not possible")
+            return players
+
+        for slot, club in sorted(slots.items(), key=lambda kv: int(kv[0])):
+            if club['source'] not in clubs:
+                sys.exit(f"{part}: no club named {club['source']!r} in the feed (clubs: {sorted(clubs)})")
+            players = plausible(club['full'], clubs[club['source']])
             logo = club.get('logo') or feed_logos.get(club['source']) or wiki_logo_of(club.get('wiki') or club['full'])
             teams.append({'slot': int(slot), 'league_id': club.get('league_id', league_id), 'full': club['full'],
                           'short': club['short'], 'abbr': club['abbr'], 'art': club['art'], 'logo': logo,
                           'players': players})
-        left_out += sorted(set(clubs) - set(sources))
+        for name in sorted(set(clubs) - set(sources)):
+            left_out.append(name)
+            # no slot in the game: kept for a player's own custom team of that name (clubs.own_teams)
+            extra.append({'league_id': league_id, 'full': name, 'short': name, 'abbr': name[:3].upper(),
+                          'art': name[:3].upper(), 'logo': feed_logos.get(name), 'players': plausible(name, clubs[name])})
         dates.append(file_date(cache))
     # a picture several players share is a feed's "no photo" placeholder, not a photo
     shared = Counter(p.get('photo') for t in teams for p in t['players'] if p.get('photo'))
-    for t in teams:
+    shared.update(p['photo'] for p in former)
+    for t in teams + extra:
         t['players'] = [dict(p, photo=None) if shared[p.get('photo')] >= MAX_SHARED_PHOTO else p for p in t['players']]
-    entry = {'label': conf['label'], 'country': conf.get('country'), 'teams': teams, 'left_out': left_out}
+    former = [p for p in former if shared[p['photo']] < MAX_SHARED_PHOTO]
+    entry = {'label': conf['label'], 'country': conf.get('country'), 'teams': teams, 'left_out': left_out,
+             'extra': extra, 'former': former}
     if 'parts' not in conf:
         entry['league_id'] = conf['league_id']
     source = {'label': f"{conf['label']} rosters", 'date': min(dates), 'count': sum(len(t['players']) for t in teams)}
@@ -159,7 +177,7 @@ def check_drops(old, new, accept):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--refresh', default='',
-                    help="comma list: ratings, iihf, nhl, or a league (liiga, extraliga, shl, del, nl, norway, ahl, "
+                    help="comma list: ratings, iihf, nhl (also nhl_last and drafts), or a league (liiga, extraliga, shl, del, nl, norway, ahl, "
                          "chl) or one part of it (ohl, qmjhl, whl)")
     ap.add_argument('--research', help="lab research folder to use as the cache (work/research)")
     ap.add_argument('--accept-drops', action='store_true', help="write the pack even if a part shrank or vanished")
@@ -213,6 +231,20 @@ def main():
         pack['sources']['nhl'] ={'label': "NHL.com rosters (offline copy)", 'date': file_date(nhl_cache),
                                   'count': sum(len(t.get(g, [])) for t in teams.values()
                                                for g in ('forwards', 'defensemen', 'goalies'))}
+
+    # NHL facts for every player: who played last season (retired or unsigned) and the drafts
+    for key, fetch in (('nhl_last', lambda: nhl_facts.last_season(SEASON)),
+                       ('drafts', lambda: nhl_facts.drafts(FIRST_DRAFT, SEASON))):
+        cache = os.path.join(CACHE, f"{key}.json")
+        if 'nhl' in refresh or key in refresh:
+            os.makedirs(CACHE, exist_ok=True)
+            with open(cache, 'w', encoding='utf-8') as f:
+                json.dump(fetch(), f, ensure_ascii=False)
+        if os.path.exists(cache):
+            with open(cache, encoding='utf-8') as f:
+                pack[key] = json.load(f)
+            label = "NHL.com: last season's players" if key == 'nhl_last' else f"NHL drafts since {FIRST_DRAFT}"
+            pack['sources'][key] = {'label': label, 'date': file_date(cache), 'count': len(pack[key])}
 
     if os.path.exists(args.out):
         check_drops(datasource.read_pack(args.out), pack, args.accept_drops)

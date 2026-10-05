@@ -9,6 +9,7 @@
             [--edits]                                 apply your edits from the window's Roster editor
     photos remove                                     take the photos and logos away again
     stock-test --rpcs3 <rpcs3.exe> [--version EU|NA]  the in-game check of the game's own roster (two LAB rosters)
+    draft-test --rpcs3 <rpcs3.exe> [--source <save>]  the in-game check of where the draft finds prospects
     export  --rpcs3 <rpcs3.exe> [--source <save>] --out <folder>    every table as CSV, real names
 
 --savedata <folder> can be given instead of --rpcs3 when the saves are not in an RPCS3 folder.
@@ -175,6 +176,17 @@ def cmd_league_test(args):
           "the National League and Penticton in the WHL, and play one game with each.")
 
 
+def cmd_draft_test(args):
+    from .art import lab
+    try:
+        lab_slot = lab.draft_test(savedata.find_rpcs3(args.rpcs3), args.source)
+    except RuntimeError as err:
+        sys.exit(str(err))
+    print(f"In the game: Roster Management > Load Roster > \"{lab_slot.name}\". Start Be a GM and open the list of "
+          "draft prospects (scouting or the draft); if there is none yet, simulate to the draft. Tell us which of "
+          "the names above are in it (docs/ROADMAP.md, \"Draft test\").")
+
+
 def cmd_art_test(args):
     from .art import lab
     try:
@@ -234,6 +246,10 @@ def main(argv=None):
     p.set_defaults(fn=cmd_league_test)
     p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
     p.add_argument('--source', help="roster save to start from (default: newest)")
+    p = sub.add_parser('draft-test', help="save a LAB roster with prospects in different places (in-game test)")
+    p.set_defaults(fn=cmd_draft_test)
+    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--source', help="roster save to start from, made with 0.8.0 or newer (default: newest)")
     p = sub.add_parser('art-test', help="install or remove the in-game test of photos and logos (see docs/ROADMAP.md)")
     p.set_defaults(fn=cmd_art_test)
     p.add_argument('action', choices=('install', 'remove'))

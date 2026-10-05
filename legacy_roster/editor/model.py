@@ -59,6 +59,10 @@ class Snapshot:
         self.season_year = season_year or datetime.date.today().year - (datetime.date.today().month < 9)
         self.offset = ovr_offset or {False: 0.0, True: 0.0}
         P, U, T = R.P, R.U, R.T
+        # the game's own roster as the disc has it: birth years in the game's year - 1900 (stock.prepare
+        # moves them), or every player would look ten years off and "new to the game" next to the update
+        from .. import stock
+        base = 1900 if stock.is_stock(R) and not stock.prepared(R) else 1910
         self.team_names = {t: R.team_name(t) for t in range(T.cur_rec)}
         self.team_league = {t: L.LEAGUE_NAMES.get(T.get(t, 'jjMx'), 'Other') for t in range(T.cur_rec)}
         self.rosters = {}                 # team -> [pid]
@@ -85,8 +89,8 @@ class Snapshot:
             p.first, p.last = P.get(prow, 'PedH'), P.get(prow, 'RMbQ')
             p.pos = POSITION.get(P.get(prow, 'aljv'), '?')
             p.num = P.get(prow, 'tRVs')
-            p.birth = edits.birth_of(P, prow)
-            p.who = edits.who_of(P, prow)
+            p.birth = edits.birth_of(P, prow, base)
+            p.who = edits.who_of(P, prow, base)
             p.country = COUNTRY.get(P.get(prow, 'hleL'), str(P.get(prow, 'hleL')))
             p.shoots = 'R' if P.get(prow, 'pkRG') else 'L'
             p.height_in = P.get(prow, 'QBpy') + 54

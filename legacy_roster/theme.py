@@ -2,9 +2,12 @@
 
 Puck Peak's page is #0b1318; its cards are that colour with 3% white on top and a 10% white
 border, 12-14 px corners, pill buttons, Source Sans, and #2596be as the accent. Tk has no
-transparency, so the blended colours are written out here.
+transparency, so the blended colours are written out here. The cards and the fields in them are a
+step lighter than Puck Peak's, with a stronger edge, so the numbered steps stand out from the page
+(owner, 0.8.0).
 """
 import os
+import sys
 import tkinter as tk
 import tkinter.font as tkfont
 
@@ -13,11 +16,11 @@ import customtkinter as ctk
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 
 BG = '#0b1318'              # page
-CARD = '#121a1f'            # page + 3% white
-BORDER = '#232b2f'          # page + 10% white
-BORDER_STRONG = '#32393d'   # page + 16% white
-CELL = '#171f24'            # page + 5% white: rows and fields inside a card
-CELL_HOVER = '#1d262c'
+CARD = '#17232b'            # page + 6% white, a touch of the accent
+BORDER = '#2c3d48'          # page + 14% white, a touch of the accent
+BORDER_STRONG = '#3d4e59'   # page + 20% white
+CELL = '#1f2e38'            # page + 10% white: rows and fields inside a card
+CELL_HOVER = '#273946'
 TEXT = '#e2f1f8'
 STRONG = '#f8fafc'
 BODY = '#cbd5e1'
@@ -38,7 +41,10 @@ RED_SOFT = '#2c2024'
 RED_LINE = '#5a2a2e'
 
 RADIUS = 14
-_FAMILY = {'normal': 'Segoe UI', 'semibold': 'Segoe UI Semibold', 'bold': 'Segoe UI'}
+# the system's own font while Source Sans is not loaded (a Mac cannot load fonts from a file at run time)
+_SYSTEM_FONT = 'Segoe UI' if os.name == 'nt' else 'Helvetica Neue' if sys.platform == 'darwin' else 'DejaVu Sans'
+_FAMILY = {'normal': _SYSTEM_FONT, 'semibold': _SYSTEM_FONT + (' Semibold' if os.name == 'nt' else ''),
+           'bold': _SYSTEM_FONT}
 _images = []                # Tk drops images nobody holds on to
 
 

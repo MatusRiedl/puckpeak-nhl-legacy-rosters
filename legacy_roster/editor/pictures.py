@@ -43,8 +43,9 @@ class Pictures:
     def _art_file(self, artid):
         """The bytes of the portrait file the game uses for `artid` (None when it has none)."""
         rel = ART + ('playerheads', portrait_folder(artid), f"p{artid}.big")
-        loose = os.path.join(self.rpcs3.game_folder(self.title_id), *rel)
-        if os.path.exists(loose):
+        game = self.rpcs3.game_folder(self.title_id)       # None: roster saves without RPCS3 (savedata.SaveFolder)
+        loose = os.path.join(game, *rel) if game else None
+        if loose and os.path.exists(loose):
             with open(loose, 'rb') as f:
                 return f.read()
         path = self.rpcs3.game_disc(self.title_id)

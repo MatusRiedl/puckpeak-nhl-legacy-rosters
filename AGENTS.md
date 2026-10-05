@@ -10,7 +10,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
 
 ## Read in this order
 
-1. [README.md](README.md): what players see and do.
+1. [README.md](README.md): what players see and do ([CHANGELOG.md](CHANGELOG.md): what each version changed).
 2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the exe works, from button to new save, and
    where new features plug in.
 3. [docs/DEVELOPING.md](docs/DEVELOPING.md): setup, tests, how to make common changes, debugging,
@@ -41,7 +41,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    copy of the savedata folder, or `tools/window_shot.py` (it makes a fake RPCS3).
 6. **No git commit or push, and nothing published, without the owner's explicit go-ahead.**
    The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters (0.6.0
-   and 0.7.0 committed, pushed and released on 2026-10-04 with the owner's go-ahead). Every further commit,
+   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, each with the owner's go-ahead). Every further commit,
    push or release needs the go-ahead again. Before pushing, check that no base roster (`work/`),
    photo pack, EA file, personal path or user name goes in.
 7. **The base roster is not ours to ship** (another modder's work on EA data). It stays out of
@@ -82,12 +82,14 @@ python -m legacy_roster photos remove                          # take them away 
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --edits     # also apply the Roster editor's edits
 .venv\Scripts\python tools\build_photopack.py                  # the photo pack inside the exe (after the data pack; build.ps1 needs it)
 python -m legacy_roster art-test install|remove --rpcs3 <rpcs3.exe>   # the one-off in-game art test (done)
+python -m legacy_roster draft-test --rpcs3 <rpcs3.exe>         # LAB roster: where does the draft see prospects (owner)
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1   # build dist\*.exe (close a running copy first)
+bash packaging/build.sh                                        # the same on a Mac or a Linux PC (its own system only)
 ```
 
 ## Environment
 
-- Windows 10/11. Python 3.10+ (developed on 3.13).
+- Windows 10/11 (also runs on macOS and Linux: `packaging/build.sh`). Python 3.10+ (developed on 3.13).
 - `.venv` (made by `packaging\build.ps1`) holds PyInstaller, CustomTkinter and, for images and
   screenshots, Pillow. The tests run with any Python that has pytest.
 - Tests and screenshots need a roster save of the 2025-26 community family ("ROSTER2526") in
@@ -112,10 +114,10 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1   # build dist\*.ex
 | Area | Files |
 |---|---|
 | Save format, tables | `tdb.py`, `sfo.py`, `schema.py`, `schema_names.py`, `roster.py`, `layout.py` |
-| The update | `pipeline.py` (order of steps), `builder.py`, `leagues/`, `lines.py`, `ratings.py`, `estimate.py`, `donors.py`, `matching.py`, `report.py` (the list of changes as a page) |
+| The update | `pipeline.py` (order of steps), `builder.py` (also free agents and retiring, goalie gear), `leagues/`, `lines.py`, `ratings.py`, `estimate.py`, `donors.py`, `matching.py`, `draft.py` (real draft data), `report.py` (the list of changes as a page) |
 | The game's own roster | `stock.py` (from the disc, made updatable), `savedata.DiscSlot`, `savedata.roster_sfo` |
 | Safety | `verify.py` |
-| Data | `datasource.py` (NHL.com, data pack), `tools/build_datapack.py`, `tools/providers/`, `tools/club_slots.json` (club → slot for every league), `tools/capacity.py` |
+| Data | `datasource.py` (NHL.com, data pack), `tools/build_datapack.py`, `tools/providers/` (`nhl_facts.py`: last season's players, drafts), `tools/club_slots.json` (club → slot for every league), `tools/capacity.py` |
 | RPCS3 and saves | `savedata.py` (also the game's own folder and disc: `Rpcs3.game_folder`, `game_disc`; the versions EU / NA: `GAMES`, `Rpcs3.games`, `install(title_id=)`) |
 | Menu art and names (portraits, logos, team names) | `art/` (`loc.py` the game's text file; `disc.py` the player's own disc, `bigf.py`, `refpack.py`, `dds.py`; photos and logos: `portraits.py` ids in the roster, `images.py` drawing, `install.py` download, write, undo; `lab.py` the one-off art test), `tools/providers/wiki_logo.py`, `tools/names_report.py` |
 | Front ends | `gui.py` (tabs Update and Roster editor), `widgets.py`, `theme.py`, `progress.py`, `cli.py` |
@@ -130,6 +132,48 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+Version 0.8.0 (released 2026-10-05; CHANGELOG.md has the players' version): the testers' feedback on 0.7.0, with the
+owner's decisions (ROADMAP.md, "Decisions taken ... testers' feedback"). Everything waits for the
+in-game check (`pipeline.EXPERIMENTAL`: 'free agents', 'goalie gear', 'draft', 'own teams'):
+- **Free agents:** `builder.would_retire` (retire_age: 30 on the game's own roster, 35 otherwise;
+  never who played in the NHL last season, is on an NHL.com roster or is listed by a league or an
+  IIHF squad). `settle_free_agents` retires old free agents, `add_unsigned` makes last season's
+  unsigned NHL players free agents (created if missing). Data pack part `nhl_last`
+  (`tools/providers/nhl_facts.py`). The game's own roster rebuilds its 2014 national teams on the
+  first update (`clear_national`). All retirements happen before any player is created
+  (DEVELOPING.md lists what breaks a byte-identical second run).
+- **Real player data:** `draft.py` (data pack `drafts`, every pick since 2005) for every record,
+  NHL.com's height, weight, hand and birthplace for every NHL player (`nhl_bio`). Name matching:
+  full-name matches need a fitting birth year, namesakes go by the closest one, the DEL's age-only
+  match accepts Nico / Nicolas.
+- **Logos** in the game's own sizes (`images.LOGO_BOX`), ESPN's dark-background NHL logos,
+  `install.LOGO_DRAWING` redraws installed logos once. Photo pack rebuilt.
+- **Goalie gear** repainted in the new club's colours (`Builder.goalie_gear`, table `lVMf`).
+- **Own teams:** a player's custom team named after a left-out club gets its players
+  (`clubs.own_teams`, data pack `leagues.<key>.extra`); `stock.is_stock` no longer trips over one.
+- Skipped pictures are named in the List of changes (`pipeline.note_skipped`); the Roster editor
+  reads the unprepared disc roster's birth years right.
+- After the owner's own test (2026-10-04/05):
+  - players under 20 whom their league's list leaves out stay with their club (`clubs.STAY_AGE`,
+    DuPont);
+  - undrafted prospects of the next drafts (draft year still to come, round 0) in prospect pools, on
+    the free-agent list or on no team join a real club of their country's league (`clubs.HOME_LEAGUE`,
+    the CHL for the rest) inside that league's step (`_place_prospects`), as EA's own roster keeps its
+    draft classes; `cli draft-test` (`art/lab.draft_lab`) remains to check where the draft looks;
+  - pictures: Extraliga photos from hokej.cz's player pages (`tools/providers/czech.py`), last
+    season's AHL/CHL photos for players this season's lists leave out (league `former`,
+    `Builder.former_photos`); the National League publishes none;
+  - the window keeps every step in view when the result shows (the big logo folds, the result's
+    lines scroll: `App.fit_banner`, `compact_header`), and the cards have more contrast;
+  - macOS and Linux: `savedata` finds RPCS3's data folder there (`data_folders`, `is_program`,
+    `open_path`, `_running_posix`), `datasource.data_home`, `packaging/build.sh`,
+    `.github/workflows/build.yml` (tests on three systems, Mac and Linux builds). Not tried on a real
+    Mac or Linux PC yet.
+  - without RPCS3 (a tester on a Mac in CrossOver): step 1 also takes a folder with roster saves
+    (`savedata.SaveFolder`, `open_saves`; the window's link "No RPCS3 on this computer?"); photos and
+    the game's own roster are not offered then.
+  - Open: a Season mode crash with Arizona/Utah (ROADMAP "Waiting for the game").
 
 Version 0.7.0 (2026-10-04): fixes for two problems a tester had with 0.6.0 (nothing new goes into
 the save):
