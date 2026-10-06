@@ -1,7 +1,9 @@
 """One entry point for building an updated roster: used by the GUI, the CLI and the tests."""
+import collections
 import csv
 import datetime
 import os
+import sys
 from collections import Counter
 
 from . import datasource, draft, savedata, schedule, stock
@@ -14,7 +16,8 @@ from .verify import verify
 # what the user can tick; steps run in this order whatever order they are given in
 NHL, RATINGS, NATIONAL = 'nhl', 'ratings', 'national'
 CORE_STEPS = (NHL, RATINGS, NATIONAL)
-# the game's calendar (schedule.py): the real schedule of the season; off unless asked for, until the owner has played it
+# the game's calendar (schedule.py): the real schedule of the season, 30 teams; played by the owner on 2026-10-06 and on
+# by default since (the year label stays 2015, Seattle and Vegas play Play Now only)
 SCHEDULE = 'schedule'
 # club leagues, available when the data pack has rosters for them
 LEAGUE_ORDER = ('liiga', 'extraliga', 'shl', 'del', 'nl', 'norway', 'ahl', 'chl')
@@ -24,7 +27,7 @@ STEP_LABELS = {NHL: "NHL rosters, numbers, lines and captains",
                'liiga': "Liiga: real clubs", 'extraliga': "Extraliga: real clubs", 'shl': "SHL: real clubs",
                'del': "DEL: real clubs", 'nl': "National League: real clubs", 'norway': "Norway: real clubs",
                'ahl': "AHL rosters", 'chl': "CHL (OHL / QMJHL / WHL)",
-               SCHEDULE: "Calendar 2026-27 (test)"}
+               SCHEDULE: "Calendar 2026-27"}
 LEAGUE_NAMES = {'liiga': "Liiga", 'extraliga': "Extraliga", 'shl': "SHL", 'del': "DEL", 'nl': "National League",
                 'norway': "Norway", 'ahl': "AHL", 'chl': "CHL (OHL / QMJHL / WHL)"}
 # the parts of the update, as the change log tags its rows (builder.ChangeLog) and the list of changes groups them
@@ -70,9 +73,9 @@ def section_of(row):
 # sides on the lines, 'favourite logos' the reflection logos (art/install.REFLECTION), all new in 0.6.0.
 # New in 0.8.0: 'free agents' (retired ones go, unsigned NHL players come), 'goalie gear' (painted in
 # the new club's colours), 'draft' (real draft data), 'own teams' (a player's own team named after a
-# club the game has no slot for gets its players)
+# club the game has no slot for gets its players). The calendar left this list on 2026-10-06: the owner played it.
 EXPERIMENTAL = {'shl', 'del', 'nl', 'norway', 'ahl', 'chl', 'stock', 'positions', 'favourite logos',
-                'free agents', 'goalie gear', 'draft', 'own teams', SCHEDULE}
+                'free agents', 'goalie gear', 'draft', 'own teams'}
 ALL_STEPS = CORE_STEPS      # what build() and update() run when no steps are given
 
 
@@ -83,8 +86,8 @@ def steps_for(pack):
 
 
 def default_steps(pack):
-    """What is switched on unless the user chooses: everything the pack serves, but the calendar (a test)."""
-    return [s for s in steps_for(pack) if s != SCHEDULE]
+    """What is switched on unless the user chooses: everything the pack serves."""
+    return steps_for(pack)
 
 
 def planned(pack):
@@ -366,7 +369,8 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
 
 class UpdateResult:
     def __init__(self, build_result, slot, report_path, name, art=None, slots=None, in_place=False, backup=None,
-                 unchanged=False):
+                 unchanged=False, exported=None):
+        self.exported = exported        # the SYS-DATA file written by export_sysdata (no save, no RPCS3)
         self.in_place = in_place        # the roster save was updated, not a new one made
         self.backup = backup            # the folder with the old roster's files (in place)
         self.unchanged = unchanged      # in place, and the roster already was this
@@ -379,6 +383,8 @@ class UpdateResult:
 
     def saved_where(self):
         """'BLES021530210 (EU) and BLUS315400200 (NA)': the new folders, for the player."""
+        if self.exported:
+            return self.exported
         if self.in_place:
             return f"{self.slot.folder} ({self.slot.region}), updated in place"
         return " and ".join(f"{s.folder} ({s.region})" for s in self.slots)
@@ -499,6 +505,7 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         portraits_, logos, names = result.art
         skipped = []
         try:
+            install_looks(result, art_rpcs3, art_title, targets, say)
             art = install.install(art_rpcs3, art_title, portraits_, logos, say, names=names,
                                   also=[t for t in targets if t != art_title], skipped=skipped)
         except install.ArtError as err:  # the roster is saved; only the pictures are missing
@@ -509,6 +516,86 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
             report = report_as(title)
     return UpdateResult(result, saved[0], report, name, art, slots=saved, in_place=in_place, backup=backup,
                         unchanged=unchanged)
+
+
+def install_looks(result, rpcs3, title, targets, say):
+    """The new jerseys, pants, socks, menu pictures and centre-ice logos of Utah, Seattle and Vegas (art/looks.py), made from
+    the player's own disc, with the photos and logos. A logo that cannot be had leaves the jerseys out, the rest goes on."""
+    from .art import looks
+    from .art.photopack import PhotoPack, PictureCache
+    b = result.builder
+    nhl_logos = getattr(b.data, 'nhl_logos', None)
+    try:
+        nhl_logos = nhl_logos or datasource.load_pack(offline=True).get('nhl_logos') or {}
+        made = looks.looks_from(Roster(result.data), dict(getattr(b, 'looks_edits', {})), dict(b.logos), nhl_logos,
+                                PhotoPack.open(), PictureCache())
+    except Exception as err:
+        say(f"Jerseys and ice: left out ({err})")
+        return
+    if made:
+        looks.install_looks(rpcs3, title, made, say, also=[t for t in targets if t != title])
+
+
+ExportSlot = collections.namedtuple('ExportSlot', 'name folder region')
+
+
+def export_root():
+    """The folder an exported SYS-DATA goes to: next to the program (the exe; run from source, the current folder).
+    When that folder cannot be written to (a program folder), the player's Documents folder."""
+    base = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, 'frozen', False) else os.getcwd()
+    try:
+        probe = os.path.join(base, '.write-test')
+        with open(probe, 'w'):
+            pass
+        os.remove(probe)
+        return base
+    except OSError:
+        docs = os.path.join(os.path.expanduser('~'), 'Documents')
+        return docs if os.path.isdir(docs) else os.path.expanduser('~')
+
+
+def export_sysdata(source_file, steps=ALL_STEPS, name=None, progress=None, offline=False, my_edits=None, team_edits=None,
+                   data=None, out_root=None):
+    """Update a roster file (a community roster's SYS-DATA) and write the new SYS-DATA into a new folder next to the program,
+    without RPCS3 and without any save folder: for a PC that cannot run RPCS3 (a Mac, a Linux box). The new file is checked
+    like every roster; nothing is written when a check fails. No photos, logos or jerseys (they are RPCS3's files), no
+    start from the game's own roster (that needs the disc). Returns an UpdateResult whose `exported` is the new file."""
+    say = progress or (lambda msg: None)
+    if not os.path.isfile(source_file):
+        raise FileNotFoundError("The roster file was not found.")
+    with open(source_file, 'rb') as f:
+        src_bytes = f.read()
+    R = Roster(src_bytes)
+    L.check_base(R)
+    from . import stock
+    if stock.is_stock(R):
+        raise L.LayoutError("This is the game's own roster, which is started from your game disc. Pick the community "
+                            "roster's SYS-DATA instead.")
+    say(f"Starting from \"{os.path.basename(os.path.dirname(os.path.abspath(source_file))) or 'SYS-DATA'}\" (SYS-DATA file)")
+    if data is None:
+        pack = datasource.load_pack(say, offline)
+        data = datasource.gather(R, set(steps), pack, say, offline)
+    result = build(src_bytes, data, steps, say, my_edits=my_edits, team_edits=team_edits)
+    name = savedata.clean_name(name or savedata.default_name())
+    stamp = f"{datetime.datetime.now():%Y%m%d-%H%M%S}"
+    heading = f"\"{name}\", made from the roster file {os.path.basename(source_file)}"
+    if not result.ok:
+        say(f"The new roster did not pass {len(result.problems)} integrity checks, so nothing was saved.")
+        return UpdateResult(result, None, write_report(result, f"failed_{stamp}", heading, data.leagues), name)
+    root = out_root or export_root()
+    folder = os.path.join(root, f"NHL Legacy roster {datetime.datetime.now():%Y-%m-%d %H%M}")
+    n = 1
+    while os.path.exists(folder):
+        n += 1
+        folder = os.path.join(root, f"NHL Legacy roster {datetime.datetime.now():%Y-%m-%d %H%M} ({n})")
+    os.makedirs(folder)
+    target = os.path.join(folder, 'SYS-DATA')
+    with open(target + '.tmp', 'wb') as f:
+        f.write(result.data)
+    os.replace(target + '.tmp', target)
+    say(f"Exported SYS-DATA to {target}")
+    report = write_report(result, f"export_{stamp}", heading, data.leagues)
+    return UpdateResult(result, ExportSlot(name, folder, ''), report, name, exported=target)
 
 
 def note_skipped(result, skipped):

@@ -31,6 +31,7 @@ _STAGES = tuple((re.compile(p), a, b) for p, a, b in STAGES)
 # with "Photos and logos" on, making the pictures comes after the save and takes most of the time
 PHOTO_SHARE = 0.6
 PHOTO_STAGES = (
+    (r'^Jerseys and ice: ', 0.02, None),
     (r'^Photos and logos: reading', 0.01, None),
     (r'^Photos and logos: making', 0.03, None),
     (r'^Photos and logos: (\d+) of (\d+) pictures made', 0.03, 1.0),

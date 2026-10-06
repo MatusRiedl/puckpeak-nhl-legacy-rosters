@@ -273,6 +273,25 @@ class _Writer:
             os.replace(tmp, path)
             entry['stamp'] = stamp(path)
 
+    def stale(self, prefix, wanted):
+        """File keys written by a source that starts with `prefix` (in any game folder) that are not in `wanted`."""
+        return sorted({key for d in self.game_dirs for key, entry in self.manifest['games'][d].items()
+                       if str(entry.get('source', '')).startswith(prefix) and key not in wanted})
+
+    def drop(self, rel):
+        """Put one file we wrote back as it was (the kept copy returns, or our file goes) and forget it."""
+        key = '/'.join(rel)
+        for d in self.game_dirs:
+            entry = self.manifest['games'][d].pop(key, None)
+            if entry is None:
+                continue
+            path = os.path.join(d, *rel)
+            if entry.get('backup') and os.path.exists(entry['backup']):
+                shutil.copy2(entry['backup'], path)
+                os.remove(entry['backup'])
+            elif os.path.exists(path) and ours(entry, path):
+                os.remove(path)
+
     def save(self):
         _save_manifest(self.manifest)
 

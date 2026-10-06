@@ -130,6 +130,7 @@ class EditorTab(ctk.CTkFrame):
                                         font=T.font(13, 'semibold'), dropdown_font=T.font(13))
         self.league.pack(fill='x', pady=(0, 6))
         GhostButton(side, "Edit this team", self.edit_team, height=28).pack(fill='x', pady=(0, 6))
+        GhostButton(side, "Jerseys and ice...", self.edit_uniforms, height=28).pack(fill='x', pady=(0, 6))
         frame, self.team_tree = self._tree(side, (('team', "Team", 190),), 12)
         frame.pack(fill='both', expand=True)
         self.team_tree.bind('<<TreeviewSelect>>', lambda _e: self.pick_team())
@@ -817,6 +818,17 @@ class EditorTab(ctk.CTkFrame):
         bar.pack(fill='x', padx=16, pady=(4, 14))
         PrimaryButton(bar, "Apply", apply_team, width=110, height=34).pack(side='left')
         GhostButton(bar, "Undo team edit", undo_team, height=30).pack(side='left', padx=(8, 0))
+
+    def edit_uniforms(self):
+        """The window for a team's jerseys and centre-ice logo (editor/uniforms.py)."""
+        if not isinstance(self.team, int) or self.snap is None:
+            self.set_status("Pick a team first.", T.GOLD)
+            return
+        if not 0 <= self.team < 32:
+            self.set_status("Jerseys and the centre-ice logo can be changed for the 32 NHL teams.", T.GOLD)
+            return
+        from .uniforms import UniformsWindow
+        UniformsWindow(self, self.team)
 
     def undo(self):
         p = self.player

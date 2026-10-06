@@ -13,6 +13,8 @@ states:
     details    done, with the details panel open
     failed     a made-up failure banner
     delete     the question before a roster save goes to the Recycle Bin (its Delete button pressed)
+    export           the window with "Export only SYS-DATA roster" ticked, after making the roster (export-ready: before)
+    uniforms         the Roster editor's "Jerseys and ice" window for Edmonton (needs --disc)
     editor           the Roster editor tab on the base roster, Edmonton and its first player picked
 
 The pretend RPCS3 has the base roster, an earlier update of it, and a copy saved for the NA
@@ -113,7 +115,7 @@ def capture(root, out):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('state', choices=('none', 'ready', 'updating', 'done', 'details', 'failed', 'delete',
-                                      'editor'))
+                                      'editor', 'uniforms', 'export', 'export-ready'))
     ap.add_argument('out')
     ap.add_argument('--scale', type=float)
     ap.add_argument('--screen-lines', type=int)
@@ -162,6 +164,7 @@ def main():
                 time.sleep(0.02)
 
         pump(1.0)
+        shot_of = root
         deadline = time.time() + 60
         while app.scanning and time.time() < deadline:     # the rosters are read in the background
             pump(0.1)
@@ -185,7 +188,7 @@ def main():
                 pump(0.2)
             if args.state == 'details':
                 app.toggle_details()
-        elif args.state.startswith('editor'):
+        elif args.state.startswith('editor') or args.state == 'uniforms':
             ed = app.editor
             app.select(os.path.basename(BASE))
             app.tabs.set(gui.EDITOR_TAB)
@@ -204,6 +207,22 @@ def main():
             first = ed.table.get_children()[0]
             ed.table.selection_set(first)
             pump(2.5)                                # the picture is made in the background
+            if args.state == 'uniforms':             # the jerseys window of the picked team (needs --disc)
+                ed.edit_uniforms()
+                pump(25)
+                shot_of = [w for w in ed.winfo_children() if isinstance(w, ctk.CTkToplevel)][-1]
+        elif args.state in ('export', 'export-ready'):       # "Export only SYS-DATA roster": the file is written into the temp folder
+            os.chdir(work)
+            app.export_var.set(True)
+            app.toggle_export()
+            app.export_file = os.path.join(BASE, 'SYS-DATA')
+            app._export_look()
+            app.refresh_state()
+            if args.state == 'export':
+                app.start_export()
+                deadline = time.time() + 600
+                while app.busy and time.time() < deadline:
+                    pump(0.2)
         elif args.state == 'delete':
             app.ask_delete(next(s.folder for s in app.slots if s.tool_made))
         elif args.state == 'failed':
@@ -214,7 +233,7 @@ def main():
         if args.show_path:
             app.show_path(args.show_path, T.TEXT)
         pump(1.2)
-        size = capture(root, args.out)
+        size = capture(shot_of if args.state == 'uniforms' else root, args.out)
         print(f"{args.state}: {args.out} {size[0]}x{size[1]}, scaling {T.scaling(root)}, "
               f"font {T._FAMILY['normal']}, {len(app.slots)} rosters")
         root.destroy()

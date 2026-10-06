@@ -3,6 +3,27 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.9.0 (2026-10-07)
+
+- **New jerseys and centre-ice logos for Utah, Seattle and Vegas.** With "Photos, logos and team names" on, the update
+  also installs home and away jerseys, pants, socks, number sheets and Select Jerseys pictures in each club's colours with
+  its logo, and a centre-ice logo with the arena's name (Delta Center, Climate Pledge Arena, T-Mobile Arena). They are made
+  on your PC from your own game disc, and "Restore the game's own pictures" puts the old ones back. Not yet checked in the
+  game (`looks-test` writes only these files). The older Arizona versions, the Jets throwbacks and the old All-Star versions
+  are left as the game has them.
+- **Export only SYS-DATA roster (no RPCS3 needed).** Tick it in step 1, pick the community roster's SYS-DATA file in step 2, press
+  **Make new roster**: the updated SYS-DATA is written into a new folder next to the program. For a Mac or Linux PC that cannot run
+  RPCS3. No pictures, logos or jerseys are in it. (Replaces the link "No RPCS3 on this computer?"; the command line has `export-roster`.)
+- **Roster editor: "Jerseys and ice...".** Pick an NHL team, press the button: change its two colours and crest, and for each jersey version
+  the game has (the ones "Change Jerseys" shows) choose the game's own, a jersey made from your colours, or your own picture
+  (a flat 1024 x 1024 colour map; the window saves the game's own as a template to paint on). The centre-ice logo can be the game's
+  own, drawn from the team's logo and arena name, or your own picture. Kept on your PC and made in every update with "Photos, logos
+  and team names" on (and My edits on); a version set back to "the game's own" is put back as it was.
+
+- **Calendar 2026-27 is a normal step now (on by default).** The owner played all four test calendars: every game and
+  date matched NHL.com. The game still calls the year 2015, and Seattle and Vegas cannot be in Season mode or Be a GM
+  (those modes are built for 30 teams), so the calendar has the 30 original teams (they play 76-80 games).
+
 ## 0.8.1 (2026-10-06)
 
 From the owner's tests of 0.8.0. Confirmed in the game: the Tampa Bay and Toronto logos, the team names on

@@ -33,7 +33,7 @@ $common = @(
     # photos and logos: Pillow finds its file readers by name at run time, so name the ones used
     '--hidden-import', 'PIL.PngImagePlugin', '--hidden-import', 'PIL.JpegImagePlugin',
     '--hidden-import', 'PIL.WebPImagePlugin', '--hidden-import', 'PIL.GifImagePlugin',
-    '--hidden-import', 'PIL.DdsImagePlugin', '--hidden-import', 'legacy_roster.art.images',
+    '--hidden-import', 'PIL.DdsImagePlugin', '--hidden-import', 'legacy_roster.art.images', '--hidden-import', 'legacy_roster.art.looks',
     '--distpath', 'dist', '--workpath', 'build', '--specpath', 'build'
 )
 

@@ -53,11 +53,18 @@ used only to build.
 ## Without RPCS3
 
 `savedata.SaveFolder` stands in for an RPCS3 when the player picks a folder with roster saves (or
-one roster save) instead: the window's link under step 1, or a remembered path that is no RPCS3
+one roster save) instead: the command line's `--savedata`, or a remembered path that is no RPCS3
 (`App.set_rpcs3` falls back to `savedata.open_saves`). It has the save folder and the versions
 found there, but no game folder and no game disc, so the photos switch is off, "The game's own
 roster" is not listed and there is no "Start RPCS3". The new roster goes next to the others
 (`savedata.install`). For a tester running the Windows exe in CrossOver with the Mac RPCS3 (0.8.0).
+
+**Export only SYS-DATA roster** (0.9.0, a Linux user's request, owner 2026-10-07): the checkbox under step 1 (`App.export_mode`,
+`toggle_export`, `_refresh_export`) needs no RPCS3 and no save folder. Step 2 asks for the community roster's SYS-DATA file
+(`pick_export_file`: `layout.check_base`, the game's own roster is refused), "Make new roster" runs `pipeline.export_sysdata`
+(the normal gather and build, checks and report, no photos/logos/jerseys) and writes `NHL Legacy roster <date time>/SYS-DATA` next
+to the exe (`pipeline.export_root`: the program's folder, else Documents). A new folder every time, nothing is overwritten;
+`cli export-roster`. `tools/window_shot.py export|export-ready`; `tests/test_export.py`.
 
 ## What happens when the user presses "Update roster"
 

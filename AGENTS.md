@@ -58,7 +58,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
 8. **Public pictures must not show the owner's user name, desktop or other programs.** Use
    `tools/window_shot.py --show-path`.
 9. The engine (`legacy_roster/` except `gui.py`, `widgets.py`, `theme.py` and `editor/`) uses the
-   standard library only; the one exception is `art/images.py` (Pillow, imported only when "Photos
+   standard library only; the exceptions are `art/images.py` and `art/looks.py` (Pillow, imported only when "Photos
    and logos" is on). The window may use CustomTkinter, and Pillow for pictures
    (`editor/pictures.py`). Leave `work/` (the original lab) untouched.
 10. **Photos and logos ship inside the exe; EA files never ship.** The owner decided (2026-10-03,
@@ -94,6 +94,7 @@ python -m legacy_roster art-test install|remove --rpcs3 <rpcs3.exe>   # the one-
 python -m legacy_roster draft-test --rpcs3 <rpcs3.exe>         # LAB roster: where does the draft see prospects (owner)
 python -m legacy_roster season-test --rpcs3 <rpcs3.exe>        # LAB rosters with more and more update steps: which one crashes Season mode (owner)
 python -m legacy_roster rendering-test --rpcs3 <rpcs3.exe>     # loud Utah jerseys / centre-ice logo as loose files (owner; undo: photos remove)
+python -m legacy_roster looks-test --rpcs3 <rpcs3.exe>        # new Utah/Seattle/Vegas jerseys + centre-ice logos as loose files (owner; undo: photos remove)
 python -m legacy_roster calendar-test --rpcs3 <rpcs3.exe> --source file:<community SYS-DATA>   # LAB rosters with the real 2026-27 calendar (owner)
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --in-place  # update the picked roster itself (backup first)
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1   # build dist\*.exe (close a running copy first)
@@ -134,7 +135,8 @@ bash packaging/build.sh                                        # the same on a M
 | RPCS3 and saves | `savedata.py` (also the game's own folder and disc: `Rpcs3.game_folder`, `game_disc`; the versions EU / NA: `GAMES`, `Rpcs3.games`, `install(title_id=)`) |
 | Menu art and names (portraits, logos, team names) | `art/` (`loc.py` the game's text file; `disc.py` the player's own disc, `bigf.py`, `refpack.py`, `dds.py`; photos and logos: `portraits.py` ids in the roster, `images.py` drawing, `install.py` download, write, undo; `lab.py` the one-off art test), `tools/providers/wiki_logo.py`, `tools/names_report.py` |
 | Front ends | `gui.py` (tabs Update and Roster editor), `widgets.py`, `theme.py`, `progress.py`, `cli.py` |
-| 3D textures | `art/rpsgl.py` (jerseys, ice: read, replace a raster, repack), `art/rendering.py` (`cli rendering-test`, loud Utah files) |
+| Jerseys and ice in the Roster editor | `editor/uniforms.py` (the "Jerseys and ice..." window per NHL team: colours + crest, one row per jersey version: the game's own / from the colours / the player's own picture, the centre-ice logo; templates to paint on), kept in edits.json (`uniforms`, `ice`), installed by `looks.looks_from` / `install_looks` with the photos; `tools/window_shot.py uniforms` |
+| 3D textures | `art/rpsgl.py` (jerseys, ice: read, replace a raster, repack), `art/rendering.py` (`cli rendering-test`, done), `art/looks.py` (the real Utah/Seattle/Vegas jerseys, pants, socks, numbers, menu pictures, centre-ice logo; `cli looks-test`; `tools/look_preview.py` makes PNG sheets) |
 | Calendar | `schedule.py` (the real schedule into `nhlschedule` / `favoriteteamschedule`, `check`), `calendartest.py` (`cli calendar-test`), data pack part `schedule` (`tools/providers/nhl_facts.py`) |
 | Season-mode test | `seasontest.py` (`cli season-test`) |
 | Roster editor | `editor/model.py` (a roster as teams and players, `apply_edits`), `editor/view.py` (the tab: the picked roster as it is plus this visit's edits; saves in place or as new), `editor/pictures.py` (the player's picture on the card), `edits.py` (the player's edits, kept in edits.json and applied after every update) |
@@ -148,6 +150,16 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+Version 0.9.0 (released 2026-10-07; CHANGELOG.md has the players' version), from the owner's tests of 0.8.1 on 2026-10-06:
+- **Calendar 2026-27: confirmed in the game** (all four CAL tests matched NHL.com), now a normal step, on by default, 30 teams.
+  The game's year label stays 2015 (not in any data file; owner: leave it). Seattle and Vegas cannot be in Season mode / Be a GM.
+- **Loose 3D textures: confirmed** (`cli rendering-test`). **New, not played yet:** the real Utah / Seattle / Vegas jerseys, pants,
+  socks, number sheets, Select Jerseys pictures and centre-ice logos (`art/looks.py`, installed with "Photos, logos and team names":
+  `pipeline.install_looks`; `cli looks-test` writes only them), the Roster editor's **Jerseys and ice...** window for the 32 NHL teams
+  (`editor/uniforms.py`; edits.json `uniforms` / `ice`), and **Export only SYS-DATA roster** (`pipeline.export_sysdata`, `cli export-roster`;
+  for a PC without RPCS3). Docs/CALENDAR_AND_LOOK.md says what to check in the game and what is not built (extra jersey versions,
+  old-layout versions from colours, the Jets throwbacks and old All-Star versions stay the game's own).
 
 Version 0.8.1 (released 2026-10-06; CHANGELOG.md has the players' version): the owner's tests of 0.8.0 in the
 game, in two rounds. **Confirmed in the game by the owner (2026-10-06):** the Tampa Bay and Toronto logos, the
@@ -223,7 +235,8 @@ in-game check (`pipeline.EXPERIMENTAL`: 'free agents', 'goalie gear', 'draft', '
     `.github/workflows/build.yml` (tests on three systems, Mac and Linux builds). Not tried on a real
     Mac or Linux PC yet.
   - without RPCS3 (a tester on a Mac in CrossOver): step 1 also takes a folder with roster saves
-    (`savedata.SaveFolder`, `open_saves`; the window's link "No RPCS3 on this computer?"); photos and
+    (`savedata.SaveFolder`, `open_saves`; since 0.9.0 the window has the checkbox "Export only SYS-DATA roster" instead of the link:
+    `pipeline.export_sysdata`, `cli export-roster`, docs/ARCHITECTURE.md "Without RPCS3"); photos and
     the game's own roster are not offered then.
   - Season mode crash: fixed for a roster updated from the community roster (ROADMAP "Season mode crash"); re-updating a roster made by 0.8.0 still to be played.
 

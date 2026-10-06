@@ -11,6 +11,42 @@ State when this was written (2026-10-06, version 0.8.1 released): the owner conf
 Tampa Bay and Toronto logos, the Select Teams names (Utah Mammoth, Seattle Kraken, Vegas Golden Knights) and Season
 mode with a full update all work. The three things below are what is left of that round.
 
+## Results of the owner's tests (2026-10-06, evening) and what was built from them
+
+- **Calendar: passed.** CAL 1-4 all show Anaheim's games exactly as NHL.com has them (checked screenshot of December against the
+  data pack: every game and home/away marker). Seattle and Vegas do not appear (CAL 3 with all 32 changed nothing: Season mode and Be a GM
+  are built for 30 teams). The year label stays "2015" (CAL 4 raised the draft years by 11: no change; it is in the game's program or
+  `db/nhlng.db` / `fe/resource_kernel/seasonphase.brk`, which the log shows the game asks for as loose files first; not looked into).
+  Done: the 30-team calendar is a normal step, on by default (`pipeline.default_steps`, no longer EXPERIMENTAL).
+- **Loose 3D textures: proven.** The owner saw blue Utah jerseys and the magenta ring (with a grey square round it: our transparent
+  pixels were black, the disc's carry ice-white (231,233,231)). The log (shared read) shows Play Now opens `rendering/jersey/texlib_1_22_3` and `_4`
+  (**style 1, variants 3 and 4**), `pant/texlib_1_22_3/4`, `sock/sock_1_22_3_cm` / `_4`, `jersey/name_1_22_3/4_cm`, `icesurface/centerlogo_22_cm`,
+  `icesurface_22_bm`, crowd files, and the menu pictures `fe/ion/artassets/jerseys/jersey_1_22_3.big` / `_4.big` (the Select Jerseys screen
+  still showed the Arizona jerseys: we had not written those).
+- **Which versions exist** (`stockteamjerseys`, columns style, variant, jerseyindex, isdefault, islightcolor, hastie): Utah style 1 v3 (dark, default home),
+  v4 (light, default away), v0, v1; style 0 v0, v1 (older shirt) and v3, v4 (**Winnipeg Jets 1.0 throwbacks**, the franchise's history); Seattle and Vegas
+  style 1 only, v0-5, defaults v4 (dark) and v5 (light). "Change Jerseys" cycles through `jerseyindex`.
+- **Shared layout:** the normal maps of style-1 jerseys agree 96-100 % (Utah v0,v1,v3,v4, Seattle and Vegas v2-v5, Edmonton, Vancouver);
+  style 0 and the old All-Star versions (Seattle/Vegas v0, v1) use other shirts. So only the standard-layout versions are rewritten
+  (`looks.STANDARD_LAYOUT`); the others stay as the disc has them (open question for the owner).
+- **Built (0.9 work, not installed anywhere yet):** `art/looks.py` (palette swap on Utah's own style-1 jersey as chassis, crest and shoulder marks
+  painted over with the club logo, pants, socks, number sheet, menu pictures through a shirt mask, centre-ice logo in the disc's house style with the
+  arena name on arcs, ice-white under transparent pixels, strip bled), `Rpsgl.copy`, and `tools/look_preview.py` (PNG sheets, nothing installed).
+  The owner approved the preview pictures (2026-10-06). `cli looks-test --rpcs3 <rpcs3.exe>` writes the 51 files (3 teams x
+  jerseys, pants, socks, menu pictures for their standard-layout versions, plus the centre-ice logos) through `looks.install_looks`
+  (kept copies, `installed.json`, skipped when installed already, "Restore the game's own pictures" undoes them; `tests/test_looks.py`).
+  **The owner has not played it yet**: check Play Now Utah/Seattle/Vegas at home and away, "Change Jerseys" through all versions (the
+  Jets throwbacks and the old All-Star versions are untouched on purpose), the Select Jerseys pictures, the centre-ice logo (no grey
+  square). **Version 0.9.0 already has both of the next steps built** (still unplayed): the update installs Utah/Seattle/Vegas looks with
+  the photos (`pipeline.install_looks` -> `looks.looks_from` / `install_looks`), and the Roster editor has "Jerseys and ice..."
+  (`editor/uniforms.py`, any of the 32 NHL teams): colours + crest, per version the game's own / from the colours / the player's own
+  1024 x 1024 colour map (`looks.Maker.files`: standard-layout versions also get pants, socks, numbers, menu picture from the picture's
+  main colours; other shirts only the colour map), centre ice own/drawn/own picture, templates saved from the disc. Stored in
+  edits.json (`uniforms`, `ice`, edits.py); a version set back to the game's own is dropped by `_Writer.stale/drop`. Not done: adding
+  versions (roster rows), old-layout versions made from colours, pants/socks/numbers of their own.
+  The "2015" label stays (owner: do not bother; it is not in any data file, probably the game's program). Plan: the Claude plan file of
+  2026-10-06 (parts A-E), summarised in ROADMAP "Jerseys and the ice".
+
 ## What the owner wants (their words, 2026-10-06)
 
 1. **The calendar**: "update the calendar to 2026-2027, the latest season, with correct dates and games being

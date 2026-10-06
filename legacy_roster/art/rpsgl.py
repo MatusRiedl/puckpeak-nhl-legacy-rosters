@@ -137,6 +137,16 @@ class Rpsgl:
             raise RpsglError(f"{name}: the new picture came out {len(encoded)} bytes, the raster has {r['size']}")
         self.data[r['at']:r['at'] + r['size']] = encoded
 
+    def copy(self, name, other, other_name):
+        """Raster `name` made equal to raster `other_name` of the file `other`: the encoded bytes are taken over as they
+        are when both have the same size, format and mipmaps (no second round of compression), otherwise the picture is
+        replaced like `replace` does."""
+        r, o = self.rasters[name], other.rasters[other_name]
+        if all(r[k] == o[k] for k in ('width', 'height', 'mips', 'format', 'size')) and r['format'] is not None:
+            self.data[r['at']:r['at'] + r['size']] = other.data[o['at']:o['at'] + o['size']]
+        else:
+            self.replace(name, other.image(other_name))
+
     def build(self):
         """The file as the game reads it (packed again when it was)."""
         return pack(bytes(self.data)) if self.packed else bytes(self.data)

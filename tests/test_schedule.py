@@ -92,8 +92,9 @@ def test_the_calendar_step_builds_a_roster_that_passes_and_builds_again_the_same
     again = pipeline.build(res.data, d, steps)
     assert again.ok and again.data == res.data                                          # rule 4
     plain = pipeline.build(base_bytes, d, pipeline.CORE_STEPS)
-    assert Roster(plain.data).f[schedule.TABLE].cur_rec == 1231                          # off unless asked for
-    assert pipeline.SCHEDULE not in pipeline.default_steps({'schedule': games})
+    assert Roster(plain.data).f[schedule.TABLE].cur_rec == 1231                          # without the step: untouched
+    assert pipeline.SCHEDULE in pipeline.default_steps({'schedule': games})              # on by default (owner, 2026-10-06)
+    assert pipeline.SCHEDULE not in pipeline.EXPERIMENTAL
     broken = Roster(res.data)
     broken.f[schedule.TABLE].cur_rec -= 1
     problems, _ = verify(broken.f.build(), Roster(base_bytes), calendar=res.builder.calendar)

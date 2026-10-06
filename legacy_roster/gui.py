@@ -32,6 +32,7 @@ PHOTOS = 'photos'           # the "Photos and logos" switch in the remembered se
 EDITS = 'edits'             # the "My edits" switch
 SAVE_BOTH = 'save_both'     # "Save for: EU + NA" (remembered; a single version follows the roster picked)
 BOTH = "EU + NA"
+EXPORT_ONLY, EXPORT_FILE = 'export_only', 'export_file'     # "Export only SYS-DATA roster" and the roster file picked for it
 SAVE_MODE = 'save_mode'     # how an update is saved (remembered): IN_PLACE or AS_NEW
 IN_PLACE, AS_NEW = 'update', 'new'
 UPDATE_TAB, EDITOR_TAB = "Update", "Roster editor"
@@ -45,6 +46,9 @@ SITE = "https://www.puckpeak.com"
 SITE_LABEL = "www.puckpeak.com"
 TAGLINE = "NHL & hockey analytics like never before"
 HOW_TO_LOAD ="In the game: Roster Management > Load Roster, pick it, then save the roster once so it stays active."
+NO_NAME = "(a roster file has no name)"
+HOW_TO_USE_EXPORT = ("Copy SYS-DATA into one of your roster save folders in place of the file with that name (keep a copy of "
+                     "the old one), then in the game: Roster Management > Load Roster, pick it, and save the roster once.")
 HOW_TO_LOAD_IN_PLACE = ("In the game: start it. If this is not the roster in use, Roster Management > Load Roster, pick it, "
                         "then save the roster once.")
 
@@ -125,6 +129,10 @@ class App:
         self.scanning = False       # the rosters are being read (in the background)
         self.checked = {}           # (SYS-DATA path, size, time) -> None or why it cannot be used
         self._status = None         # what the status line shows: (text, colour)
+        self.export_mode = bool(self.settings.get(EXPORT_ONLY))     # no RPCS3: update a roster file, write a new SYS-DATA
+        picked = self.settings.get(EXPORT_FILE)
+        self.export_file = picked if picked and os.path.isfile(picked) else None
+        self.export_problem = None
         self._bar_colour = None
         try:
             self.pack = datasource.load_pack(offline=True)
@@ -162,6 +170,10 @@ class App:
         self.editor = EditorTab(self.tabs.add(EDITOR_TAB), self)
         self.editor.pack(fill='both', expand=True, padx=6, pady=(4, 0))
 
+        if self.export_mode:
+            self.roster_list.pack_forget()
+            self.export_box.pack(fill='both', expand=True)
+            self._export_look()
         root.bind('<Return>', lambda _e: self.start())
         self.set_rpcs3(self.settings.get('rpcs3') or self.settings.get('folder') or savedata.running_rpcs3()
                        or savedata.default_rpcs3(), quiet=True)
@@ -208,13 +220,13 @@ class App:
         self.rpcs3_note = ctk.CTkLabel(card.body, text="", font=T.font(13), text_color=T.MUTED, anchor='w',
                                        justify='left', wraplength=470)
         self.rpcs3_note.pack(fill='x', pady=(8, 0))
-        # no RPCS3 here (CrossOver, Wine, saves copied from elsewhere): the saves themselves will do
-        other = ctk.CTkLabel(card.body, text="No RPCS3 on this computer? Pick a folder with roster saves instead.",
-                             font=T.font(13, 'semibold'), text_color=T.ACCENT, anchor='w', cursor='hand2')
-        other.pack(fill='x', pady=(4, 0))
-        other.bind('<Button-1>', lambda _e: self.browse_saves())
-        other.bind('<Enter>', lambda _e: other.configure(font=T.font(13, 'semibold', underline=True)))
-        other.bind('<Leave>', lambda _e: other.configure(font=T.font(13, 'semibold')))
+        # no RPCS3 on this PC (a Mac, a Linux box): only the roster file is updated, and a new SYS-DATA is written
+        self.export_var = tk.BooleanVar(value=self.export_mode)
+        self.export_check = ctk.CTkCheckBox(card.body, text="Export only SYS-DATA roster", variable=self.export_var,
+                                            command=self.toggle_export, font=T.font(13, 'semibold'), text_color=T.ACCENT,
+                                            fg_color=T.ACCENT, hover_color=T.ACCENT_DEEP, border_color=T.BORDER_STRONG,
+                                            checkbox_width=20, checkbox_height=20)
+        self.export_check.pack(anchor='w', pady=(8, 0))
         return card
 
     def _card_roster(self, master):
@@ -226,6 +238,13 @@ class App:
         self.roster_list.pack(fill='both', expand=True)
         self.roster_empty = ctk.CTkLabel(card.body, text="Pick RPCS3 first. Your rosters will be listed here.",
                                          font=T.font(14), text_color=T.FAINT)
+        # "Export only SYS-DATA roster": the roster file to update instead of the list
+        self.export_box = ctk.CTkFrame(card.body, fg_color='transparent')
+        self.export_label = ctk.CTkLabel(self.export_box, text="", font=T.font(13), text_color=T.MUTED, anchor='w',
+                                         justify='left', wraplength=440)
+        self.export_label.pack(fill='x', pady=(4, 8))
+        PrimaryButton(self.export_box, "Pick the roster file (SYS-DATA)...", self.pick_export_file, width=300,
+                      height=38).pack(anchor='w')
         return card
 
     def _card_updates(self, master):
@@ -234,7 +253,8 @@ class App:
         notes = {pipeline.NHL: "Today's rosters from NHL.com",
                  pipeline.RATINGS: self._dated(sources.get('ea_ratings')),
                  pipeline.NATIONAL: self._dated(sources.get('iihf')),
-                 pipeline.SCHEDULE: "The real games and dates for Season mode, 30 teams. A test: not played yet"}
+                 pipeline.SCHEDULE: "The real games and dates for Season mode (30 teams; the game still calls "
+                                    "the year 2015)"}
         remembered = self.settings.get('steps', {})
         available = pipeline.steps_for(self.pack)
         later = [name.split(' (')[0] for name in pipeline.planned(self.pack)]
@@ -278,7 +298,7 @@ class App:
         self.mode_choice = Choice(card.body, [(IN_PLACE, "Update this roster", None), (AS_NEW, "Save as a new roster", None)],
                                   self.pick_save_mode)
         self.mode_choice.pack(anchor='w', pady=(0, 8))
-        row = ctk.CTkFrame(card.body, fg_color='transparent')
+        row = self.name_row = ctk.CTkFrame(card.body, fg_color='transparent')
         row.pack(fill='x')
         row.columnconfigure(0, weight=1)
         self.name = tk.StringVar(value=savedata.default_name())
@@ -365,7 +385,7 @@ class App:
 
     def tick(self):
         """Keep the suggested name at the current time until the user types their own."""
-        if not self.name_edited and not self.busy and not self.in_place():
+        if not self.name_edited and not self.busy and not self.in_place() and not self.export_mode:
             self.name.set(savedata.default_name())
         self.root.after(15000, self.tick)
 
@@ -558,6 +578,8 @@ class App:
             if not self.find.winfo_manager():
                 self.find.grid(row=0, column=1, padx=(10, 0))
         self.list_rosters()
+        if self.export_mode:
+            self._export_look()
 
     def found_text(self):
         """'Found 9 rosters of NHL Legacy: 8 EU, 1 NA.' and a word on a version without rosters."""
@@ -601,6 +623,8 @@ class App:
     def list_rosters(self):
         """One row per roster. Rows that are still the same stay as they are (rebuilding the list
         made it flash after every update); only new or changed rosters get a new row."""
+        if self.export_mode:
+            return
         if not self.slots:
             for row in self.rows.values():
                 row.destroy()
@@ -722,6 +746,9 @@ class App:
     def refresh_state(self):
         """Bring every control in line with the state. Runs on every click, so it only touches what
         actually changes (each change redraws a widget)."""
+        if self.export_mode:
+            self._refresh_export()
+            return
         slot = self.selected_slot()
         ready = slot is not None and not self.busy and not self.scanning
         for row in self.rows.values():
@@ -782,6 +809,9 @@ class App:
 
     # --- the update ------------------------------------------------------------------------------
     def start(self):
+        if self.export_mode:
+            self.start_export()
+            return
         slot = self.selected_slot()
         steps = [s for s in self.steps if self.steps[s].get()]
         if slot is None or self.busy or self.scanning or not steps:
@@ -865,6 +895,18 @@ class App:
     def report(self, result, rpcs3_running):
         self.last_report = result.report_path
         items = result.build.lines()
+        if result.exported and result.slot is not None:
+            self.say("", "What changed:", *(f"   {title}: {text}" for title, text in items))
+            self.say(f"Done. {HOW_TO_USE_EXPORT}")
+            self.set_bar(1)
+            self.set_status("Done: SYS-DATA exported.", T.GREEN)
+            folder = os.path.dirname(result.exported)
+            self.show_banner(True, "SYS-DATA exported",
+                             [f"New file: {result.exported}", HOW_TO_USE_EXPORT, "No pictures are in it: they need RPCS3."],
+                             [("Open the folder", lambda: savedata.open_path(folder)), ("List of changes", self.show_report)],
+                             items=items or [("Result", "Nothing needed changing.")])
+            self.refresh_state()
+            return
         self.say("", "What changed:", *(f"   {title}: {text}" for title, text in items))
         if result.slot is None:
             problems = result.build.problems
@@ -906,6 +948,127 @@ class App:
         self.say(where)
         self.show_banner(True, title, lines, buttons, items=items or [("Result", "Nothing needed changing.")])
         self.refresh_state()
+
+    # --- "Export only SYS-DATA roster" (no RPCS3 on this PC) -------------------------------------
+    def toggle_export(self):
+        """The checkbox: update a roster file and write a new SYS-DATA, instead of working with RPCS3's saves."""
+        if self.busy:
+            self.export_var.set(self.export_mode)
+            return
+        self.export_mode = self.export_var.get()
+        self.settings[EXPORT_ONLY] = self.export_mode
+        save_settings(self.settings)
+        self.hide_banner()
+        if self.export_mode:
+            self.roster_list.pack_forget()
+            self.roster_empty.pack_forget()
+            self.export_box.pack(fill='both', expand=True)
+            self._export_look()
+        else:
+            self.export_box.pack_forget()
+            self.name_edited = False
+            self.name.set(savedata.default_name())
+            if not self.mode_choice.winfo_manager():
+                self.mode_choice.pack(anchor='w', pady=(0, 8), before=self.name_row)
+            configure_if_changed(self.find, state='normal')
+            self.set_rpcs3(self.rpcs3.where if self.rpcs3 else self.settings.get('rpcs3'), quiet=True)
+            self.list_rosters()
+        self.refresh_state()
+
+    def _export_look(self):
+        """Step 1 and 2 in the export mode: RPCS3 is not needed, the roster file is what counts."""
+        configure_if_changed(self.rpcs3_note, text="Not needed in this mode: the program only makes a roster file.",
+                             text_color=T.MUTED)
+        configure_if_changed(self.find, state='disabled')
+        configure_if_changed(self.change, state='disabled')
+        if self.export_problem:
+            text, colour = self.export_problem, T.RED
+        elif self.export_file:
+            text, colour = f"Roster file: {self.export_file}", T.GREEN
+        else:
+            text, colour = ("Pick the roster's SYS-DATA file (the community roster you downloaded). The new SYS-DATA is "
+                            "written next to this program."), T.MUTED
+        configure_if_changed(self.export_label, text=text, text_color=colour)
+
+    def pick_export_file(self):
+        start = os.path.dirname(self.export_file) if self.export_file else os.path.expanduser('~')
+        path = filedialog.askopenfilename(parent=self.root, initialdir=start, title="Pick the roster file (SYS-DATA)",
+                                          filetypes=[("Roster file", "SYS-DATA"), ("All files", "*")])
+        if not path:
+            return
+        path = os.path.normpath(path)
+        try:
+            layout.check_base(Roster(path))
+            from . import stock
+            if stock.is_stock(Roster(path)):
+                raise layout.LayoutError("that is the game's own roster, which needs your game disc: pick the community "
+                                         "roster's SYS-DATA")
+            self.export_file, self.export_problem = path, None
+            self.settings[EXPORT_FILE] = path
+            save_settings(self.settings)
+        except (layout.LayoutError, ValueError, KeyError, OSError) as err:
+            self.export_file, self.export_problem = None, "That file cannot be used: " + short_reason(str(err))[len("Cannot be used: "):]
+        self._export_look()
+        self.refresh_state()
+
+    def _refresh_export(self):
+        """refresh_state in the export mode."""
+        ready = self.export_file is not None and not self.busy
+        if self.mode_choice.winfo_manager():
+            self.mode_choice.pack_forget()
+        if self.save_for.winfo_manager():
+            self.save_for_label.grid_remove()
+            self.save_for.grid_remove()
+        if self.name.get() != NO_NAME:
+            self.name.set(NO_NAME)
+        configure_if_changed(self.name_entry, state='disabled')
+        configure_if_changed(self.name_note, text="The new SYS-DATA is written into a new folder next to this program, named "
+                                                  "by the date and time. It has no name of its own and no pictures.")
+        any_step = any(v.get() for v in self.steps.values())
+        self.go.enable(ready and any_step)
+        if not self.busy:
+            configure_if_changed(self.go, text="Make new roster")
+        if not self.busy and not self.banner.winfo_ismapped():
+            self.set_status("Ready." if ready and any_step else
+                            "Pick the roster file (step 2)." if self.export_file is None else
+                            "Switch on at least one thing to update.")
+        for row in self.switches:
+            row.enable(not self.busy and row is not self.photos_row)
+        self.settings['steps'] = {k: v.get() for k, v in self.steps.items()}
+        self.settings['steps'][PHOTOS] = self.photos.get()
+        self.settings['steps'][EDITS] = self.use_edits.get()
+        if self.remove_art.winfo_manager():
+            self.remove_art.pack_forget()
+
+    def start_export(self):
+        steps = [s for s in self.steps if self.steps[s].get()]
+        if self.export_file is None or self.busy or not steps:
+            return
+        save_settings(self.settings)
+        self.busy, self.at, self.last_report = True, 0.0, None
+        self.photos_running = False
+        if self.banner.winfo_ismapped():
+            self.banner.dim("Working... (the last result is shown below until the new one is ready)")
+        self.set_bar(0)
+        self.refresh_state()
+        configure_if_changed(self.go, text="Working...")
+        self.set_status("0%   Starting...", T.BODY)
+        self.clear_details()
+        mine = (my_edits.load(), my_edits.load_teams()) if self.use_edits.get() else (None, None)
+        threading.Thread(target=self.work_export, args=(self.export_file, steps, mine), daemon=True).start()
+
+    def work_export(self, file, steps, mine):
+        try:
+            result = pipeline.export_sysdata(file, steps, None, lambda msg: self.queue.put(('say', msg)),
+                                             my_edits=mine[0] or None, team_edits=mine[1] or None)
+            self.queue.put(('done', (result, False)))
+        except (layout.LayoutError, datasource.Offline, FileNotFoundError, OSError) as err:
+            self.queue.put(('error', str(err)))
+        except Exception as err:
+            path = datasource.app_dir('logs', 'error.log')
+            with open(path, 'a', encoding='utf-8') as f:
+                f.write(traceback.format_exc() + '\n')
+            self.queue.put(('error', f"Something went wrong: {err}\nThe details were saved to {path}"))
 
     def tab_changed(self):
         if self.tabs.get() == EDITOR_TAB:

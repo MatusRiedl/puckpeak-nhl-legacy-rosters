@@ -6,7 +6,11 @@ about people, not records: each one names a player by plain name and birthdate (
 it finds him in any later roster whichever record he has there.
 
     edits.json  {"version": 1, "players": {who: edit}, "teams": {slot: team edit}}
-    team edit   {"full", "city", "abbr", "logo": "file:<path>"}   (apply_teams)
+    team edit   {"full", "city", "abbr", "logo": "file:<path>",
+                 "uniforms": {"colours": {"primary": "#rrggbb", "secondary": "#rrggbb", "crest": "file:<path>"},
+                              "versions": {"<variant>": "game" | "colours" | "file:<path of a 1024 x 1024 colour map>"}},
+                 "ice": {"use": "game" | "logo" | "file:<path>", "arena": "<name on the ice>"}}   (apply_teams;
+                 the jerseys and the ice are installed by art/looks.py with the photos and logos)
     edit        {"label": "Connor McDavid",              shown in the editor's list
                  "was": {"first", "last", "birth"},         his name before a rename (see restore())
                  "set": {"first", "last", "num", "pos" (C/L/R/D/G), "shoots" (L/R),
@@ -103,6 +107,8 @@ def apply_teams(b, teams, say=None):
             b.team_names[slot] = True
         if e.get('logo'):
             b.logos[slot] = e['logo']
+        if e.get('uniforms') or e.get('ice'):
+            b.looks_edits[slot] = {k: e[k] for k in ('uniforms', 'ice') if e.get(k)}
         b.log.append(['edits', 'team edited', b.R.team_name(slot), ', '.join(sorted(e)), ''])
     if teams and say:
         say(f"My edits: {len(teams)} teams")

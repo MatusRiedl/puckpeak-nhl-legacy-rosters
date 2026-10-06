@@ -78,14 +78,19 @@ itself; if it does not, press **Find RPCS3** and pick it.
 - **Or run it from source** (below) with Python 3.10 or newer and `pip install customtkinter pillow`
   (on Linux also the `python3-tk` package).
 
-## Without RPCS3 (CrossOver, Wine, saves from elsewhere)
+## Without RPCS3 (a Mac, a Linux PC, CrossOver, Wine)
 
-No `rpcs3.exe` to pick, for example because the program runs in CrossOver on a Mac and RPCS3 is the
-Mac app? In step 1 press **"No RPCS3 on this computer? Pick a folder with roster saves instead."**
-and pick the folder that holds your roster saves (in RPCS3: `dev_hdd0/home/00000001/savedata`), or
-one roster save. The new roster is saved next to the others in that folder. Photos and logos and
-"The game's own roster" need RPCS3, so they are not offered then. On the command line use
-`--savedata <folder>` instead of `--rpcs3`.
+No RPCS3 to pick on this computer? In step 1 tick **"Export only SYS-DATA roster"**. Step 2 then asks for
+the roster file: pick the `SYS-DATA` of the community roster you downloaded. Choose what to update in step 3
+and press **Make new roster**: a new folder (named by the date and time) with the updated `SYS-DATA` appears
+**next to the program**, and the window says where. Copy that file into a roster save folder of the game, in
+place of the file with the same name (keep the old one), then load the roster in the game and save it once.
+No pictures, logos or jerseys are in it (they are RPCS3's files), and the game's own roster (it is made from
+your game disc) is not available in this mode. On the command line:
+`export-roster --file <SYS-DATA> [--out <folder>]`.
+
+Pointing the program at a folder of roster saves instead still works on the command line
+(`--savedata <folder>` instead of `--rpcs3`).
 
 ## EU and NA
 

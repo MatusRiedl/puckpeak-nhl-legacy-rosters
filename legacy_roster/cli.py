@@ -8,10 +8,12 @@
             [--in-place]                              update the roster save itself (old one copied first), no new folder
             [--photos]                                also install current photos and logos (RPCS3 closed)
             [--edits]                                 apply your edits from the window's Roster editor
+    export-roster --file <SYS-DATA> [--out <folder>]    update a roster file without RPCS3: writes a new SYS-DATA folder next to the program
     photos remove                                     take the photos and logos away again
     stock-test --rpcs3 <rpcs3.exe> [--version EU|NA]  the in-game check of the game's own roster (two LAB rosters)
     draft-test --rpcs3 <rpcs3.exe> [--source <save>]  the in-game check of where the draft finds prospects
     rendering-test --rpcs3 <rpcs3.exe> [--version EU|NA]   Utah's jerseys and centre-ice logo as loud loose files (in-game test)
+    looks-test --rpcs3 <rpcs3.exe> [--version EU|NA]   the new Utah, Seattle and Vegas jerseys and centre-ice logos as loose files (in-game test)
     calendar-test --rpcs3 <rpcs3.exe> [--source <save>|file:<SYS-DATA>]   LAB rosters with the real 2026-27 calendar (in-game test)
     season-test --rpcs3 <rpcs3.exe> [--source <save>|disc]   LAB rosters with more and more update steps: which one crashes Season mode
     export  --rpcs3 <rpcs3.exe> [--source <save>] --out <folder>    every table as CSV, real names
@@ -78,6 +80,31 @@ def cmd_list(args):
     if args.rpcs3:
         for s in savedata.find_rpcs3(args.rpcs3).disc_slots():
             print(f"  disc:{s.region}        {s.region:<3} {s.name}  (from {s.path})")
+
+
+def cmd_export_roster(args):
+    """Update a roster file without RPCS3 or a save folder: the new SYS-DATA goes into a new folder."""
+    pack = datasource.load_pack(offline=True)
+    available = pipeline.steps_for(pack)
+    steps = available if args.leagues == 'all' else pipeline.default_steps(pack) if args.leagues == 'default' \
+        else [s for s in args.leagues.split(',') if s]
+    unknown = [s for s in steps if s not in available]
+    if unknown:
+        sys.exit(f"unknown or unavailable: {', '.join(unknown)}; choose from {', '.join(available)}")
+    try:
+        res = pipeline.export_sysdata(args.file, steps, args.name, print, args.offline,
+                                      my_edits=edits.load() if args.edits else None,
+                                      team_edits=edits.load_teams() if args.edits else None, out_root=args.out)
+    except (FileNotFoundError, layout.LayoutError, datasource.Offline) as err:
+        sys.exit(str(err))
+    for line in res.build.summary():
+        print(line)
+    if not res.build.ok:
+        for p in res.build.problems[:40]:
+            print("  problem:", p)
+        sys.exit(2)
+    print("Report:", res.report_path)
+    print("New SYS-DATA:", res.exported)
 
 
 def cmd_update(args):
@@ -204,6 +231,27 @@ def cmd_rendering_test(args):
           "which of the three show. Afterwards: 'photos remove' (the window's \"Restore the game's own pictures\").")
 
 
+def cmd_looks_test(args):
+    """The owner's in-game check of the new Utah, Seattle and Vegas jerseys and centre-ice logos."""
+    from .art import install, looks
+    from .art.photopack import PhotoPack, PictureCache
+    found = savedata.find_rpcs3(args.rpcs3)
+    title = {'EU': 'BLES02153', 'NA': 'BLUS31540'}.get(args.version) if args.version else next(
+        (t for t in savedata.GAMES if found.game_disc(t)), None)
+    if title is None:
+        sys.exit("RPCS3 does not list the game, so the textures cannot be made. Start the game once from RPCS3's game list.")
+    pack = datasource.load_pack(offline=True)
+    try:
+        made = looks.default_looks(pack['nhl_logos'], PhotoPack.open(), PictureCache())
+        n = looks.install_looks(found, title, made, print)
+    except install.ArtError as err:
+        sys.exit(str(err))
+    print(f"Wrote {n} files into the game folder of {savedata.region(title)}. In the game: Play Now, pick the Utah Mammoth "
+          "(then Seattle Kraken, then Vegas Golden Knights) as home and as visitor: look at the jerseys on the Select "
+          "Jerseys screen (press the left stick to change jerseys) and in the game, and at the centre-ice logo. "
+          "Afterwards: 'photos remove' (the window's \"Restore the game's own pictures\").")
+
+
 def cmd_calendar_test(args):
     """The owner's in-game check of the 2026-27 calendar: LAB rosters with the real schedule written in."""
     from . import calendartest
@@ -316,6 +364,14 @@ def main(argv=None):
             p.add_argument('--research', help=argparse.SUPPRESS)
         if name == 'export':
             p.add_argument('--out', required=True)
+    p = sub.add_parser('export-roster', help="update a roster file (SYS-DATA) without RPCS3: the new SYS-DATA goes into a new folder")
+    p.set_defaults(fn=cmd_export_roster)
+    p.add_argument('--file', required=True, help="the roster's SYS-DATA file (the community roster)")
+    p.add_argument('--out', help="the folder to make the new one in (default: next to the program)")
+    p.add_argument('--leagues', default='default', help="nhl,ratings,national,liiga,... | all | default")
+    p.add_argument('--name')
+    p.add_argument('--offline', action='store_true')
+    p.add_argument('--edits', action='store_true', help="apply your edits from the window's Roster editor")
     p = sub.add_parser('photos', help="remove the installed photos and logos (every file goes back as it was)")
     p.set_defaults(fn=cmd_photos)
     p.add_argument('action', choices=('remove',))
@@ -325,6 +381,10 @@ def main(argv=None):
     p.add_argument('--version', choices=('EU', 'NA'), help="which version's disc (default: the first RPCS3 lists)")
     p = sub.add_parser('rendering-test', help="write loud Utah jerseys and centre-ice logo as loose files (in-game test)")
     p.set_defaults(fn=cmd_rendering_test)
+    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--version', choices=('EU', 'NA'), help="which version's game folder (default: the first RPCS3 lists)")
+    p = sub.add_parser('looks-test', help="write the new Utah, Seattle and Vegas jerseys and ice logos as loose files (in-game test)")
+    p.set_defaults(fn=cmd_looks_test)
     p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
     p.add_argument('--version', choices=('EU', 'NA'), help="which version's game folder (default: the first RPCS3 lists)")
     p = sub.add_parser('calendar-test', help="save LAB rosters with the real 2026-27 calendar (in-game test)")

@@ -155,6 +155,7 @@ class Builder:
         self.positions_changed = 0  # NHL players given NHL.com's position
         self.photos = {}        # player row -> photo link, for the players placed in this run
         self.logos = {}         # team slot -> logo link
+        self.looks_edits = {}   # team slot -> the player's own jerseys / centre-ice logo (edits.py)
         self.team_names = {}    # team slot -> True: the player renamed it in the Roster editor
         self.nhl_names = {t: R.team_name(t) for t in range(32)}     # as the source has them
         # rating rows never move: player id -> row in the skater / goalie attribute table
