@@ -169,4 +169,9 @@ def names(b):
                 teams.append((art, full, city, _nick(full, city), abbr))
         elif slot in NHL_NAMES or slot in clubs or slot in b.team_names:
             teams.append((art, full, city, _nick(full, city), abbr))
-    return {'teams': teams, 'cities': cities, 'force': {T.get(s, 'artabbr') for s in set(NHL_NAMES) | set(b.team_names)}}
+    # the community's NHL slots also have texts under their number, and show the NHL's ® sign
+    numbered = {s: (full, city, full[len(city):].strip() if full.startswith(city + ' ') else full, abbr)
+                for s, (full, city, abbr) in NHL_NAMES.items()}
+    return {'teams': teams, 'cities': cities, 'numbered': numbered,
+            'marked': {T.get(s, 'artabbr') for s in NHL_NAMES},
+            'force': {T.get(s, 'artabbr') for s in set(NHL_NAMES) | set(b.team_names)}}

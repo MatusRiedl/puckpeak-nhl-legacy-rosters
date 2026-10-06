@@ -255,6 +255,14 @@ def _trim(img):
     return img.crop(box) if box else img
 
 
+def white_share(img):
+    """Share of the opaque pixels of `img` that are (nearly) white: ESPN's logos for dark backgrounds
+    are white silhouettes for some teams (Tampa Bay, Toronto, Washington)."""
+    img = img.convert('RGBA')
+    px = [p for p in zip(*[iter(img.tobytes())] * 4) if p[3] > 128]
+    return sum(1 for r, g, b, _ in px if min(r, g, b) >= 225) / len(px) if px else 0.0
+
+
 def _fit(img, box_w, box_h):
     scale = min(box_w / img.width, box_h / img.height)
     return img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))), Image.LANCZOS)

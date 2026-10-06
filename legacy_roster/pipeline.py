@@ -4,9 +4,9 @@ import datetime
 import os
 from collections import Counter
 
-from . import datasource, draft, savedata, stock
+from . import datasource, draft, savedata, schedule, stock
 from . import layout as L
-from .builder import FREE_AGENTS, Builder
+from .builder import FREE_AGENTS, Builder, drop_removed_player
 from .leagues import clubs, pools
 from .roster import Roster
 from .verify import verify
@@ -14,6 +14,8 @@ from .verify import verify
 # what the user can tick; steps run in this order whatever order they are given in
 NHL, RATINGS, NATIONAL = 'nhl', 'ratings', 'national'
 CORE_STEPS = (NHL, RATINGS, NATIONAL)
+# the game's calendar (schedule.py): the real schedule of the season; off unless asked for, until the owner has played it
+SCHEDULE = 'schedule'
 # club leagues, available when the data pack has rosters for them
 LEAGUE_ORDER = ('liiga', 'extraliga', 'shl', 'del', 'nl', 'norway', 'ahl', 'chl')
 STEP_LABELS = {NHL: "NHL rosters, numbers, lines and captains",
@@ -21,7 +23,8 @@ STEP_LABELS = {NHL: "NHL rosters, numbers, lines and captains",
                NATIONAL: "National teams",
                'liiga': "Liiga: real clubs", 'extraliga': "Extraliga: real clubs", 'shl': "SHL: real clubs",
                'del': "DEL: real clubs", 'nl': "National League: real clubs", 'norway': "Norway: real clubs",
-               'ahl': "AHL rosters", 'chl': "CHL (OHL / QMJHL / WHL)"}
+               'ahl': "AHL rosters", 'chl': "CHL (OHL / QMJHL / WHL)",
+               SCHEDULE: "Calendar 2026-27 (test)"}
 LEAGUE_NAMES = {'liiga': "Liiga", 'extraliga': "Extraliga", 'shl': "SHL", 'del': "DEL", 'nl': "National League",
                 'norway': "Norway", 'ahl': "AHL", 'chl': "CHL (OHL / QMJHL / WHL)"}
 # the parts of the update, as the change log tags its rows (builder.ChangeLog) and the list of changes groups them
@@ -69,18 +72,19 @@ def section_of(row):
 # the new club's colours), 'draft' (real draft data), 'own teams' (a player's own team named after a
 # club the game has no slot for gets its players)
 EXPERIMENTAL = {'shl', 'del', 'nl', 'norway', 'ahl', 'chl', 'stock', 'positions', 'favourite logos',
-                'free agents', 'goalie gear', 'draft', 'own teams'}
+                'free agents', 'goalie gear', 'draft', 'own teams', SCHEDULE}
 ALL_STEPS = CORE_STEPS      # what build() and update() run when no steps are given
 
 
 def steps_for(pack):
     """The steps this data pack can serve, in running order."""
-    return list(CORE_STEPS) + [k for k in LEAGUE_ORDER if k in pack.get('leagues', {})]
+    return list(CORE_STEPS) + [k for k in LEAGUE_ORDER if k in pack.get('leagues', {})] + (
+        [SCHEDULE] if pack.get('schedule') else [])
 
 
 def default_steps(pack):
-    """What is switched on unless the user chooses: everything the pack serves."""
-    return steps_for(pack)
+    """What is switched on unless the user chooses: everything the pack serves, but the calendar (a test)."""
+    return [s for s in steps_for(pack) if s != SCHEDULE]
 
 
 def planned(pack):
@@ -161,6 +165,9 @@ class BuildResult:
                 if n]
         if data:
             out.append((SECTION_PLAYER_DATA, ", ".join(data)))
+        cal = getattr(self.builder, 'calendar', None)
+        if cal:
+            out.append(("Calendar", f"{cal['games']} games, {cal['first']} to {cal['last']} ({cal['variant']})"))
         return out
 
     def free_agent_counts(self):
@@ -243,15 +250,22 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
         from . import edits
         edits.restore(R, my_edits)      # renamed players carry their real names through the update
         R.reindex()
+    gone = drop_removed_player(R)       # a player the game's own save left behind (Season mode crashed on him)
+    if gone:
+        say(f"Taking off {gone}, whom the game had already removed")
     drafts = draft.Drafts(data.drafts, data.season_year, stale=kind == L.COMMUNITY)
     drafted = draft.apply(R, drafts, data.season_year)     # before the builder looks at anyone's age
     b = Builder(R, data, progress=say, layout=kind)
+    if getattr(R, 'stale_markers', False):      # a roster made by 0.8.0 from the community roster (see builder)
+        say(f"Giving the {b.relink_free_agents()} free agents new links")
     if prepared:
         b.maintain = False              # its national teams are 2014's: brought up to date like a first run
     log = b.log                         # each change is tagged with the part of the update it belongs to
     log.section = SECTION_STOCK
     for what, detail in prepared:
         log.append(['ALL', 'summary', what, detail, ''])
+    if kind == L.STOCK and b.nhl_identity():
+        log.append(['ALL', 'summary', "arenas and colours of Utah, Seattle and Vegas", 3, ''])
     # the club leagues as they will be built (with the player's own teams named after left-out clubs):
     # their players' records are reserved from the start
     leagues = [key for key in LEAGUE_ORDER if key in steps and key in data.leagues]
@@ -328,6 +342,10 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
         log.append(['ALL', 'summary', 'players given their real draft (year, round, pick, team)', drafted, ''])
     b.drafted = drafted
     b.own_teams = own
+    b.calendar = None
+    if SCHEDULE in steps and data.schedule:
+        say("Calendar: writing the season's games")
+        b.calendar = schedule.apply(R, data.schedule, data.calendar or schedule.THIRTY)
     b.finish()
     art = None
     if art_registry is not None:
@@ -340,14 +358,18 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     if check:
         say("Checking the new roster")
         problems, info = verify(out, Roster(src_bytes), data.nhl_players if NHL in steps else None, rebuilt,
-                                edited=getattr(b, 'edited', None))
+                                edited=getattr(b, 'edited', None), calendar=b.calendar)
     result = BuildResult(out, sorted(b.log, key=lambda r: (str(r[0]), str(r[1]), str(r[2]))), problems, info, b)
     result.art = art            # ({portrait id: photo link}, {team art id: (logo link, colours)}, team names) or None
     return result
 
 
 class UpdateResult:
-    def __init__(self, build_result, slot, report_path, name, art=None, slots=None):
+    def __init__(self, build_result, slot, report_path, name, art=None, slots=None, in_place=False, backup=None,
+                 unchanged=False):
+        self.in_place = in_place        # the roster save was updated, not a new one made
+        self.backup = backup            # the folder with the old roster's files (in place)
+        self.unchanged = unchanged      # in place, and the roster already was this
         self.build = build_result
         self.slot = slot                # the new savedata.Slot, None on a dry run or a failed check
         self.slots = slots if slots is not None else ([slot] if slot else [])   # one per version saved for
@@ -357,6 +379,8 @@ class UpdateResult:
 
     def saved_where(self):
         """'BLES021530210 (EU) and BLUS315400200 (NA)': the new folders, for the player."""
+        if self.in_place:
+            return f"{self.slot.folder} ({self.slot.region}), updated in place"
         return " and ".join(f"{s.folder} ({s.region})" for s in self.slots)
 
     def art_line(self):
@@ -391,7 +415,7 @@ def write_report(result, title, heading=None, leagues=None):
 
 def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress=None,
            offline=False, dry_run=False, data=None, art_rpcs3=None, art_registry=None, my_edits=None,
-           team_edits=None, targets=None, disc=None):
+           team_edits=None, targets=None, disc=None, in_place=False, backup_root=None):
     """The whole job: read the chosen roster save, gather data, build, check, write a new save.
 
     `save_folder`: anything savedata.find_savedata() accepts. `source_folder`: the roster save to
@@ -402,8 +426,13 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
     RPCS3's game folders (one per target) after the new roster is saved (RPCS3 must be closed).
     `disc` (a savedata.DiscSlot) starts from the game's own roster on the player's disc instead of a
     roster save; `save_folder` is then the save folder itself (it may not exist yet).
+    `in_place` updates the chosen roster save itself instead of making a new one (savedata.update_in_place:
+    after a backup copy in `backup_root`, default the program's backups folder; only the source's own
+    version, never the game's own roster; RPCS3 must be closed); `name` then renames it, no name keeps it.
     Nothing is written when the integrity check finds a problem or `dry_run` is set."""
     say = progress or (lambda msg: None)
+    if in_place and disc is not None:
+        raise savedata.InPlaceError("The game's own roster cannot be updated in place: save it as a new roster.")
     if disc is not None:
         folder, source = os.path.abspath(save_folder), disc
     else:
@@ -414,6 +443,11 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         if source is None:
             raise FileNotFoundError(f"roster save {wanted} was not found in {folder}")
     targets = sorted(set(targets or [source.title_id]), key=lambda t: (t != source.title_id, t))
+    if in_place and targets != [source.title_id]:
+        raise savedata.InPlaceError("A roster is updated in place in its own version of the game only: "
+                                    "save a new roster for the other version.")
+    if in_place and not dry_run and savedata.running_rpcs3():
+        raise savedata.InPlaceError("Close RPCS3 first: a roster can only be updated while the game is closed.")
     if dry_run:
         art_rpcs3 = None
     art_title = None
@@ -432,7 +466,8 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         data = datasource.gather(R, set(steps), pack, say, offline)
     result = build(src_bytes, data, steps, say, art_registry=art_registry if art_rpcs3 is not None else None,
                    my_edits=my_edits, team_edits=team_edits)
-    name = savedata.clean_name(name or savedata.default_name())
+    asked_name = name
+    name = savedata.clean_name(name or (source.name if in_place else savedata.default_name()))
     stamp = f"{datetime.datetime.now():%Y%m%d-%H%M%S}"
     heading = f"\"{name}\", made from \"{source.name}\""
     def report_as(title):
@@ -443,11 +478,19 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         return UpdateResult(result, None, report, name)
     if dry_run:
         return UpdateResult(result, None, report_as(f"dryrun_{stamp}"), name)
-    saved = []
-    for title_id in targets:
-        slot = savedata.install(folder, source, result.data, name, title_id=title_id)
-        saved.append(slot)
-        say(f"Saved as \"{slot.name}\" in {slot.folder} ({slot.region})")
+    saved, backup, unchanged = [], None, False
+    if in_place:
+        slot, backup, changed = savedata.update_in_place(
+            folder, source, result.data, asked_name, expected=src_bytes,
+            backup_root=backup_root or datasource.app_dir('backups'))
+        saved, unchanged = [slot], not changed
+        say("Already up to date: the roster is the same as the new one" if unchanged else
+            f"Updated \"{slot.name}\" in place ({slot.folder}, {slot.region})")
+    else:
+        for title_id in targets:
+            slot = savedata.install(folder, source, result.data, name, title_id=title_id)
+            saved.append(slot)
+            say(f"Saved as \"{slot.name}\" in {slot.folder} ({slot.region})")
     title = f"{saved[0].folder}_{stamp}"
     report = report_as(title)
     art = None
@@ -464,7 +507,8 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         if skipped:                     # in the list of changes, by name: a player can tell us who
             note_skipped(result, skipped)
             report = report_as(title)
-    return UpdateResult(result, saved[0], report, name, art, slots=saved)
+    return UpdateResult(result, saved[0], report, name, art, slots=saved, in_place=in_place, backup=backup,
+                        unchanged=unchanged)
 
 
 def note_skipped(result, skipped):

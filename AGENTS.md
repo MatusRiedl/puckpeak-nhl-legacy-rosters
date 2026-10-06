@@ -2,8 +2,8 @@
 
 **NHL Legacy Roster Updater** keeps the rosters of *NHL Legacy Edition* (PS3, played on the
 RPCS3 emulator) up to date. Players start a Windows exe, pick `rpcs3.exe`, choose a roster and
-what to update, and get a **new** roster save named with the date and time. It is built for the
-NHL Legacy community. Explain changes to the project owner in plain words, without jargon, and
+what to update, and get that roster updated (a backup first) or a **new** roster save named with the date
+and time. It is built for the NHL Legacy community. Explain changes to the project owner in plain words, without jargon, and
 leave decisions about publishing, credits and game-design trade-offs to them.
 
 The window carries the look and logo of **Puck Peak**, the owner's other NHL project. Keep it.
@@ -22,11 +22,20 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    the schedule tables.
 7. [docs/SEASON_PLAN.md](docs/SEASON_PLAN.md): the study of Season / Be a GM in the newest season
    (a plan with experiments, not built yet).
+8. [docs/CALENDAR_AND_LOOK.md](docs/CALENDAR_AND_LOOK.md): the hand-over for the 2026-27 calendar, the Utah /
+   Seattle / Vegas jerseys and the home-ice logo: what is built, the three in-game tests the owner runs, how to
+   read their answers, and what to build next. **Read it when the owner talks about testing the calendar,
+   jerseys or the ice.**
 
 ## Rules that must not be broken
 
-1. **Never change, overwrite or delete an existing save.** Every update is a new folder
-   `<TITLEID>02NN` (`savedata.install`).
+1. **Never change, overwrite or delete an existing save by yourself.** An update is a new folder
+   `<TITLEID>02NN` (`savedata.install`) unless the player chose "Update this roster" (the window's default
+   since 2026-10-06, owner's wish): `savedata.update_in_place` replaces the picked roster's `SYS-DATA` after
+   a backup copy in the program's own folder (the newest 10 per roster are kept; only those copies are ever
+   pruned), never while RPCS3 runs, never the game's own roster, never a folder that is not a roster save
+   directly in the save folder. The one removal is the player's own **Delete** button next to a roster:
+   `savedata.trash_save` moves it to the Recycle Bin / Trash, with a question first, never permanently.
 2. **Never add a team and never change a team's league.** The team table is full (252 records,
    8-bit ids) and leagues are fixed per slot; only existing slots can be refilled. At most 40
    players per team. `verify.py` enforces this; keep it that way.
@@ -41,7 +50,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    copy of the savedata folder, or `tools/window_shot.py` (it makes a fake RPCS3).
 6. **No git commit or push, and nothing published, without the owner's explicit go-ahead.**
    The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters (0.6.0
-   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, each with the owner's go-ahead). Every further commit,
+   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, each with the owner's go-ahead). Every further commit,
    push or release needs the go-ahead again. Before pushing, check that no base roster (`work/`),
    photo pack, EA file, personal path or user name goes in.
 7. **The base roster is not ours to ship** (another modder's work on EA data). It stays out of
@@ -74,7 +83,7 @@ python -m legacy_roster update --rpcs3 <rpcs3.exe> --dry-run   # build and check
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --for both  # save for the EU and the NA version
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --source disc   # start from the game's own roster (no community roster)
 python -m legacy_roster stock-test --rpcs3 <rpcs3.exe>         # the in-game check of the game's own roster (owner only)
-.venv\Scripts\python tools\window_shot.py <state> out.png      # picture of the window: none|ready|updating|done|details|failed|editor|editor-preview
+.venv\Scripts\python tools\window_shot.py <state> out.png      # picture of the window: none|ready|updating|done|details|failed|delete|editor
 python tools\build_datapack.py --refresh ratings,iihf,liiga,extraliga,shl,del,nl,norway,ahl,chl,nhl   # refresh the data pack
 python tools\capacity.py                                       # player records and pool room a full update needs
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --photos    # also install photos and logos (RPCS3 closed)
@@ -83,6 +92,10 @@ python -m legacy_roster update --rpcs3 <rpcs3.exe> --edits     # also apply the 
 .venv\Scripts\python tools\build_photopack.py                  # the photo pack inside the exe (after the data pack; build.ps1 needs it)
 python -m legacy_roster art-test install|remove --rpcs3 <rpcs3.exe>   # the one-off in-game art test (done)
 python -m legacy_roster draft-test --rpcs3 <rpcs3.exe>         # LAB roster: where does the draft see prospects (owner)
+python -m legacy_roster season-test --rpcs3 <rpcs3.exe>        # LAB rosters with more and more update steps: which one crashes Season mode (owner)
+python -m legacy_roster rendering-test --rpcs3 <rpcs3.exe>     # loud Utah jerseys / centre-ice logo as loose files (owner; undo: photos remove)
+python -m legacy_roster calendar-test --rpcs3 <rpcs3.exe> --source file:<community SYS-DATA>   # LAB rosters with the real 2026-27 calendar (owner)
+python -m legacy_roster update --rpcs3 <rpcs3.exe> --in-place  # update the picked roster itself (backup first)
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1   # build dist\*.exe (close a running copy first)
 bash packaging/build.sh                                        # the same on a Mac or a Linux PC (its own system only)
 ```
@@ -121,7 +134,10 @@ bash packaging/build.sh                                        # the same on a M
 | RPCS3 and saves | `savedata.py` (also the game's own folder and disc: `Rpcs3.game_folder`, `game_disc`; the versions EU / NA: `GAMES`, `Rpcs3.games`, `install(title_id=)`) |
 | Menu art and names (portraits, logos, team names) | `art/` (`loc.py` the game's text file; `disc.py` the player's own disc, `bigf.py`, `refpack.py`, `dds.py`; photos and logos: `portraits.py` ids in the roster, `images.py` drawing, `install.py` download, write, undo; `lab.py` the one-off art test), `tools/providers/wiki_logo.py`, `tools/names_report.py` |
 | Front ends | `gui.py` (tabs Update and Roster editor), `widgets.py`, `theme.py`, `progress.py`, `cli.py` |
-| Roster editor | `editor/model.py` (a roster as teams and players; as is vs to be), `editor/view.py` (the tab), `editor/pictures.py` (the player's picture on the card), `edits.py` (the player's edits, kept in edits.json and applied after every update) |
+| 3D textures | `art/rpsgl.py` (jerseys, ice: read, replace a raster, repack), `art/rendering.py` (`cli rendering-test`, loud Utah files) |
+| Calendar | `schedule.py` (the real schedule into `nhlschedule` / `favoriteteamschedule`, `check`), `calendartest.py` (`cli calendar-test`), data pack part `schedule` (`tools/providers/nhl_facts.py`) |
+| Season-mode test | `seasontest.py` (`cli season-test`) |
+| Roster editor | `editor/model.py` (a roster as teams and players, `apply_edits`), `editor/view.py` (the tab: the picked roster as it is plus this visit's edits; saves in place or as new), `editor/pictures.py` (the player's picture on the card), `edits.py` (the player's edits, kept in edits.json and applied after every update) |
 | Packaging | `packaging/build.ps1`, `packaging/make_assets.py` |
 
 ## Writing for players
@@ -132,6 +148,42 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+Version 0.8.1 (released 2026-10-06; CHANGELOG.md has the players' version): the owner's tests of 0.8.0 in the
+game, in two rounds. **Confirmed in the game by the owner (2026-10-06):** the Tampa Bay and Toronto logos, the
+Select Teams names (Utah Mammoth, Seattle Kraken, Vegas Golden Knights), Delete / Open folder, and Season mode
+with the full update. **Still to be checked in the game** (ROADMAP "Round 3" rows): update in place (which roster
+the game loads at boot), re-updating a roster made by 0.8.0, the Roster editor's save, the arena names and colours of
+the game's own roster, and the **calendar 2026-27, the loose 3D textures (jerseys, ice) and the new jerseys / ice
+logos, which the owner tests in a separate session: read docs/CALENDAR_AND_LOOK.md**.
+First round:
+- **Window:** every roster in step 2 has **Open folder** and **Delete** (`widgets.RosterRow`,
+  `App.ask_delete` / `delete_save` / `open_save`, `savedata.trash_save`); `tools/window_shot.py delete`.
+- **Logos:** the pictures with a white edge (`t`, `d`, `r`) are drawn from ESPN's plain logo
+  (`install.EDGED_KINDS`, `plain_logo_url`), the others from the dark one; `LOGO_DRAWING` '#3';
+  the photo pack was rebuilt with the 32 plain logos (kept out of git).
+- **Team names:** Select Teams reads `TEAMLINE1/2_X`, `NICKLINE2_X`, `NHLTeamName_Abbr3_X` and the NHL
+  slots' numbered texts, which `art/loc.py` now writes (`set_existing`, `set_select_lines`,
+  `NAMES_VERSION`; FORMAT.md section 7). All three wait for the in-game check (ROADMAP).
+Second round (evening):
+- **Logos/names did not change in the game because the new code had never been installed** (the owner ran the
+  0.8.0 exe; `installed.json` still had `#2`): after running the new exe with "Photos, logos and team names" on they
+  were right. Calendar (`c`) and wide (`w`) logos now also take the plain logo where the dark one is a
+  white silhouette and the game's own picture is coloured (Toronto; `LOGO_DRAWING` '#4').
+- **Update in place** (default) or save as new: `savedata.update_in_place`, `pipeline.update(in_place=True)`,
+  `cli update --in-place`, window card 4 and the editor's save bar share `App.save_mode`.
+- **Roster editor** has one view (no As is / To be): the picked roster as it is plus this visit's edits.
+- **Calendar 2026-27** (`schedule.py`, step `schedule`, OFF by default, `pipeline.EXPERIMENTAL`): written, tested
+  offline, **not played yet** (`cli calendar-test`: CAL 1-4; hand-over in docs/CALENDAR_AND_LOOK.md).
+- **Utah/Seattle/Vegas look, ice logo, jerseys**: `art/rpsgl.py` reads and rewrites the game's `.rpsgl` textures
+  (byte-identical repack); `cli rendering-test` is the one in-game test (loose `rendering` files, never tried);
+  `builder.nhl_identity` gives the game's own roster Utah's/Seattle's/Vegas's arenas and colours (the community
+  roster has them). Real jerseys and centre-ice logos wait for the test (docs/CALENDAR_AND_LOOK.md).
+- **Season mode crash: fixed** (owner played `season-test` rosters 1-4, the full update, 2026-10-06). The
+  community roster names a removed player (Drouin) in two table headers and our update made him a free
+  agent; `builder.drop_removed_player` removes him first, `verify.py` checks the header words; a roster
+  made by 0.8.0 (stale markers) gets its free agents relinked (`Builder.relink_free_agents`, not played
+  yet). `cli season-test` (`seasontest.py`) stays as the owner's check for sizes and regressions.
 
 Version 0.8.0 (released 2026-10-05; CHANGELOG.md has the players' version): the testers' feedback on 0.7.0, with the
 owner's decisions (ROADMAP.md, "Decisions taken ... testers' feedback"). Everything waits for the
@@ -173,7 +225,7 @@ in-game check (`pipeline.EXPERIMENTAL`: 'free agents', 'goalie gear', 'draft', '
   - without RPCS3 (a tester on a Mac in CrossOver): step 1 also takes a folder with roster saves
     (`savedata.SaveFolder`, `open_saves`; the window's link "No RPCS3 on this computer?"); photos and
     the game's own roster are not offered then.
-  - Open: a Season mode crash with Arizona/Utah (ROADMAP "Waiting for the game").
+  - Season mode crash: fixed for a roster updated from the community roster (ROADMAP "Season mode crash"); re-updating a roster made by 0.8.0 still to be played.
 
 Version 0.7.0 (2026-10-04): fixes for two problems a tester had with 0.6.0 (nothing new goes into
 the save):

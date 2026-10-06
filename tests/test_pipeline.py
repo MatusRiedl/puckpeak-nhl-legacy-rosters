@@ -1,3 +1,4 @@
+import os
 from collections import Counter
 
 import pytest
@@ -341,3 +342,50 @@ def test_verify_finds_a_free_agent_listed_twice(built, base_bytes):
     R.Q.add_record({'TWSX': R.Q.get(0, 'TWSX')})
     problems, _ = verify(R.f.build(), Roster(base_bytes))
     assert any('free-agent list twice' in p for p in problems)
+
+
+@pytest.fixture
+def save_folder(tmp_path, base_dir, monkeypatch):
+    """A pretend save folder with the base roster; the program's own files in a temp folder, RPCS3 closed."""
+    import shutil
+    from legacy_roster import savedata
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
+    monkeypatch.setenv('HOME', str(tmp_path))
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
+    folder = tmp_path / 'savedata'
+    shutil.copytree(base_dir, folder / 'BLES021530202')
+    return str(folder)
+
+
+def test_an_update_in_place_changes_the_chosen_roster_after_a_backup(save_folder, base_bytes, data, tmp_path):
+    from legacy_roster import savedata
+    backups = str(tmp_path / 'backups')
+    res = pipeline.update(save_folder, 'BLES021530202', pipeline.CORE_STEPS, None, data=data, in_place=True,
+                          backup_root=backups)
+    assert res.build.ok
+    assert res.in_place and not res.unchanged and res.slot.folder == 'BLES021530202'
+    assert [s.folder for s in savedata.list_rosters(save_folder)] == ['BLES021530202']          # no new folder
+    assert open(res.slot.sys_data, 'rb').read() == res.build.data != base_bytes
+    assert res.slot.name == savedata.list_rosters(save_folder)[0].name                      # the name stays
+    assert open(os.path.join(res.backup, 'SYS-DATA'), 'rb').read() == base_bytes
+    assert 'updated in place' in res.saved_where()
+    again = pipeline.update(save_folder, 'BLES021530202', pipeline.CORE_STEPS, None, data=data, in_place=True,
+                            backup_root=backups)
+    assert again.unchanged and again.backup is None and len(os.listdir(backups)) == 1          # nothing to do twice
+
+
+def test_an_update_in_place_refuses_what_it_cannot_do_and_writes_nothing(save_folder, base_bytes, data, monkeypatch):
+    from legacy_roster import savedata
+    sysdata = lambda: open(os.path.join(save_folder, 'BLES021530202', 'SYS-DATA'), 'rb').read()
+    with pytest.raises(savedata.InPlaceError, match="other version|own version"):
+        pipeline.update(save_folder, 'BLES021530202', pipeline.CORE_STEPS, None, data=data, in_place=True,
+                        targets=['BLES02153', 'BLUS31540'])
+    with pytest.raises(savedata.InPlaceError, match="game's own roster"):
+        pipeline.update(save_folder, None, pipeline.CORE_STEPS, None, data=data, in_place=True,
+                        disc=savedata.DiscSlot('BLES02153', 'x.iso'))
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: 'rpcs3.exe')
+    with pytest.raises(savedata.InPlaceError, match="Close RPCS3"):
+        pipeline.update(save_folder, 'BLES021530202', pipeline.CORE_STEPS, None, data=data, in_place=True)
+    dry = pipeline.update(save_folder, 'BLES021530202', pipeline.CORE_STEPS, None, data=data, in_place=True, dry_run=True)
+    assert dry.slot is None and sysdata() == base_bytes

@@ -47,6 +47,8 @@ def links(pack, nhl_teams):
             photos[key_for(p['photo'])] = p['photo']
     for url in (pack.get('nhl_logos') or {}).values():
         logos[key_for(url)] = url
+        plain = install.plain_logo_url(url)             # the pictures with a white edge are drawn from it
+        logos[key_for(plain)] = plain
     return photos, logos
 
 

@@ -24,7 +24,7 @@ STAGES = (
     (r'^Photos and logos: choosing', 0.91, None),
     (r'^Packing', 0.92, None),
     (r'^Checking', 0.95, None),
-    (r'^Saved as', 1.0, None),
+    (r'^(Saved as|Updated ".*" in place|Already up to date)', 1.0, None),
     (r'^The new roster did not pass', 1.0, None),
 )
 _STAGES = tuple((re.compile(p), a, b) for p, a, b in STAGES)

@@ -8,6 +8,7 @@ update made worse is reported.
 from collections import Counter
 
 from . import layout as L
+from . import schedule
 from .art.portraits import person_key
 from .matching import match
 from .roster import Roster
@@ -133,7 +134,10 @@ def structure(R, full_lineup=FULL_LINEUP):
     return out, teams
 
 
-def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_moves=()):
+NO_MARKER = b'\x00\x00\xff\xff'      # a table header's word at 0x18 when no row was removed last
+
+
+def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_moves=(), calendar=None):
     """Check `built` (bytes of a SYS-DATA) against `source` (the Roster it was built from).
 
     `nhl_players`: the official rosters the build used; when given, every listed player must be
@@ -141,6 +145,8 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     fully playable whatever the source had in those slots. `edited`: (player keys, player rows)
     the player's own edits changed on purpose; only the official-roster check lets them differ.
     `league_moves`: team slots allowed to change league (only the in-game league test, lab.py).
+    `calendar`: what schedule.apply returned when the calendar step ran: the schedule tables are then checked
+    (schedule.check); otherwise they must be the source's.
     Returns (problems, info); the save must not be used if there are problems."""
     edited_keys, edited_rows = edited or (set(), set())
     rebuilt = set(rebuilt)
@@ -158,6 +164,19 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
         for t in range(T.cur_rec):
             if T.get(t, 'jjMx') != source.T.get(t, 'jjMx') and t not in league_moves:
                 problems.append(f"{R.team_name(t)} changed league")
+
+    # no table keeps the "last removed row" marker the community roster has in the entry and link tables
+    # (Season mode crashed on the player it names, owner 2026-10-06)
+    problems += [f"table {name} still names a removed row (the update clears it)" for name in R.f.tables
+                 if bytes(R.f[name].header[0x18:0x1C]) != NO_MARKER]
+
+    # the calendar: the schedule tables are the source's, or what the calendar step wrote and the game's rules allow
+    if calendar is not None:
+        problems += schedule.check(R, source, calendar)
+    else:
+        problems += [f"schedule table {tag} changed" for tag in ('ihmS', 'Iwiq', 'byED') if
+                     R.f[tag].cur_rec != source.f[tag].cur_rec or any(
+                         R.f[tag].record_bytes(i) != source.f[tag].record_bytes(i) for i in range(source.f[tag].cur_rec))]
 
     # every link resolves to a player, every roster entry id is unique
     for i in range(U.cur_rec):

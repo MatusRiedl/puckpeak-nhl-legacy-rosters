@@ -5,6 +5,7 @@ entries and links, the free-agent list, line slots, contracts and the change log
 the NHL and national-team steps; club leagues are in leagues/. pipeline.build() runs the steps.
 """
 import heapq
+import struct
 import zlib
 from collections import Counter
 
@@ -29,7 +30,7 @@ class Data:
     """Everything the builder needs from outside the save."""
 
     def __init__(self, nhl_players=None, ea_ratings=None, iihf=None, season_year=2026, leagues=None, nhl_logos=None,
-                 nhl_last=None, drafts=None):
+                 nhl_last=None, drafts=None, schedule=None, calendar=None):
         self.nhl_players = nhl_players or []   # flat list, see datasource.flatten_nhl()
         self.ea_ratings = ea_ratings           # [{'name','team','position','birth','ovr','attrs'}] or None
         self.iihf = iihf                       # {'AUT': [player, ...]} or None
@@ -38,6 +39,8 @@ class Data:
         self.nhl_logos = nhl_logos or {}       # NHL.com team code -> logo link (photos and logos)
         self.nhl_last = nhl_last or []         # who played in the NHL last season; 'team' None: unsigned now
         self.drafts = drafts or []             # NHL draft picks (draft.py)
+        self.schedule = schedule or []         # the season's games [date, home code, away code] (schedule.py)
+        self.calendar = calendar               # which way to write them (schedule.VARIANTS), None: the default
 
 
 LINK_LIMIT = 16000      # player link ids from here up are the game's own
@@ -61,6 +64,51 @@ def source_rank(team):
     if 62 <= team <= 100:
         return 2
     return 3
+
+
+def marker(table):
+    """The row a table header names as the last one removed (the word at 0x18 is 1 and the row), or None."""
+    word = struct.unpack_from('>I', table.header, 0x18)[0]
+    return word & 0xFFFF if word >> 16 == 1 else None
+
+
+def drop_removed_player(R):
+    """The community's 2026-27 roster was saved by the game right after a player was removed: the
+    entry and link tables name his rows in their headers (Jonathan Drouin: entry 225, link row
+    2945), and he is on no free-agent list and has no contract team. The game treats those rows as
+    removed; our update did not know, put him on the free-agent list when he was not on an NHL
+    roster, and Season mode then crashed on his link (every roster this program made, from the
+    community roster or the game's own, 2026-10-06). The two rows are removed here, before anything
+    else looks at the roster; the markers in every table header are cleared. Returns his name, or
+    None when the roster has no such player (the game's own roster and ROSTER2526 have no markers)."""
+    U, C, P = R.U, R.C, R.P
+    row, link_row = marker(U), marker(C)
+    name = None
+    if row is not None and link_row is not None and row < U.cur_rec and link_row < C.cur_rec:
+        link = U.get(row, 'TWSX')
+        prow = R.p_by_id.get(R.link_to_pid.get(link))
+        listed = any(R.link_to_pid.get(Q_link) == R.link_to_pid.get(link) for Q_link in (R.Q.get(i, 'TWSX') for i in range(R.Q.cur_rec)))
+        if C.get(link_row, 'qEfv') == link and prow is not None and P.get(prow, 'BSXd') == 0 and not listed:
+            name = R.name(prow)
+            U.delete_record(row)
+            C.delete_record(link_row)
+            R.kept_links = {link}
+    if name is None and (row is not None or link_row is not None):
+        # a roster this program made before the fix (0.8.0) from that roster: the markers are still in its
+        # headers, but the rows moved; he is a free agent on his old link, which is dropped by
+        # relink_free_agents() (pipeline.build) so that a second update does not carry the crash on
+        R.stale_markers = True
+    for table in R.f.tables:
+        R.f[table].header[0x18:0x1C] = b'\x00\x00\xff\xff'
+    R.reindex()
+    return name
+
+
+# Utah, Seattle and Vegas as the community roster has them: arena, city, colours. The game's own roster still
+# has Arizona's arena and colours in slot 22 and the All-Star slots' (Nashville's arena for both) in 30 and 31.
+NHL_LOOK = {22: ("The Delta Center", "Salt Lake, UT", (106, 179, 230), (32, 32, 32)),
+            30: ("Climate Pledge Arena", "Seattle, WA", (150, 217, 216), (0, 35, 63)),
+            31: ("T-Mobile Arena", "Las Vegas, NV", (238, 192, 84), (60, 59, 65))}
 
 
 class Builder:
@@ -87,7 +135,8 @@ class Builder:
         self.departures = {}    # team -> [(pos_class, frozenset(flags), quality)]
         # player links (exhibitionplayers): new ones take the lowest free number; ids from 16000 up
         # are the game's own special links and are never handed out
-        self.link_ids = {self.C.get(i, 'qEfv') for i in range(self.C.cur_rec)}
+        # (the link of a leftover entry taken off by drop_removed_player() is not handed out again)
+        self.link_ids = {self.C.get(i, 'qEfv') for i in range(self.C.cur_rec)} | getattr(R, 'kept_links', set())
         self.free_links = (k for k in range(LINK_LIMIT) if k not in self.link_ids)
         self.link_row = {self.C.get(i, 'qEfv'): i for i in range(self.C.cur_rec)}
         self.dead_links = []    # (row, link) of retired players' links, handed out again before new ones
@@ -716,12 +765,43 @@ class Builder:
                     for f in self.flags + ['jZSh', 'lcCm', 'tRVs', 'sFgQ']:
                         U.set(e, f, U.get(src, f))
 
+    def nhl_identity(self):
+        """The arena, city and colours of slots 22 (Utah), 30 (Seattle) and 31 (Vegas), for the game's own roster
+        (NHL_LOOK). A slot whose arena another team shares gets an arena row of its own while the table has room.
+        Returns how many slots were set."""
+        T, A = self.R.T, self.R.f['OEtS']
+        done = 0
+        for slot, (arena, city, primary, secondary) in NHL_LOOK.items():
+            row = T.get(slot, 'arenaid')
+            if A.get(row, 'arenaname') != arena:
+                if any(t != slot and T.get(t, 'arenaid') == row for t in range(T.cur_rec)):
+                    if A.cur_rec >= A.max_rec:
+                        continue
+                    row = A.add_record(template=row)
+                    A.set(row, 'index', row)
+                    T.set(slot, 'arenaid', row)
+                A.set(row, 'arenaname', arena)
+                A.set(row, 'cityname', city)
+            for kind, rgb in (('primary', primary), ('secondary', secondary)):
+                for channel, value in zip('rgb', rgb):
+                    T.set(slot, f"{kind}color_{channel}", value)
+            done += 1
+        return done
+
+    def relink_free_agents(self):
+        """Every free agent gets a new link number; his old link row goes in finish() when nothing else
+        uses it. Returns how many."""
+        old = list(self.fa_links)
+        self.fa_links = [self.new_link(self.R.link_to_pid[link]) for link in old]
+        self.old_fa_links = set(old)
+        return len(old)
+
     def finish(self):
         """Remove deleted entries, give every entry its team slot id, write the free-agent list, and
         give back the links of removed roster places that nothing uses any more (the link table
         has room for 9,955: without this every update would use up more, until it is full)."""
         U, Q, C = self.U, self.Q, self.C
-        gone = {U.get(e, 'TWSX') for e in self.deleted}
+        gone = {U.get(e, 'TWSX') for e in self.deleted} | getattr(self, 'old_fa_links', set())
         for e in sorted(self.deleted, reverse=True):
             U.delete_record(e)
         used = {U.get(i, 'TWSX') for i in range(U.cur_rec)} | set(self.fa_links)
@@ -732,6 +812,8 @@ class Builder:
             if C.get(i, 'qEfv') in unused:
                 C.delete_record(i)
         self.deleted = set()
+        for name in self.R.f.tables:        # no "last removed row" is left to name (see drop_removed_player)
+            self.R.f[name].header[0x18:0x1C] = b'\x00\x00\xff\xff'
         self.renumber_entries()
         Q.cur_rec = 0
         for link in self.fa_links:

@@ -3,6 +3,42 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.8.1 (2026-10-06)
+
+From the owner's tests of 0.8.0. Confirmed in the game: the Tampa Bay and Toronto logos, the team names on
+the Select Teams screen, Delete / Open folder, and Season mode with a full update.
+
+- **Update the roster itself:** step 4 now has **Update this roster** (the default: the roster you picked
+  gets the newest data, so you do not collect new folders and load them) and **Save as a new roster**. Before a
+  roster is changed, its old version is copied to the program's backups folder (the last 10 of each are
+  kept). RPCS3 must be closed. The game's own roster is always saved as a new roster.
+- **Roster editor:** no more As is / To be. It shows the roster you picked as it is, and **Save** updates that
+  roster or makes a new one, like the Update tab.
+- **Calendar 2026-27 (a test, switched off):** the real 2026-27 games and dates for Season mode (30 teams;
+  `calendar-test` also makes a 32-team version). Switch it on in step 3 ("Calendar 2026-27 (test)") to try it.
+  Not played in the game yet, so the game may still show its old dates.
+- **Utah, Seattle and Vegas on the game's own roster:** the arena names, cities and team colours of the
+  community roster (it has them already). `rendering-test` checks whether the game takes 3D textures
+  (jerseys, the ice) from loose files, the first step towards new jerseys and a Utah centre-ice logo.
+- **Manage your saves in the window:** each roster in step 2 has **Open folder** and **Delete**
+  (to the Recycle Bin, with a question first; not while RPCS3 is running).
+- **Logos:** the Toronto calendar and wide logos are blue now, like the game's own (Tampa Bay's stay white,
+  as the game's own are). The Tampa Bay, Toronto, Washington, Boston and Vancouver logos on the favourite-team
+  screen (and the plain and Dynasty logos) are no longer washed out white: they have their own
+  colours again.
+- **Team names on the team-select screens:** Play Now's "Select Teams" showed "Black All-Stars"
+  for Vegas, "Green All-Stars" for Seattle and "Arizona Coyotes" for Utah, and old names for the
+  rebuilt clubs. The names are now written to the lines that screen reads.
+- **Season mode crash:** the game crashed when it started a season with a roster made by 0.8.0 (the
+  community roster and the game's own roster play it fine). It was not an Arizona or Utah problem:
+  the community roster carries a player the game had already removed (Jonathan Drouin), and the
+  update made him a free agent. He is taken off first now; checked in the game (the full update plays
+  Season mode). A roster made by 0.8.0 gets its free agents on new links when updated again (not yet
+  played). The command `season-test` makes a set of test rosters if it ever happens again.
+
+Not yet checked in the game: the calendar, which roster the game loads at start after "Update this roster",
+the arena names and colours of the game's own roster, and the loose 3D textures test (`rendering-test`).
+
 ## 0.8.0 (2026-10-05)
 
 From the testers' feedback on 0.7.0.

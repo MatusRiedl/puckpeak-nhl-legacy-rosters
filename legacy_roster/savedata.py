@@ -428,6 +428,143 @@ def open_path(path):
         subprocess.Popen(['open' if MAC else 'xdg-open', path])
 
 
+class DeleteError(RuntimeError):
+    """A roster save could not be removed (the message says why and what to do, in plain words)."""
+
+
+class InPlaceError(RuntimeError):
+    """A roster save could not be updated in place (the message says why and what to do, in plain words)."""
+
+
+KEEP_BACKUPS = 10        # backups of one roster the program keeps (its own copies only)
+
+
+def update_in_place(savedata, slot, sys_data, name=None, expected=None, backup_root=None):
+    """Replace the roster of an existing roster save with `sys_data`: the same folder, icon and PARAM.SFO
+    (only SUB_TITLE changes, and only when `name` is given and differs). Returns (the Slot, the folder of
+    the backup copy or None, whether anything was written).
+
+    The old save is copied to `backup_root` first (the program's own folder: the game lists every folder
+    in the save folder that starts like a roster save, so a copy cannot stay there), the new SYS-DATA is
+    written next to the save folder and moved over the old one. Refused while RPCS3 runs, for anything
+    that is not a roster save directly in `savedata`, and when the roster is no longer what `expected`
+    (the bytes read when the update started) says: someone else changed it. Bytes that are the same as
+    the roster already has write nothing."""
+    folder = getattr(slot, 'folder', '')
+    path = os.path.join(savedata, folder)
+    if getattr(slot, 'disc', False) or not SLOT_NAME.match(folder) or not is_roster_folder(path)             or os.path.islink(path) or os.path.realpath(os.path.dirname(path)) != os.path.realpath(savedata):
+        raise InPlaceError("That is not a roster save, so it was not changed.")
+    if running_rpcs3():
+        raise InPlaceError("Close RPCS3 first: a roster can only be updated while the game is closed.")
+    target = os.path.join(path, 'SYS-DATA')
+    with open(target, 'rb') as f:
+        current = f.read()
+    if expected is not None and current != expected:
+        raise InPlaceError("The roster was changed while the update was running, so it was not touched. Try again.")
+    sfo = Sfo.load(os.path.join(path, 'PARAM.SFO'))
+    new_name = clean_name(name) if name else None
+    renamed = new_name is not None and new_name != (sfo.get('SUB_TITLE', '') or '')
+    if current == sys_data and not renamed:
+        return Slot(path), None, False
+    backup = None
+    if backup_root:
+        backup = os.path.join(backup_root, f"{folder}_{datetime.datetime.now():%Y%m%d-%H%M%S}")
+        n = 1
+        while os.path.exists(backup):
+            n += 1
+            backup = f"{backup.rsplit('_', 1)[0]}_{datetime.datetime.now():%Y%m%d-%H%M%S}-{n}"
+        try:
+            os.makedirs(backup)
+            for part in FILES:
+                shutil.copy2(os.path.join(path, part), os.path.join(backup, part))
+            with open(os.path.join(backup, 'SYS-DATA'), 'rb') as f:
+                if f.read() != current:
+                    raise OSError("the backup did not copy correctly")
+        except OSError as err:
+            shutil.rmtree(backup, ignore_errors=True)
+            raise InPlaceError(f"The old roster could not be copied to the backup folder ({err.strerror or err}), "
+                               "so it was not changed.") from err
+    side = os.path.join(os.path.dirname(os.path.abspath(savedata)), f".roster-updater-{folder}.new")
+    try:
+        if current != sys_data:
+            with open(side, 'wb') as f:
+                f.write(sys_data)
+                f.flush()
+                os.fsync(f.fileno())
+            with open(side, 'rb') as f:
+                if f.read() != sys_data:
+                    raise OSError("the new roster did not write correctly")
+            os.replace(side, target)
+        if renamed:
+            sfo.set_str('SUB_TITLE', new_name)
+            sfo.save(side)
+            os.replace(side, os.path.join(path, 'PARAM.SFO'))
+        os.utime(path)                  # the game lists the newest folder first
+    except OSError as err:
+        if os.path.exists(side):
+            os.remove(side)
+        raise InPlaceError(f"The roster could not be updated ({err.strerror or err}); the old one is still there.") from err
+    if backup_root:
+        _prune_backups(backup_root, folder)
+    return Slot(path), backup, True
+
+
+def _prune_backups(root, folder):
+    """Keep the newest KEEP_BACKUPS backups of one roster (the program's own copies only)."""
+    mine = sorted((d for d in os.listdir(root) if d.startswith(folder + '_') and os.path.isdir(os.path.join(root, d))),
+                  reverse=True)
+    for old in mine[KEEP_BACKUPS:]:
+        shutil.rmtree(os.path.join(root, old), ignore_errors=True)
+
+
+def _recycle(path):
+    """Move a folder to the Recycle Bin / Trash. Raises DeleteError when the system has none we can
+    use: nothing is ever erased for good."""
+    if WINDOWS:
+        import ctypes
+        from ctypes import wintypes
+
+        class FileOp(ctypes.Structure):          # SHFILEOPSTRUCTW
+            _fields_ = [('hwnd', wintypes.HWND), ('func', wintypes.UINT), ('src', wintypes.LPCWSTR),
+                        ('dst', wintypes.LPCWSTR), ('flags', ctypes.c_ushort), ('aborted', wintypes.BOOL),
+                        ('mappings', ctypes.c_void_p), ('title', wintypes.LPCWSTR)]
+        FO_DELETE, FOF_ALLOWUNDO, FOF_WANTNUKEWARNING = 3, 0x40, 0x4000
+        source = ctypes.create_unicode_buffer(os.path.abspath(path) + '\0\0')    # the list ends with two zeros
+        op = FileOp(None, FO_DELETE, ctypes.cast(source, wintypes.LPCWSTR), None,
+                    FOF_ALLOWUNDO | FOF_WANTNUKEWARNING, False, None, None)
+        if ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)) or op.aborted:
+            raise DeleteError("Windows could not move the roster to the Recycle Bin, so it was not removed.")
+    elif MAC:
+        trash = os.path.expanduser('~/.Trash')
+        target, n = os.path.join(trash, os.path.basename(path)), 1
+        while os.path.exists(target):
+            n += 1
+            target = os.path.join(trash, f"{os.path.basename(path)} {n}")
+        try:
+            shutil.move(path, target)
+        except OSError as err:
+            raise DeleteError(f"The roster could not be moved to the Trash ({err.strerror or err}).") from err
+    else:
+        gio = shutil.which('gio')
+        if gio is None or subprocess.run([gio, 'trash', path], capture_output=True).returncode:
+            raise DeleteError("This computer has no Trash the program can use (the command gio), so the roster was "
+                              "not removed. Delete its folder in your file manager instead.")
+
+
+def trash_save(savedata, folder):
+    """Move a roster save (a folder like BLES021530203 in `savedata`) to the Recycle Bin. Only a real
+    roster save directly inside the save folder, and never while RPCS3 runs. Nothing else is touched."""
+    path = os.path.join(savedata, folder)
+    if not SLOT_NAME.match(folder) or not is_roster_folder(path) or os.path.islink(path) \
+            or os.path.realpath(os.path.dirname(path)) != os.path.realpath(savedata):
+        raise DeleteError("That is not a roster save, so it was not removed.")
+    if running_rpcs3():
+        raise DeleteError("Close RPCS3 first: a roster can only be removed while the game is closed.")
+    _recycle(path)
+    if os.path.exists(path):
+        raise DeleteError("The roster is still there, so it was not removed.")
+
+
 def list_rosters(savedata):
     """Roster saves in a savedata folder, newest first."""
     if not os.path.isdir(savedata):

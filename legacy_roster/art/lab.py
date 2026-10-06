@@ -101,6 +101,16 @@ class Disc:
     def logo(self, folder, prefix, artid):
         return self.find('/'.join(ART + (folder, f"{prefix}{artid}.big")))
 
+    def render(self, inner):
+        """A 3D texture of the game (`rendering/...rpsgl`: jerseys, ice, banners), from nocacherender.big or
+        cacherender.big (bytes or None). Opened when first asked for: they are big archives."""
+        for name in ('nocacherender.big', 'cacherender.big'):
+            if name not in self.archives:
+                self.archives[name] = EbArchive.open(self.source, name)
+            if inner in self.archives[name].entries:
+                return self.archives[name].read(inner)
+        return None
+
     def text_file(self, language):
         """The game's text database for a language ('eng_us'), from cacheboot.big (bytes or None)."""
         if 'cacheboot.big' not in self.archives:

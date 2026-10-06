@@ -15,7 +15,7 @@ def test_a_roster_reads_into_teams_and_players(base_bytes):
     assert snap.roster(model.FREE_AGENTS)
 
 
-def test_as_is_and_to_be_differ_where_the_update_changed_them(base_bytes, built):
+def test_compare_tells_where_two_rosters_differ(base_bytes, built):
     before, after = model.Snapshot(base_bytes), model.Snapshot(built.data)
     joined = left = 0
     for team in range(32):

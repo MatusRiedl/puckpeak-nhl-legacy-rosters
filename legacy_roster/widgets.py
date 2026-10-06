@@ -174,18 +174,25 @@ class GhostButton(ctk.CTkButton):
 
 class RosterRow(ctk.CTkFrame):
     """One roster save in the list: a radio dot, its name, when it was saved and its folder, the
-    version of the game it belongs to (EU / NA), and a chip."""
+    version of the game it belongs to (EU / NA), a chip, and (when `on_open` / `on_delete` are given)
+    a button that opens its folder and one that moves it to the Recycle Bin."""
 
-    def __init__(self, master, title, note, chip=None, problem=None, command=None, region=None):
+    def __init__(self, master, title, note, chip=None, problem=None, command=None, region=None, on_open=None,
+                 on_delete=None):
         super().__init__(master, fg_color=T.CELL, corner_radius=10, border_width=1, border_color=T.CELL)
         self.usable = problem is None
+        self.delete_button = None
         self.columnconfigure(1, weight=1)
         self.dot = ctk.CTkFrame(self, width=16, height=16, corner_radius=8, border_width=2,
                                 border_color=T.BORDER_STRONG, fg_color=T.CELL)
         self.dot.grid(row=0, column=0, rowspan=2, padx=(12, 10), pady=8)
         colour = T.STRONG if self.usable else T.FAINT
-        ctk.CTkLabel(self, text=title, font=T.font(15, 'semibold'), text_color=colour, anchor='w', height=20
-                     ).grid(row=0, column=1, sticky='ew', pady=(5, 0))
+        head = ctk.CTkFrame(self, fg_color='transparent')            # the name, and the chip beside it
+        head.grid(row=0, column=1, sticky='ew', pady=(5, 0))
+        ctk.CTkLabel(head, text=title, font=T.font(15, 'semibold'), text_color=colour, anchor='w', height=20
+                     ).pack(side='left')
+        if chip:
+            Chip(head, *chip).pack(side='left', padx=(8, 0))
         line = ctk.CTkFrame(self, fg_color='transparent')
         line.grid(row=1, column=1, sticky='ew', pady=(0, 6))
         if region:
@@ -194,11 +201,26 @@ class RosterRow(ctk.CTkFrame):
         ctk.CTkLabel(line, text=problem or note, font=T.font(12), text_color=T.RED if problem else T.MUTED,
                      anchor='w', justify='left', height=16, wraplength=300 if region else 330
                      ).pack(side='left', fill='x', expand=True)
-        if chip:
-            Chip(self, *chip).grid(row=0, column=2, rowspan=2, padx=(8, 12))
+        if on_open or on_delete:           # made before bind_click, which leaves buttons out
+            actions = ctk.CTkFrame(self, fg_color='transparent')
+            actions.grid(row=0, column=2, rowspan=2, padx=(8, 10))
+            small = T.font(12, 'semibold')
+            if on_open:
+                open_button = GhostButton(actions, "Open folder", on_open, height=26)
+                open_button.configure(font=small)
+                open_button.pack(side='left')
+            if on_delete:
+                self.delete_button = GhostButton(actions, "Delete", on_delete, height=26)
+                self.delete_button.configure(font=small, text_color=T.RED, hover_color=T.RED_SOFT,
+                                             border_color=T.RED_LINE)
+                self.delete_button.pack(side='left', padx=(6, 0))
         if command and self.usable:
             bind_click(self, command)
             self.configure(cursor='hand2')
+
+    def enable_delete(self, on):
+        if self.delete_button is not None:
+            configure_if_changed(self.delete_button, state='normal' if on else 'disabled')
 
     def select(self, on):
         configure_if_changed(self, border_color=T.ACCENT if on else T.CELL, fg_color=T.ACCENT_SOFT if on else T.CELL)

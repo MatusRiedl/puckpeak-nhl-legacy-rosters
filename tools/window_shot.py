@@ -12,8 +12,8 @@ states:
     done       runs a real offline update into the pretend folder, then shows the result
     details    done, with the details panel open
     failed     a made-up failure banner
+    delete     the question before a roster save goes to the Recycle Bin (its Delete button pressed)
     editor           the Roster editor tab on the base roster, Edmonton and its first player picked
-    editor-preview   the same in "To be" (a real offline update, in memory)
 
 The pretend RPCS3 has the base roster, an earlier update of it, and a copy saved for the NA
 version, so the EU / NA tags and "Save for" show.
@@ -112,8 +112,8 @@ def capture(root, out):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('state', choices=('none', 'ready', 'updating', 'done', 'details', 'failed', 'editor',
-                                      'editor-preview'))
+    ap.add_argument('state', choices=('none', 'ready', 'updating', 'done', 'details', 'failed', 'delete',
+                                      'editor'))
     ap.add_argument('out')
     ap.add_argument('--scale', type=float)
     ap.add_argument('--screen-lines', type=int)
@@ -198,17 +198,14 @@ def main():
                     pump(0.2)
                 pump(0.5)
             wait()
-            if args.state == 'editor-preview':
-                from legacy_roster.editor.view import TO_BE
-                ed.mode_switch.set(TO_BE)
-                ed.set_mode(TO_BE)                   # what a click on "To be" does
-                wait()
             edm = str(L.API_TO_SLOT['EDM'])
             ed.team_tree.selection_set(edm)
             pump(0.5)
             first = ed.table.get_children()[0]
             ed.table.selection_set(first)
             pump(2.5)                                # the picture is made in the background
+        elif args.state == 'delete':
+            app.ask_delete(next(s.folder for s in app.slots if s.tool_made))
         elif args.state == 'failed':
             app.failed("The new roster failed the safety checks, so nothing was saved",
                        ["Anaheim Ducks dresses 19 players (4 C, 4 LW, 3 RW, 6 D, 2 G); "

@@ -47,7 +47,7 @@ feed typo that makes an AHL player 15.
 | `del` | penny-del.org `/teams/<club>/kader` | same | one page per club; the page must link the current main round (`hauptrunde-2627`); ages only |
 | `nl` | nationalleague.ch `/api/teams`, `/api/player/team/<id>` | same | 15 requests; no nationality, height, weight or hand |
 | `ahl`, `ohl`, `qmjhl`, `whl` (pack key `chl`) | HockeyTech `lscluster.hockeytech.com/feed/` (`modulekit` views) | same | one request per club; public keys in `tools/providers/hockeytech.py` |
-| `nhl` | NHL.com | with every release | only used when the player is offline; `nhl_logos` (ESPN's PNG logos for dark backgrounds, `500-dark`) is written with it |
+| `nhl` | NHL.com | with every release | only used when the player is offline; `nhl_logos` (ESPN's PNG logos for dark backgrounds, `500-dark`; the program derives the plain `500` link from it for the pictures with a white edge, and `build_photopack.py` packs both) is written with it |
 | `nhl_last` | NHL.com statistics (`api.nhle.com/stats/rest/en/{skater,goalie}/bios`, last regular season) | with `nhl` (and after free agency settles in the summer) | 2 requests plus one per unsigned player (photo); decides who is retired and who is an unsigned free agent (`tools/providers/nhl_facts.py`). A new season: it takes the season before `SEASON` |
 | `drafts` | NHL.com draft lists (`api-web.nhle.com/v1/draft/picks/<year>/all`) | with `nhl`; once a year after the draft | one request per year since `FIRST_DRAFT` (2005), 22 today |
 | league `extra` | the league's feed (same caches) | with the league | the clubs the game has no slot for, with their players (a player's own custom team of that name gets them) |

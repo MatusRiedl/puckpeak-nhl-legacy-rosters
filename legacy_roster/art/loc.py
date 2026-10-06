@@ -37,6 +37,9 @@ TEAM_KEYS = {'full': 'NHLTeamName_{}', 'city': 'NHLCityName_{}', 'nick': 'TXT_NI
              'nick_alt': 'TXT_NICKNAME_ALT_{}', 'abbr': 'X_XLA_TEAM_{}'}
 
 
+# which texts apply_names writes; a change rewrites every installed text file once. '#2': the lines
+# of the team screens (TEAMLINE1/2, NICKLINE2, Abbr3, the NHL slots' numbered texts), 0.8.1
+NAMES_VERSION = '#2'
 LANGUAGES = ('eng_us', 'fre_fr', 'ger_de', 'swe_se', 'fin_fi', 'cze_cz', 'rus_ru')
 
 
@@ -44,17 +47,43 @@ def key_hash(key):
     return zlib.crc32(key.upper().encode('utf-8'), 0xFFFFFFFF) ^ 0xFFFFFFFF
 
 
+def select_lines(full, city, nick, mark=''):
+    """The two lines the team screens show for a team, in the game's own way: a city first and then
+    the nickname ('Tampa Bay' / 'Lightning®'), a nickname first and then the city for a name that
+    ends in its city ('Piráti' / 'Chomutov'), the whole name on the big line when it has no city
+    ('' / 'MODO Hockey')."""
+    full, city, nick = (full or '').strip(), (city or '').strip(), (nick or '').strip()
+    if city and full.lower().startswith(city.lower() + ' '):
+        rest = full[len(city):].strip()
+        if len(rest) >= 3:                      # not "Timrå" + "IK"
+            return city, rest + mark
+    if city and full.lower().endswith(' ' + city.lower()):
+        rest = full[:-len(city)].strip()
+        if len(rest) >= 3:
+            return rest, city
+    return '', full + mark
+
+
 def apply_names(loc, names):
     """Put the roster's team names into a text file (`names` from portraits.names()). A club whose
     name the game already has is left as it is. Returns how many texts changed."""
     changed = 0
     plain = lambda s: (s or '').replace('®', '').replace('™', '').strip().lower()
+    marked = names.get('marked', ())
     for art, full, city, nick, abbr in names.get('teams', []):
         if not art or not full:
             continue
         if art in names.get('force', ()) or plain(loc.get(TEAM_KEYS['full'].format(art))) != plain(full):
             loc.set_team(art, full=full, city=city or full, nick=nick, abbr=abbr)
+            line1, line2 = select_lines(full, city, nick, '®' if art in marked else '')
+            loc.set_select_lines(art, line1, line2, abbr=abbr)
             changed += 1
+    for slot, (full, city, nick, abbr) in sorted((int(s), v) for s, v in names.get('numbered', {}).items()):
+        # the NHL slots the community gave to newer teams also have texts under their number
+        line1, line2 = select_lines(full, city, nick, '®')
+        loc.set_existing(f"NHLTeamName_{slot}", full)
+        loc.set_select_lines(slot, line1, line2, abbr=abbr, city=city)
+        changed += 1
     for key, text in sorted(names.get('cities', {}).items()):
         if loc.get(key) is None:
             loc.set(key, text)
@@ -85,6 +114,7 @@ class LocFile:
             a, b, h = struct.unpack_from('>III', records, i * self.rec_len)
             self.entries.append([h, self._read(tail, a, 1), self._read(tail, b, 2), a == NO_STRING, b == NO_STRING])
         self.by_hash = {e[0]: e for e in self.entries}
+        self._by_key = None
 
     @classmethod
     def blank(cls, texts):
@@ -101,6 +131,7 @@ class LocFile:
         self.rec_len = 16
         self.entries = [[key_hash(k), k, v, False, False] for k, v in texts.items()]
         self.by_hash = {e[0]: e for e in self.entries}
+        self._by_key = None
         self.tree = self._new_tree()
         return self
 
@@ -151,6 +182,8 @@ class LocFile:
             e = [h, key, text, False, False]
             self.entries.append(e)
             self.by_hash[h] = e
+            if self._by_key is not None:
+                self._by_key[key.upper()] = e
         else:
             e[2], e[4] = text, False
 
@@ -158,6 +191,28 @@ class LocFile:
         for part, value in (('full', full), ('city', city), ('nick', nick), ('nick_alt', nick), ('abbr', abbr)):
             if value:
                 self.set(TEAM_KEYS[part].format(art), value)
+
+    def set_existing(self, key, text):
+        """Change the text under a key the game has, found by the key as stored (not by hash: the
+        Select Teams lines have hashes that are not the CRC of their key, so `set` would add a text
+        the game never asks for). Does nothing, and says False, when the game has no such key."""
+        if self._by_key is None:
+            self._by_key = {e[1].upper(): e for e in self.entries if not e[3]}
+        e = self._by_key.get(key.upper())
+        if e is None:
+            return False
+        e[2], e[4] = text, False
+        return True
+
+    def set_select_lines(self, key_tail, line1, line2, abbr=None, city=None):
+        """The texts the team screens (Play Now "Select Teams", Season) read: TEAMLINE1/2 are the small
+        line above and the big line of a team's name, NICKLINE2 the big line again, Abbr3 the short
+        code, CITYLINE1 and NHLCityName a city, under `key_tail` (a team's art code, or an NHL slot number)."""
+        for key, text in ((f"TEAMLINE1_{key_tail}", line1), (f"TEAMLINE2_{key_tail}", line2),
+                          (f"NICKLINE2_{key_tail}", line2), (f"NHLTeamName_Abbr3_{key_tail}", abbr),
+                          (f"CITYLINE1_{key_tail}", city), (f"NHLCityName_{key_tail}", city)):
+            if text is not None:
+                self.set_existing(key, text)
 
     # --- writing -------------------------------------------------------------------------------------------
     def _codes(self, tree):

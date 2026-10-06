@@ -432,7 +432,55 @@ def test_the_editor_shows_the_picture_the_game_has(base_dir, tmp_path, monkeypat
     pic, caption = shown.current(9857, 1)
     assert pic.size == pictures.SIZE and caption == pictures.NOW               # the disc's own
     assert shown.current(9857, 0) == (None, pictures.NO_PHOTO)                  # no portrait: a silhouette
-    monkeypatch.setattr(install, '_download', lambda url: head_photo())
-    pic, caption = shown.new('https://photo/new.png')
-    assert pic.size == pictures.SIZE and caption == pictures.AFTER
     assert pictures.Pictures(r, 'BLUS31540', pack=False).current(9857, 1) == (None, pictures.NO_GAME)
+
+
+def test_logos_with_a_white_edge_are_drawn_from_espns_plain_logo(monkeypatch):
+    """Testers, 0.8.0: Tampa Bay and Toronto came out all white on the favourite-team screen, because
+    ESPN's logos for dark backgrounds are white silhouettes and the picture has a white edge too. The
+    pictures with an edge (t, d, r) take the plain logo, the banner, watermark and calendar the dark one."""
+    pytest.importorskip('PIL')
+    from PIL import Image
+    dark = 'https://a.espncdn.com/i/teamlogos/nhl/500-dark/tb.png'
+    plain = 'https://a.espncdn.com/i/teamlogos/nhl/500/tb.png'
+    assert install.plain_logo_url(dark) == plain and install.plain_logo_url('https://x/y.png') == 'https://x/y.png'
+    asked = []
+
+    class Pack:
+        def logo(self, link):
+            asked.append(link)
+            return Image.new('RGBA', (64, 64), (255, 255, 255, 255) if 'dark' in link else (0, 40, 120, 255))
+
+    monkeypatch.setattr(install, '_template_size', lambda template: (64, 64))
+    monkeypatch.setattr(install, 'art_file', lambda template, img: img)
+    monkeypatch.setattr(install, '_saturation', lambda template: 0.0)       # the game's own pictures are white too
+    kinds = {('f', p): b'' for p in ('t', 's', 'w', 'c', 'd', 'r')}
+    made = install.make_logo(dark, ((60, 60, 60), (20, 20, 20)), kinds, pack=Pack(), cache=False)
+    assert sorted(asked) == [dark, plain]                     # each version read once
+    navy = lambda kind: any(px[3] == 255 and px[2] > px[0] + 60 for px in zip(*[iter(made[('f', kind)].tobytes())] * 4))
+    assert all(navy(k) for k in 'tdr') and not any(navy(k) for k in 'swc')     # navy, not white
+    assert install.LOGO_DRAWING != '#2'                       # installed logos are drawn again
+
+
+def test_calendar_and_wide_pictures_follow_the_games_own_colours(monkeypatch):
+    """Toronto's calendar logo came out white: ESPN's dark logo is a white leaf, the game's own picture is blue.
+    Tampa Bay's own calendar picture is white too, so it keeps the white logo."""
+    pytest.importorskip('PIL')
+    from PIL import Image
+    dark = 'https://a.espncdn.com/i/teamlogos/nhl/500-dark/tor.png'
+    plain = install.plain_logo_url(dark)
+
+    class Pack:
+        def logo(self, link):
+            return Image.new('RGBA', (64, 64), (255, 255, 255, 255) if 'dark' in link else (0, 40, 120, 255))
+
+    monkeypatch.setattr(install, '_template_size', lambda template: (64, 64))
+    monkeypatch.setattr(install, 'art_file', lambda template, img: img)
+    kinds = {('f', p): p.encode() for p in ('t', 's', 'w', 'c', 'd', 'r')}
+    for coloured in (True, False):
+        monkeypatch.setattr(install, '_saturation', lambda template, c=coloured: 0.8 if c else 0.0)
+        made = install.make_logo(dark, ((60, 60, 60), (20, 20, 20)), kinds, pack=Pack(), cache=False)
+        navy = lambda kind: any(a == 255 and b > r + 60 for r, g, b, a in zip(*[iter(made[('f', kind)].tobytes())] * 4))
+        assert all(navy(k) for k in 'tdr') and not navy('s')            # the banner always keeps the dark one
+        assert navy('c') == coloured and navy('w') == coloured
+    assert install.LOGO_DRAWING == '#4'

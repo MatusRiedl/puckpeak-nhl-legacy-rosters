@@ -1,9 +1,9 @@
 """What a roster holds, in the shape the roster editor shows it (no window code here).
 
-`Snapshot` reads a roster save into teams and players; `compare()` tells what an update (or the
-player's edits) changed between two of them ("as is" and "to be"). Players are matched across
-rosters by person (edits.who_of: plain name + birthdate), because an update may give a player
-another record.
+`Snapshot` reads a roster save into teams and players; `compare()` tells what the player's edits
+changed between two of them (the roster as it is and with this session's edits). Players are matched
+across rosters by person (edits.who_of: plain name + birthdate), because an edit may give a player
+another record. `apply_edits()` makes the roster with the edits (no window needed).
 """
 import datetime
 
@@ -135,6 +135,15 @@ class Snapshot:
     def search(self, text, limit=200):
         t = text.lower().strip()
         return [p for p in self.by_who.values() if t in p.name.lower()][:limit] if t else []
+
+
+def apply_edits(raw, my_edits, team_edits, season_year):
+    """The roster `raw` (SYS-DATA bytes) with the player's edits and no update step: a pipeline.BuildResult
+    (its `data` is the new SYS-DATA, `problems` what the safety checks found)."""
+    from .. import pipeline
+    from ..builder import Data
+    return pipeline.build(raw, Data(season_year=season_year or 2026), steps=[], my_edits=my_edits or None,
+                          team_edits=team_edits or None)
 
 
 def club(teams):

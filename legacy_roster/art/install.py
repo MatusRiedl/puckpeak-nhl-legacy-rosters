@@ -41,8 +41,17 @@ LOGO_KINDS = lab.LOGO_KINDS          # (folder, file prefix): plain, small banne
 REFLECTION = ('teamlogosreflection', 'r')
 PORTRAIT_TEMPLATE = 100              # the disc portrait whose file new portraits are made from
 # how logos are drawn (images.logo); a change redraws every installed logo once. '#2': the game's own
-# sizes (images.LOGO_BOX), 0.8.0
-LOGO_DRAWING = '#2'
+# sizes (images.LOGO_BOX), 0.8.0. '#3': the pictures with a white edge are drawn from ESPN's plain logos,
+# not the white-silhouette ones for dark backgrounds (Tampa Bay and Toronto came out all white), 0.8.1.
+# '#4': the other kinds take the plain logo too where the game's own picture of that kind is coloured
+# and the dark one a white silhouette (Toronto's calendar and wide logos)
+LOGO_DRAWING = '#4'
+SILHOUETTE = 0.8                     # share of white in a dark-background logo that makes it a silhouette
+COLOURED = 0.3                       # average saturation of the game's own logo picture that makes it coloured
+LOGO_ONLY_KINDS = ('c', 'w')         # pictures that are the logo alone (the banner 's' is mostly its colour band)
+# the kinds drawn on a white edge (images.logo); they take the plain logo, the others (banner, watermark,
+# calendar: on a dark or coloured ground) the one for dark backgrounds
+EDGED_KINDS = ('t', 'd', 'r')
 # the same for portraits: '#2', 0.8.0: studio photos on a shaded backdrop are cut out too (images.
 # _shaded_background_mask), no longer shown in an oval
 PORTRAIT_DRAWING = '#2'
@@ -161,21 +170,49 @@ def make_portrait(url, templates, pack=None, cache=None):
     return out
 
 
+def plain_logo_url(url):
+    """ESPN's plain logo for the link of its dark-background one (the same link for any other logo)."""
+    return url.replace('/500-dark/', '/500/')
+
+
+def _saturation(template):
+    """Average saturation (0-1) of the opaque pixels of a game art file's picture (a sample of them)."""
+    _, _, pixels = dds.read(bigf.ArtFile(template).image())
+    found = [(max(p[:3]) - min(p[:3])) / max(p[:3]) for row in pixels[::4] for p in row[::4] if p[3] > 128 and max(p[:3])]
+    return sum(found) / len(found) if found else 0.0
+
+
 def make_logo(url, colours, templates, pack=None, cache=None):
     """{(folder, prefix): art file bytes} for one logo link (from the cache, the pack, or downloaded
-    and then kept in the cache)."""
+    and then kept in the cache). The pictures with a white edge (EDGED_KINDS) are drawn from the plain
+    version of an ESPN logo; so are the others when the dark version is a white silhouette and the
+    game's own calendar or wide picture is coloured (Toronto's calendar logo)."""
     from . import images
     cache = cache if cache and _cacheable(url) else None
-    if url.startswith('badge:'):                   # a draft-class pool: a badge with its year
-        img = images.badge(url[len('badge:'):], colours)
-    else:
-        img = (cache.logo(url) if cache else None) or (pack.logo(url) if pack else None)
-        if img is None:
-            img = _download(url).convert('RGBA')
-            if cache:
-                cache.put_logo(url, images._trim(img))
+    images_by_link = {}
+
+    def image(link):
+        if link not in images_by_link:
+            if link.startswith('badge:'):              # a draft-class pool: a badge with its year
+                img = images.badge(link[len('badge:'):], colours)
+            else:
+                img = (cache.logo(link) if cache else None) or (pack.logo(link) if pack else None)
+                if img is None:
+                    img = _download(link).convert('RGBA')
+                    if cache:
+                        cache.put_logo(link, images._trim(img))
+            images_by_link[link] = img
+        return images_by_link[link]
     out = {}
+    silhouette = None
     for (folder, prefix), template in templates.items():
+        link = plain_logo_url(url) if prefix in EDGED_KINDS else url
+        if link == url and prefix in LOGO_ONLY_KINDS and plain_logo_url(url) != url:
+            if silhouette is None:
+                silhouette = images.white_share(image(url)) > SILHOUETTE
+            if silhouette and _saturation(template) > COLOURED:
+                link = plain_logo_url(url)
+        img = image(link)
         out[(folder, prefix)] = art_file(template, images.logo(img, prefix, _template_size(template), colours))
     return out
 
@@ -278,7 +315,7 @@ def install_names(disc, writer, names, say):
     the disc's own each time (so nothing piles up). Returns how many files were written."""
     import hashlib as _h
     from . import loc
-    source = 'names:' + _h.sha1(json.dumps(names, sort_keys=True, default=sorted).encode()).hexdigest()
+    source = 'names:' + _h.sha1((loc.NAMES_VERSION + json.dumps(names, sort_keys=True, default=sorted)).encode()).hexdigest()
     written = 0
     for lang in loc.LANGUAGES:
         rel = ('fe', 'loc', f"nhl_{lang}.db")

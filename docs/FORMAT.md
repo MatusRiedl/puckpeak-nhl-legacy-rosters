@@ -51,6 +51,15 @@ by other tools may be compressed differently; only the content has to match.
   The last table ends with the CRC of its own bytes from 0x28. A broken chain makes the game
   ignore the file without a message.
 - Records past the current count hold stale data. Table order has no meaning.
+- **Header word at 0x18** is `0000ffff` in every table of the game's own roster, ROSTER2526 and what this
+  program writes. The community's 2026-27 roster has `00010b81` in `caBZ` and `000100e1` in `ulGe`:
+  flag 1 and a row, the last row the game removed (link row 2945 and entry row 225 are Jonathan Drouin's;
+  he has no contract team and is on no free-agent list: a player removed in the game before the roster
+  was saved). Our update did not know, treated him as a player of St. Louis, made him a free agent, and
+  Season mode crashed on his link (`0x00381c24`, owner 2026-10-06). `builder.drop_removed_player` removes
+  the two rows before anything else and clears the words; `verify.py` insists they are `0000ffff`.
+  The meaning is inferred from this one roster; removing the player fixed Season mode (owner, 2026-10-06).
+  A roster made by 0.8.0 from it keeps the words but the rows moved: `stale_markers`, free agents relinked.
 
 ## 4. Names and meanings
 
@@ -203,6 +212,20 @@ The disc holds a few large EA "EB" v3 archives (`cache.big`, `nocache.big`, ...;
 | Default database | `db/nhlng.db`, `db/nhlng-meta.xml` (in `cacheboot.big`, stored uncompressed) |
 | 3D heads, jerseys, ice | `rendering/**/*.rpsgl` (`\x89RW4ps3`) |
 
+**3D textures** (read 2026-10-06; `art/rpsgl.py`; archives `nocacherender.big` 1.7 GB and `cacherender.big` 1.4 GB, EU
+and NA identical). A `.rpsgl` is a "chunkzip" (128 KB chunks of raw deflate) around a RenderWare PS3 file with
+named DXT1/DXT5 rasters and a full mipmap chain; repacked with zlib level 9 it is byte-identical to the disc's.
+Named by the team's numeric art id (22 Utah, 30 Seattle, 31 Vegas; the Arizona files are still the ones for 22):
+`rendering/jersey/texlib_<style>_<art>_<variant>` (rasters `jersey_.._cm`, `_sm`, `_0_nm`, `font_..`; the same UV
+layout for every team; Utah has variants 0, 1, 3, 4 in styles 0 and 1, 3 and 4 the home and away), `name_<style>_<art>_<variant>_cm`,
+`pant/texlib_..`, `sock/sock_.._cm`, `icesurface/centerlogo_<art>_cm` (1024x1024 DXT5, the centre-ice logo;
+`exhibitionarena.centericelogo` can name another team's), `icesurface_<arena art>_bm` (rink picture), `banner_`,
+`crowd/prop_team_`. The menu previews of jerseys are `fe/ion/artassets/jerseys/jersey_<style>_<art>_<variant>.big` (BIGF,
+readable as above). The game asks for `<game folder>/rendering/...` first (RPCS3 log), but **no loose rendering file
+has been tried in the game yet** (`cli rendering-test`, ROADMAP "Jerseys and the ice"). The community roster already
+has Utah, Seattle and Vegas arenas (`exhibitionarena` rows 181, 186, 162) and colours; the game's own roster has
+Arizona's and the All-Star slots' (`builder.nhl_identity` sets them for that source).
+
 **Which id.** A portrait file is named by the player's `artid` (`cPbu.rnOl`) and shows when `hasportrait`
 is 1. A logo file is named by the team's `ttOk.artid` (NHL slots 0–31: the slot number; custom
 teams 20000+).
@@ -309,6 +332,19 @@ rebuilds every language file of the disc byte for byte.
   `NHLCityName_X` (city: the Team Rosters header), `TXT_NICKNAME_X`, `TXT_NICKNAME_ALT_X` and
   `X_XLA_TEAM_X` (abbreviation). NHL slot 22 has art `PHX`, slots 30/31 `EAS`/`WES`. The disc
   already has some clubs the base roster does not use (`KLA` Kladno).
+- **Select Teams keys (found 2026-10-06).** Play Now's "Select Teams" and Season's team lists read
+  other texts: `TEAMLINE1_X` (the small line above the name: the city, or the nickname for a name
+  that ends in its city: `Piráti` / `Chomutov`; empty for `MODO Hockey`), `TEAMLINE2_X` (the big line;
+  NHL clubs carry ® or ™), `NICKLINE2_X` (the big line again, NHL and some clubs only) and
+  `NHLTeamName_Abbr3_X` (the short code). The NHL slots also have texts under their number:
+  `NHLTeamName_22`, `NHLCityName_22`, `CITYLINE1_22`, `NICKLINE2_22`, `NHLTeamName_Abbr3_22` (22, 30,
+  31 held Arizona, Eastern and Western All-Stars; `Logo46` still reads Arizona, not found on a screen).
+  Their hashes are not the CRC of their key (0 of 174 `TEAMLINE1_` match), so `LocFile.set` would add a
+  text nobody asks for: `LocFile.set_existing` finds them by their stored key (`set_select_lines`,
+  `loc.select_lines` splits a name the game's way). Until 0.8.0 the update wrote only the five keys
+  above, so Select Teams showed 'Black ALL-STARS' for Vegas, 'Green ALL-STARS' for Seattle and
+  'Arizona COYOTES' for Utah, and the old names of every rebuilt club (owner's screenshots,
+  2026-10-06). `loc.NAMES_VERSION` rewrites the installed files when the set of texts changes.
 
 ## 8. Schedules
 
@@ -319,9 +355,22 @@ Each league has a schedule table in the roster save except Norway:
 - **Fields.** Every record has `round` (3 bits), `status` (2), `day` (5, 0-based), `month` (4, 0-based:
   9 = October), `index` (= row number) and `home` / `away` team ids. The team ids are 5 bits in the NHL
   and AHL tables and 4 bits in the European ones. There is **no year**.
-- **What the NHL table holds.** `nhlschedule` is the 2015-16 NHL calendar (7 Oct to 9 Apr, with a 29 Feb).
-  Only slots 0–29 play, 82 games each (41 home). Slots 30/31 meet once (the All-Star game).
-  `nhlfutureschedule` is a second 82-game calendar.
+- **What the NHL tables hold** (read 2026-10-06, 81 of Anaheim's 82 games checked against NHL.com).
+  `nhlschedule` is the real 2015-16 calendar before any revision (7 Oct to 9 Apr, with a 29 Feb); the
+  owner's Season-mode calendar screenshot matches it row by row (Anaheim: 10 Oct at San Jose, 12 Oct home
+  Vancouver ...). `favoriteteamschedule` is a byte copy with 200 spare rows (what the game uses it for is
+  unknown). `nhlfutureschedule` is the real 2014-15 calendar. Only slots 0–29 play, 82 games each (41 home);
+  slots 30/31 meet once (31 Jan: the All-Star game). Identical on the disc and in every community roster; the
+  AHL and WHL tables differ in the community roster (2015-16 AHL, a WHL cut to 454 rows, not sorted).
+  The year the calendar shows ("October 2015") is in no table; October-February 2015/16 and 2026/27 have
+  the same weekdays (March-April: a day off if the game's February has 29 days).
+- **The 2026-27 calendar** (`schedule.py`, step `schedule`, off by default, `cli calendar-test`): NHL.com's
+  `club-schedule-season/<ABBR>/20262027` gives 1,344 regular-season games (84 per team), 29 Sep 2026 to 10 Apr
+  2027, stored in the data pack part `schedule`. They do not fit (1,291 rows): the update writes only games
+  between slots 0-29 (1,180; 76-80 per team) or, as a test, all 32 teams trimmed to 80 each (a flow over
+  home/away pairs, `schedule.trim`). Written into `nhlschedule` and `favoriteteamschedule`; `verify.py` /
+  `schedule.check` insist on the game's rules (rows in date order, valid dates Sep-Jun, nobody twice a day,
+  `index` = row, both tables equal, no other schedule table changed). Not played in the game yet.
 - **Room.** The maximum is the stock count + 60 (`maxinsert` in `nhlng-meta.xml`). That is 1,291 rows
   for the NHL. 32 teams × 82 games = 1,312 do not fit; 80 games (1,280) would.
 - **Divisions.** These live in `ttOk.conferencegroup` / `divisiongroup` (6 bits):

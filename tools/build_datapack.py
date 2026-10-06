@@ -14,6 +14,8 @@ The pack holds everything the updater does not fetch live:
     nhl_last     everyone who played in the NHL last season (birthdate, size, hand, team now): who is
                  retired and who is an unsigned free agent (refreshed with nhl)
     drafts       every NHL draft pick since FIRST_DRAFT (refreshed with nhl)
+    schedule     every regular-season game of the season (date, home, away): the game's calendar
+                 (refreshed with nhl, or alone: --refresh schedule)
 
 Before writing, every part is compared with the pack being replaced: a part that is gone or has
 lost more than 40% of its entries stops the build (a feed that changed its layout looks like that).
@@ -54,8 +56,10 @@ MAX_DROP = 0.4                  # a part that loses more than this share of its 
 MIN_AGE, MAX_AGE = 15, 45       # club players outside these ages are typos in the feed
 LEAGUE_MIN_AGE = {'ahl': 17}    # juniors may be 15 (exceptional status), AHL players not
 MAX_SHARED_PHOTO = 3            # this many players with the same photo link: it is a placeholder
-# ESPN's logos for dark backgrounds (the game's menus are dark): only Tampa Bay's and Washington's differ
-# from the plain ones, and those two were hard to see (testers, 0.7.0)
+# ESPN's logos for dark backgrounds (the game's menus are dark). Several differ from the plain ones
+# (Tampa Bay and Washington are all white, Toronto's leaf is white, Boston, Vancouver, Los Angeles and
+# Detroit in part): they are used for the banner, watermark and calendar pictures; the pictures with a
+# white edge are drawn from the plain logo (install.plain_logo_url, 0.8.1)
 NHL_LOGO = "https://a.espncdn.com/i/teamlogos/nhl/500-dark/{}.png"
 FIRST_DRAFT = 2005              # the oldest players still playing were drafted about then
 ESPN_CODE = {'UTA': 'utah', 'TBL': 'tb', 'NJD': 'nj', 'SJS': 'sj', 'LAK': 'la'}
@@ -177,7 +181,7 @@ def check_drops(old, new, accept):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--refresh', default='',
-                    help="comma list: ratings, iihf, nhl (also nhl_last and drafts), or a league (liiga, extraliga, shl, del, nl, norway, ahl, "
+                    help="comma list: ratings, iihf, nhl (also nhl_last, drafts and schedule), or a league (liiga, extraliga, shl, del, nl, norway, ahl, "
                          "chl) or one part of it (ohl, qmjhl, whl)")
     ap.add_argument('--research', help="lab research folder to use as the cache (work/research)")
     ap.add_argument('--accept-drops', action='store_true', help="write the pack even if a part shrank or vanished")
@@ -234,7 +238,8 @@ def main():
 
     # NHL facts for every player: who played last season (retired or unsigned) and the drafts
     for key, fetch in (('nhl_last', lambda: nhl_facts.last_season(SEASON)),
-                       ('drafts', lambda: nhl_facts.drafts(FIRST_DRAFT, SEASON))):
+                       ('drafts', lambda: nhl_facts.drafts(FIRST_DRAFT, SEASON)),
+                       ('schedule', lambda: nhl_facts.schedule(SEASON))):
         cache = os.path.join(CACHE, f"{key}.json")
         if 'nhl' in refresh or key in refresh:
             os.makedirs(CACHE, exist_ok=True)
@@ -243,7 +248,8 @@ def main():
         if os.path.exists(cache):
             with open(cache, encoding='utf-8') as f:
                 pack[key] = json.load(f)
-            label = "NHL.com: last season's players" if key == 'nhl_last' else f"NHL drafts since {FIRST_DRAFT}"
+            label = {'nhl_last': "NHL.com: last season's players", 'drafts': f"NHL drafts since {FIRST_DRAFT}",
+                     'schedule': f"NHL.com schedule {SEASON}-{(SEASON + 1) % 100:02d}"}[key]
             pack['sources'][key] = {'label': label, 'date': file_date(cache), 'count': len(pack[key])}
 
     if os.path.exists(args.out):

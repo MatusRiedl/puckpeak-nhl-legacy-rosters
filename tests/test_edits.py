@@ -1,5 +1,6 @@
 """The player's own edits (edits.py): applied after the update, kept through later updates."""
 from legacy_roster import edits, pipeline
+from legacy_roster.editor import model
 from legacy_roster import layout as L
 from legacy_roster.roster import Roster
 from legacy_roster.schema import EA_SKATER, RATING_BASE
@@ -103,3 +104,20 @@ def test_a_team_edit_renames_the_team_and_gives_it_a_logo(base_bytes, data, pack
     assert pools and all(v for v in pools.values())
     assert all(v.startswith('badge:') for k, v in pools.items() if k[:4].isdigit())
     assert len({R.T.get(s, 'artid') for s in L.SPARE if R.team_roster(s)}) == len(pools)
+
+
+def test_the_editor_shows_the_roster_as_it_is_and_only_the_edits_made_now(base_bytes, built):
+    """The Roster editor has no "To be": the view is the roster plus this visit's edits, nothing else
+    changes (model.apply_edits builds with no update step)."""
+    mine = my_edits(built)
+    nothing = model.apply_edits(base_bytes, {}, {}, 2026)
+    assert nothing.ok and nothing.data == base_bytes                    # no edit, no change
+    R0 = Roster(base_bytes)
+    mcd = find(R0, 'Connor McDavid')
+    one = {k: v for k, v in mine.items() if v['label'] == 'Connor McDavid'}
+    res = model.apply_edits(base_bytes, one, {}, 2026)
+    assert res.ok, res.problems[:3]
+    before, after = model.Snapshot(base_bytes), model.Snapshot(res.data)
+    changed = {p.name for t in range(32) for p in after.roster(t)} ^ {p.name for t in range(32) for p in before.roster(t)}
+    assert changed == {'Connor McDavid', 'Connor McDavidson'}           # only the edited player differs
+    assert Roster(res.data).P.get(find(Roster(res.data), 'Connor McDavidson'), 'tRVs') == 98

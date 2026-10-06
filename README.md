@@ -7,7 +7,7 @@ What changed: [CHANGELOG.md](CHANGELOG.md).
 
 Keeps the rosters of **NHL Legacy Edition** (PS3, played on RPCS3) up to date. You show it where
 RPCS3 is, switch on what you want updated, and it saves a **new** roster named with today's date
-and time. Your existing rosters are never changed.
+and time, or **updates the roster you picked** (its old version is copied to a backup folder first).
 
 ![The updater window after an update](docs/window.png)
 
@@ -159,12 +159,10 @@ file, so the program writes a corrected copy of that too:
 **Roster editor.** The second tab of the window shows what a roster holds: every league, team
 and player with position, number, age, nationality and overall, with the player's photo.
 
-- **As is / To be.** "As is" is the roster you picked. **To be** shows what the update will make of
-  it, with the switches of the Update tab, without saving (it takes a moment the first time).
-  **Refresh update** makes it again. Green players joined a team, red ones left, and gold ones
-  changed (for example "OVR 83 → 86").
-- **The photo** on the right is the one the game shows now, or in "To be" the one the update
-  brings (with "Photos, logos and team names" on).
+- **It shows the roster you picked** on the Update tab, as it is now (the game's own roster too).
+  Gold players are the ones you changed in this visit (the edits you made earlier are in the roster
+  once you saved it).
+- **The photo** on the right is your own picture of the player, or the one the game shows now.
 - **Edit any player.** Name, number, position, shooting side, birthdate, country, height, weight,
   team (or free agent), every rating, and a **photo of your own** (any PNG or JPG; you see it as the game
   will). Then **Apply**.
@@ -174,8 +172,9 @@ and player with position, number, age, nationality and overall, with the player'
 - **Your edits are kept** on this PC and applied again after every later update ("My edits" on the
   Update tab). The next download therefore does not undo them. **My edits** lists them, and you can
   remove any one.
-- **Save as new roster** writes what you see as a new roster, after the same safety checks as an
-  update.
+- **Save** writes what you see after the same safety checks as an update: **Update this roster**
+  changes the roster you picked (the old one is copied to the backup folder first), **Save as a new
+  roster** makes a new one. It is the same choice as on the Update tab.
 
 ## What you need
 
@@ -201,8 +200,12 @@ and player with position, number, age, nationality and overall, with the player'
 5. In the game: *Roster Management > Load Roster*, pick the roster with the new date, then save
    it once so the game keeps it as the active roster.
 
-The program writes a new folder next to your existing roster saves (for example
-`BLES021530205`). To remove an update, delete that roster in the game or delete the folder.
+The program updates the roster you picked in step 2 (the default) or writes a new folder next to your
+existing roster saves (for example `BLES021530205`; choose **Save as a new roster** in step 4). Before
+it changes a roster it copies the old one to its backups folder (`%LOCALAPPDATA%\NHLLegacyRosterUpdater\
+backups`, the last 10 of each roster), so an update can be undone by copying the files back; RPCS3
+must be closed. Next to each roster in step 2, **Delete** moves it to the Recycle Bin (you can take it out
+again), and **Open folder** shows its folder.
 
 When it is done, the window shows what each part did, one line each, and offers **List of
 changes**, **Open save folder** and, when RPCS3 is not running, **Start RPCS3**. The list of changes

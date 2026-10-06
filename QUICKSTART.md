@@ -21,8 +21,8 @@ from [Puck Peak](https://www.puckpeak.com).
 - **Real free agents and drafts:** retired players gone, unsigned NHL players there, every player's
   real draft, and draft prospects on real clubs where the game's draft finds them.
 - **Windows, macOS and Linux**, with RPCS3 or with just a folder of roster saves.
-- **Safe:** your rosters are never changed. Every update is saved as a **new** roster, and only
-  after it passes a safety check.
+- **Safe:** an update is saved only after it passes a safety check, and the roster it changes is first
+  copied to a backup folder (or choose **Save as a new roster** and nothing existing is touched).
 
 ## How to use it
 
@@ -39,8 +39,9 @@ from [Puck Peak](https://www.puckpeak.com).
 5. **Step 3:** leave everything switched on, or switch off what you don't want.
 6. Press **Update roster**. It takes a few minutes. The result shows what changed, and
    **List of changes** opens every change, team by team.
-7. In the game: **Roster Management > Load Roster**, pick the new roster (named with today's date
-   and time), then **save the roster once** so the game keeps it.
+7. In the game: start it. If the updated roster is not the one in use, **Roster Management > Load
+   Roster**, pick it, then **save the roster once** so the game keeps it. (A new roster is named
+   with today's date and time.)
 
 ## Good to know
 

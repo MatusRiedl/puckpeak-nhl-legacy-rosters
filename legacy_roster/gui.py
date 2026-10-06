@@ -32,6 +32,8 @@ PHOTOS = 'photos'           # the "Photos and logos" switch in the remembered se
 EDITS = 'edits'             # the "My edits" switch
 SAVE_BOTH = 'save_both'     # "Save for: EU + NA" (remembered; a single version follows the roster picked)
 BOTH = "EU + NA"
+SAVE_MODE = 'save_mode'     # how an update is saved (remembered): IN_PLACE or AS_NEW
+IN_PLACE, AS_NEW = 'update', 'new'
 UPDATE_TAB, EDITOR_TAB = "Update", "Roster editor"
 MIN_HEIGHT = 640
 SHORT_SCREEN = 900          # screens shorter than this (window units) show the result lines scrolling
@@ -43,6 +45,8 @@ SITE = "https://www.puckpeak.com"
 SITE_LABEL = "www.puckpeak.com"
 TAGLINE = "NHL & hockey analytics like never before"
 HOW_TO_LOAD ="In the game: Roster Management > Load Roster, pick it, then save the roster once so it stays active."
+HOW_TO_LOAD_IN_PLACE = ("In the game: start it. If this is not the roster in use, Roster Management > Load Roster, pick it, "
+                        "then save the roster once.")
 
 
 def load_settings():
@@ -94,6 +98,7 @@ def short_reason(problem):
 
 
 # the game's own roster (savedata.DiscSlot), as its row in the list says it
+BIN_NAME = "Recycle Bin" if savedata.WINDOWS else "Trash"
 DISC_NOTE = "From your game disc: the 2014-15 players, brought up to today"
 
 
@@ -105,6 +110,7 @@ class App:
         self.rpcs3 = None           # savedata.Rpcs3 once the program has been found
         self.versions = []          # the versions of the game that RPCS3 has (title ids)
         self.save_pick = BOTH if self.settings.get(SAVE_BOTH) else None   # "Save for", when chosen
+        self.save_mode = AS_NEW if self.settings.get(SAVE_MODE) == AS_NEW else IN_PLACE   # the owner's default: update
         self.slots = []
         self.usable = {}            # roster folder -> None when usable, else the reason it is not
         self.rows = {}              # roster folder -> RosterRow
@@ -128,7 +134,7 @@ class App:
         root.title(f"Puck Peak  -  Legacy Roster Updater {__version__}")
         # as tall as the content likes, but never taller than the screen (768-line laptops)
         room = T.screen_height(root) - 90
-        root.geometry(f"1000x{max(MIN_HEIGHT, min(730, room))}")
+        root.geometry(f"1000x{max(MIN_HEIGHT, min(780, room))}")
         root.minsize(940, MIN_HEIGHT)
         self._header()
         self._footer()              # packed before the body, so it is the body that gives way
@@ -227,7 +233,8 @@ class App:
         sources = self.pack.get('sources', {})
         notes = {pipeline.NHL: "Today's rosters from NHL.com",
                  pipeline.RATINGS: self._dated(sources.get('ea_ratings')),
-                 pipeline.NATIONAL: self._dated(sources.get('iihf'))}
+                 pipeline.NATIONAL: self._dated(sources.get('iihf')),
+                 pipeline.SCHEDULE: "The real games and dates for Season mode, 30 teams. A test: not played yet"}
         remembered = self.settings.get('steps', {})
         available = pipeline.steps_for(self.pack)
         later = [name.split(' (')[0] for name in pipeline.planned(self.pack)]
@@ -267,7 +274,10 @@ class App:
         return card
 
     def _card_name(self, master):
-        card = Card(master, 4, "Name of the new roster")
+        card = Card(master, 4, "Save")
+        self.mode_choice = Choice(card.body, [(IN_PLACE, "Update this roster", None), (AS_NEW, "Save as a new roster", None)],
+                                  self.pick_save_mode)
+        self.mode_choice.pack(anchor='w', pady=(0, 8))
         row = ctk.CTkFrame(card.body, fg_color='transparent')
         row.pack(fill='x')
         row.columnconfigure(0, weight=1)
@@ -281,6 +291,7 @@ class App:
         self.save_for = Choice(row, [('EU', 'EU', flag_image('EU')), ('NA', 'NA', flag_image('NA')),
                                      (BOTH, BOTH, flag_image(('EU', 'NA')))], self.pick_save_for)
         self.go = PrimaryButton(row, "Update roster", self.start, width=190)
+        configure_if_changed(self.go, text="Update roster")
         self.go.grid(row=0, column=3, padx=(12, 0))
         self.name_note = ctk.CTkLabel(card.body, text="This is the name you will see in the game's Load Roster list.",
                                       font=T.font(13), text_color=T.MUTED, anchor='w', justify='left', wraplength=900)
@@ -340,9 +351,21 @@ class App:
     def selected_slot(self):
         return next((s for s in self.slots if s.folder == self.selected), None)
 
+    def in_place(self, slot=None):
+        """Is the roster picked updated in place? (The game's own roster is no save: it is always a new roster.)"""
+        slot = slot or self.selected_slot()
+        return self.save_mode == IN_PLACE and slot is not None and not getattr(slot, 'disc', False)
+
+    def pick_save_mode(self, value):
+        self.save_mode = value
+        self.settings[SAVE_MODE] = value
+        save_settings(self.settings)
+        self.name_edited = False
+        self.refresh_state()
+
     def tick(self):
         """Keep the suggested name at the current time until the user types their own."""
-        if not self.name_edited and not self.busy:
+        if not self.name_edited and not self.busy and not self.in_place():
             self.name.set(savedata.default_name())
         self.root.after(15000, self.tick)
 
@@ -561,6 +584,8 @@ class App:
         slot = slot or self.selected_slot()
         if slot is None:
             return []
+        if self.in_place(slot):
+            return [slot.title_id]
         if len(self.versions) < 2 or self.save_pick in (None, slot.region):
             return [slot.title_id]
         if self.save_pick == BOTH:
@@ -595,20 +620,22 @@ class App:
         for s in self.slots:
             problem = self.usable[s.folder]
             if getattr(s, 'disc', False):
-                wanted[s.folder] = (s.name, DISC_NOTE, ("start fresh", 'muted'), None, s.region)
+                wanted[s.folder] = (s.name, DISC_NOTE, ("start fresh", 'muted'), None, s.region, False)
                 continue
-            wanted[s.folder] = (s.name, f"{s.folder}   |   saved {friendly_date(s.modified)}",
+            wanted[s.folder] = (s.name, f"{s.folder}  |  {friendly_date(s.modified)}",
                                 ("made here", 'made') if s.tool_made and problem is None else None,
-                                short_reason(problem) if problem else None, s.region)
+                                short_reason(problem) if problem else None, s.region, True)
         for folder in [f for f, row in self.rows.items() if wanted.get(f) != row.shows]:
             self.rows.pop(folder).destroy()
         order = [s.folder for s in self.slots]
         for k, folder in enumerate(order):
             if folder in self.rows:
                 continue
-            title, note, chip, problem, region = wanted[folder]
+            title, note, chip, problem, region, actions = wanted[folder]
             row = RosterRow(self.roster_list, title, note, chip=chip, problem=problem,
-                            command=lambda f=folder: self.select(f), region=region)
+                            command=lambda f=folder: self.select(f), region=region,
+                            on_open=(lambda f=folder: self.open_save(f)) if actions else None,
+                            on_delete=(lambda f=folder: self.ask_delete(f)) if actions else None)
             row.shows = wanted[folder]
             after = next((self.rows[f] for f in order[k + 1:] if f in self.rows), None)
             row.pack(fill='x', pady=(0, 5), padx=(1, 10), **({'before': after} if after else {}))
@@ -618,6 +645,54 @@ class App:
                      next((s.folder for s in self.slots if self.usable[s.folder] is None), None))
         self.select(keep or first)
         self.root.after(50, self.reveal_selected)
+
+    def slot_of(self, folder):
+        return next((s for s in self.slots if s.folder == folder), None)
+
+    def open_save(self, folder):
+        """Show one roster save's own folder in the file manager."""
+        slot = self.slot_of(folder)
+        if slot is not None and os.path.isdir(slot.path):
+            savedata.open_path(slot.path)
+
+    def ask_delete(self, folder):
+        """Ask in the result box before a roster save goes to the Recycle Bin."""
+        slot = self.slot_of(folder)
+        if slot is None or getattr(slot, 'disc', False) or self.busy or self.scanning:
+            return
+        if savedata.running_rpcs3():
+            self.show_banner(False, "Close RPCS3 first", ["A roster can only be removed while the game is closed."], [])
+            return
+        self.show_banner(
+            False, f"Move \"{slot.name}\" to the {BIN_NAME}?",
+            [f"{slot.region} game, folder {slot.folder}, saved {friendly_date(slot.modified)}.",
+             f"You can take it out of the {BIN_NAME} again. Your other rosters are not changed."],
+            [(f"Move to the {BIN_NAME}", lambda: self.delete_save(folder)), ("Keep it", self.hide_banner)])
+
+    def delete_save(self, folder):
+        slot = self.slot_of(folder)
+        if slot is None or getattr(slot, 'disc', False) or self.busy or self.scanning or self.rpcs3 is None:
+            return
+        if getattr(self.editor, 'busy', False):
+            self.show_banner(False, "The roster was not removed",
+                             ["The Roster editor is working. Try again in a moment."], [])
+            return
+        try:
+            savedata.trash_save(self.rpcs3.savedata, folder)
+        except savedata.DeleteError as err:
+            self.show_banner(False, "The roster was not removed", [str(err)], [])
+            return
+        if self.editor.source and self.editor.source[1] == folder:
+            self.editor.source = None               # an update may give the same folder name to a new roster
+        self.slots = [s for s in self.slots if s.folder != folder]
+        if self.selected == folder:
+            self.selected = None
+        self.say(f"Moved the roster \"{slot.name}\" ({folder}) to the {BIN_NAME}.")
+        self.show_banner(True, f"\"{slot.name}\" is in the {BIN_NAME}",
+                         [f"The {slot.region} roster in folder {folder} was removed from the game's saves. "
+                          f"Take it out of the {BIN_NAME} to get it back."], [])
+        self.list_rosters()
+        self.set_rpcs3(self.rpcs3.where, quiet=True)
 
     def reveal_selected(self):
         """Scroll the roster list so the selected roster can be seen (the list is rebuilt after an update)."""
@@ -637,6 +712,8 @@ class App:
             return
         if folder != self.selected and self.save_pick != BOTH:
             self.save_pick = None           # a single version follows the roster picked
+        if folder != self.selected and self.save_mode == IN_PLACE:
+            self.name_edited = False        # the name box shows the roster picked
         self.selected = folder
         for name, row in self.rows.items():
             row.select(name == folder)
@@ -647,7 +724,12 @@ class App:
         actually changes (each change redraws a widget)."""
         slot = self.selected_slot()
         ready = slot is not None and not self.busy and not self.scanning
-        if slot is not None and len(self.versions) >= 2:
+        for row in self.rows.values():
+            row.enable_delete(not self.busy and not self.scanning)
+        in_place = self.in_place(slot)
+        self.mode_choice.set(IN_PLACE if in_place else AS_NEW if slot is not None else self.save_mode)
+        self.mode_choice.enable(not self.busy)
+        if slot is not None and len(self.versions) >= 2 and not in_place:
             if not self.save_for.winfo_manager():
                 self.save_for_label.grid(row=0, column=1, padx=(12, 6))
                 self.save_for.grid(row=0, column=2)
@@ -656,15 +738,27 @@ class App:
         elif self.save_for.winfo_manager():
             self.save_for_label.grid_remove()
             self.save_for.grid_remove()
-        if slot is not None:
+        if in_place:
+            if not self.name_edited and self.name.get() != slot.name:
+                self.name.set(slot.name)
+            closed = " Make sure RPCS3 is closed." if self.rpcs3.plain else " RPCS3 must be closed."
+            configure_if_changed(self.name_note, text=(
+                f"\"{slot.name}\" ({slot.folder}, {slot.region}) gets the newest data; the name stays unless you change "
+                f"it. The old roster is first copied to the program's backups folder (the last {savedata.KEEP_BACKUPS} "
+                f"are kept).{closed}"))
+        elif slot is not None:
             where = ", ".join(f"folder {savedata.next_free(self.rpcs3.savedata, t)} for the {savedata.region(t)} game"
                               for t in self.save_targets(slot))
+            why = (" The game's own roster is always saved as a new roster." if getattr(slot, 'disc', False) and
+                   self.save_mode == IN_PLACE else "")
             configure_if_changed(self.name_note, text=f"Saved as a new roster next to the others ({where}). "
-                                                      f"\"{slot.name}\" and your other rosters are not changed.")
+                                                      f"\"{slot.name}\" and your other rosters are not changed.{why}")
         else:
             configure_if_changed(self.name_note, text="This is the name you will see in the game's Load Roster list.")
         any_step = any(v.get() for v in self.steps.values())
         self.go.enable(ready and any_step)
+        if not self.busy:
+            configure_if_changed(self.go, text="Update roster" if in_place else "Make new roster")
         if not self.busy and not self.banner.winfo_ismapped():
             self.set_status("Looking for your rosters..." if self.scanning else
                             "Ready." if ready and any_step else
@@ -693,28 +787,40 @@ class App:
         if slot is None or self.busy or self.scanning or not steps:
             return
         save_settings(self.settings)
-        name = self.name.get().strip() if self.name_edited else savedata.default_name()
+        in_place = self.in_place(slot)
+        if in_place and savedata.running_rpcs3():
+            self.show_banner(False, "Close RPCS3 first", ["A roster can only be updated while the game is closed."], [])
+            return
+        if in_place and getattr(self.editor, 'busy', False):
+            self.show_banner(False, "The roster was not updated", ["The Roster editor is working. Try again in a moment."], [])
+            return
+        if in_place:        # a rename only when the player changed the name
+            name = self.name.get().strip() if self.name_edited and self.name.get().strip() != slot.name else None
+        else:
+            name = self.name.get().strip() if self.name_edited else savedata.default_name()
         self.busy, self.at, self.last_report = True, 0.0, None
         if self.banner.winfo_ismapped():     # the last result stays, greyed, so the window keeps its size
             self.banner.dim("Updating... (the last result is shown below until the new one is ready)")
         self.set_bar(0)
         self.refresh_state()
-        self.go.configure(text="Updating...")
+        configure_if_changed(self.go, text="Updating...")
         self.set_status("0%   Starting...", T.BODY)
         self.clear_details()
         art = self.rpcs3 if self.photos.get() and not self.rpcs3.plain else None
         self.photos_running = art is not None
         mine = (my_edits.load(), my_edits.load_teams()) if self.use_edits.get() else (None, None)
         threading.Thread(target=self.work, args=(self.rpcs3.savedata, slot, steps, name, art, mine,
-                                                 self.save_targets(slot)), daemon=True).start()
+                                                 self.save_targets(slot), in_place), daemon=True).start()
 
-    def work(self, folder, slot, steps, name, art=None, mine=(None, None), targets=None):
+    def work(self, folder, slot, steps, name, art=None, mine=(None, None), targets=None, in_place=False):
         try:
             result = pipeline.update(folder, slot.folder, steps, name, lambda msg: self.queue.put(('say', msg)),
                                      art_rpcs3=art, my_edits=mine[0] or None, team_edits=mine[1] or None,
-                                     targets=targets, disc=slot if getattr(slot, 'disc', False) else None)
+                                     targets=targets, disc=slot if getattr(slot, 'disc', False) else None,
+                                     in_place=in_place)
             self.queue.put(('done', (result, savedata.running_rpcs3() is not None)))
-        except (layout.LayoutError, datasource.Offline, FileNotFoundError, ArtError, StockError) as err:
+        except (layout.LayoutError, datasource.Offline, FileNotFoundError, ArtError, StockError,
+                savedata.InPlaceError) as err:
             self.queue.put(('error', str(err)))
         except Exception as err:      # anything unexpected: keep the details for a bug report
             path = datasource.app_dir('logs', 'error.log')
@@ -748,7 +854,6 @@ class App:
 
     def finish(self):
         self.busy = False
-        self.go.configure(text="Update roster")
         self.set_rpcs3(self.rpcs3.where if self.rpcs3 else None, quiet=True)
 
     def failed(self, title, lines):
@@ -775,18 +880,31 @@ class App:
         art = result.art_line()
         if art:
             self.say(art)
-        self.say(f"Done. {HOW_TO_LOAD}")
+        how = HOW_TO_LOAD_IN_PLACE if result.in_place else HOW_TO_LOAD
+        self.say(f"Done. {how}")
         self.name_edited = False
         self.set_bar(1)
-        self.set_status(f"Done: saved as \"{result.slot.name}\".", T.GREEN)
         buttons = [("List of changes", self.show_report), ("Open save folder", self.show_folder)]
+        if result.in_place and result.backup:
+            buttons.insert(1, ("Open backup folder", lambda: savedata.open_path(result.backup)))
         if not rpcs3_running and not self.rpcs3.plain:
             buttons.append(("Start RPCS3", self.start_rpcs3))
-        where = f"New save: {result.saved_where()}."
+        name = result.slot.name
+        if result.in_place:
+            self.editor.source = None       # the editor shows what the file is now
+            where = ("The roster is already the same as the new one: nothing was changed." if result.unchanged
+                     else f"Updated: {result.saved_where()}.")
+            lines = [where] + ([f"The old roster is kept in {result.backup}"] if result.backup else []) \
+                + ([art] if art else []) + [how]
+            title = f"Already up to date: \"{name}\"" if result.unchanged else f"Updated \"{name}\""
+            self.set_status(f"Done: {'already up to date' if result.unchanged else 'updated'} \"{name}\".", T.GREEN)
+        else:
+            where = f"New save: {result.saved_where()}."
+            lines = [where] + ([art] if art else []) + [how]
+            title = f"Saved as \"{name}\""
+            self.set_status(f"Done: saved as \"{name}\".", T.GREEN)
         self.say(where)
-        lines = [where] + ([art] if art else []) + [HOW_TO_LOAD]
-        self.show_banner(True, f"Saved as \"{result.slot.name}\"", lines, buttons,
-                         items=items or [("Result", "Nothing needed changing.")])
+        self.show_banner(True, title, lines, buttons, items=items or [("Result", "Nothing needed changing.")])
         self.refresh_state()
 
     def tab_changed(self):

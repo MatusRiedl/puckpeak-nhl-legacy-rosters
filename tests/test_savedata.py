@@ -282,3 +282,102 @@ def test_roster_saves_work_without_rpcs3(rpcs3, tmp_path):
     assert (found.savedata, picked) == (str(copied), 'BLES021530202')
     with pytest.raises(FileNotFoundError):
         savedata.open_saves(str(tmp_path / 'nothing here'))
+
+def test_a_roster_save_goes_to_the_recycle_bin_and_nothing_else_is_touched(rpcs3, tmp_path, monkeypatch):
+    sd, _ = savedata.find_savedata(str(rpcs3))
+    bin_ = tmp_path / 'bin'
+    bin_.mkdir()
+    monkeypatch.setattr(savedata, '_recycle', lambda path: shutil.move(path, str(bin_ / os.path.basename(path))))
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
+    source = savedata.list_rosters(sd)[0]
+    new = savedata.install(sd, source, open(source.sys_data, 'rb').read(), 'to delete')
+    savedata.trash_save(sd, new.folder)
+    assert [s.folder for s in savedata.list_rosters(sd)] == ['BLES021530202']       # the other roster stays
+    assert os.path.isdir(os.path.join(sd, 'BLES021530000')) and os.listdir(bin_) == [new.folder]
+
+
+def test_only_a_roster_save_in_the_save_folder_can_be_removed(rpcs3, tmp_path, monkeypatch):
+    sd, _ = savedata.find_savedata(str(rpcs3))
+    monkeypatch.setattr(savedata, '_recycle', lambda path: pytest.fail("must not be reached"))
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
+    for folder in ('BLES021530000',                       # a profile save of the game
+                   'BLES021539999',                       # no such folder
+                   '..',                                  # leaving the save folder
+                   os.path.join('..', 'savedata', 'BLES021530202'),
+                   'BLES02153'):
+        with pytest.raises(savedata.DeleteError, match="not a roster save"):
+            savedata.trash_save(sd, folder)
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: 'rpcs3.exe')
+    with pytest.raises(savedata.DeleteError, match="Close RPCS3"):
+        savedata.trash_save(sd, 'BLES021530202')
+    assert len(savedata.list_rosters(sd)) == 1
+
+
+@pytest.fixture
+def in_place(rpcs3, tmp_path, monkeypatch):
+    """A save folder with a roster, RPCS3 closed, and a backup folder of the program's own."""
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
+    sd, _ = savedata.find_savedata(str(rpcs3))
+    return sd, savedata.list_rosters(sd)[0], str(tmp_path / 'backups')
+
+
+def test_a_roster_is_updated_in_place_after_a_backup(in_place):
+    sd, slot, backups = in_place
+    old = {f: open(os.path.join(slot.path, f), 'rb').read() for f in savedata.FILES}
+    new = old['SYS-DATA'][:-1] + bytes([old['SYS-DATA'][-1] ^ 1])
+    made, backup, changed = savedata.update_in_place(sd, slot, new, expected=old['SYS-DATA'], backup_root=backups)
+    assert changed and made.folder == slot.folder and backup.startswith(backups)
+    assert open(slot.sys_data, 'rb').read() == new
+    assert all(open(os.path.join(slot.path, f), 'rb').read() == old[f] for f in ('ICON0.PNG', 'PARAM.SFO'))   # same name
+    assert {f: open(os.path.join(backup, f), 'rb').read() for f in savedata.FILES} == old
+    assert [s.folder for s in savedata.list_rosters(sd)] == [slot.folder]                          # still one roster
+    assert not [n for n in os.listdir(os.path.dirname(sd)) if n.startswith('.roster-updater')]
+    assert not [n for n in os.listdir(sd) if n not in ('BLES021530000', slot.folder)]            # nothing else in the save folder
+
+
+def test_the_same_roster_writes_nothing_and_a_rename_changes_only_the_title(in_place):
+    sd, slot, backups = in_place
+    same = open(slot.sys_data, 'rb').read()
+    before = os.path.getmtime(slot.sys_data)
+    made, backup, changed = savedata.update_in_place(sd, slot, same, backup_root=backups)
+    assert not changed and backup is None and os.path.getmtime(slot.sys_data) == before and not os.path.exists(backups)
+    made, backup, changed = savedata.update_in_place(sd, slot, same, name="Renamed roster", backup_root=backups)
+    assert changed and made.name == "Renamed roster" and open(slot.sys_data, 'rb').read() == same
+    assert Sfo.load(os.path.join(slot.path, 'PARAM.SFO')).get('SUB_TITLE') == "Renamed roster"
+
+
+def test_an_update_in_place_is_refused_when_it_should_be(in_place, monkeypatch):
+    sd, slot, backups = in_place
+    new = open(slot.sys_data, 'rb').read() + b'x'
+    for bad in (type('S', (), {'folder': 'BLES021530000'}), type('S', (), {'folder': '..'}),
+                type('S', (), {'folder': 'BLES021539999'}), savedata.DiscSlot('BLES02153', 'x.iso')):
+        with pytest.raises(savedata.InPlaceError, match="not a roster save"):
+            savedata.update_in_place(sd, bad, new, backup_root=backups)
+    with pytest.raises(savedata.InPlaceError, match="changed while"):
+        savedata.update_in_place(sd, slot, new, expected=b'something else', backup_root=backups)
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: 'rpcs3.exe')
+    with pytest.raises(savedata.InPlaceError, match="Close RPCS3"):
+        savedata.update_in_place(sd, slot, new, backup_root=backups)
+    assert not os.path.exists(backups) and open(slot.sys_data, 'rb').read() != new
+
+
+def test_a_failed_write_leaves_the_old_roster_and_no_leftovers(in_place, monkeypatch):
+    sd, slot, backups = in_place
+    old = open(slot.sys_data, 'rb').read()
+    def broken(src, dst):
+        raise OSError(13, "Permission denied")
+    monkeypatch.setattr(savedata.os, 'replace', broken)
+    with pytest.raises(savedata.InPlaceError, match="old one is still there"):
+        savedata.update_in_place(sd, slot, old + b'x', backup_root=backups)
+    assert open(slot.sys_data, 'rb').read() == old
+    assert not [n for n in os.listdir(os.path.dirname(sd)) if n.startswith('.roster-updater')]
+
+
+def test_only_the_newest_backups_are_kept(in_place):
+    sd, slot, backups = in_place
+    data = open(slot.sys_data, 'rb').read()
+    for k in range(savedata.KEEP_BACKUPS + 3):
+        data = data + b'x'
+        savedata.update_in_place(sd, slot, data, backup_root=backups)
+    kept = sorted(os.listdir(backups))
+    assert len(kept) == savedata.KEEP_BACKUPS and all(n.startswith(slot.folder + '_') for n in kept)

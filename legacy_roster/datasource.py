@@ -297,7 +297,8 @@ def gather(R, steps, pack, progress=None, offline=False, fresh=False):
                 leagues={k: v for k, v in pack.get('leagues', {}).items() if k in steps},
                 nhl_logos=pack.get('nhl_logos') if pipeline.NHL in steps else None,
                 nhl_last=pack.get('nhl_last') if pipeline.NHL in steps else None,
-                drafts=pack.get('drafts'))
+                drafts=pack.get('drafts'),
+                schedule=pack.get('schedule') if pipeline.SCHEDULE in steps else None)
 
 
 def load_research_dir(folder):

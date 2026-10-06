@@ -235,6 +235,8 @@ with a message). `build/` and `dist/` are git-ignored.
 | The safety check failed | the problems in the details panel / CLI output; `verify.py` explains each check |
 | A table's contents | `python -m legacy_roster export --rpcs3 <exe> --source <folder> --out tables` (CSV, real column names) |
 | The game crashes or ignores a roster | RPCS3's `log\RPCS3.log`: search `ShowSaveDataList` (what was loaded), `Access violation` (crash), `sys_fs_open(path=` (files opened). RPCS3 keeps the log open: read it with shared access |
+| Season mode crashes with our roster | `python -m legacy_roster season-test --rpcs3 <exe>` (`seasontest.py`) writes LAB rosters with more and more steps (and trimmed copies) plus `reports\season_test.txt` with the size of each in Season's tables (`seasontest.counts`); the owner loads each and says which one crashes (ROADMAP "Season mode crash") |
+| The calendar, jerseys and ice | `calendar-test` (`calendartest.py`, `schedule.py`), `rendering-test` (`art/rendering.py`, `art/rpsgl.py`): LAB rosters / loose files the owner tries in the game; ROADMAP "Calendar" and "Jerseys and the ice" say what to look at |
 | A checksum question | `tdb.check_chain(raw)`, FORMAT.md sections 2 and 3 |
 | Reproduce an old lab build | hidden `update --research work/research` uses the lab's saved inputs instead of live data |
 

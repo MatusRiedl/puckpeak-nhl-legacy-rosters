@@ -7,6 +7,8 @@ players and the draft.
     requests to NHL.com's statistics, plus one per unsigned player for his photo.
   * drafts(): every pick of the drafts of the given years, one request per year (round, overall
     pick, team). Players are matched to their pick by name and age (draft.py).
+  * schedule(): every regular-season game of a season (date, home team, away team), one request per
+    team; the game's calendar is made from it (schedule.py).
 """
 import time
 import urllib.parse
@@ -17,6 +19,7 @@ BIOS = ("https://api.nhle.com/stats/rest/en/{kind}/bios?isAggregate=false&isGame
         "&cayenneExp=")
 DRAFT = "https://api-web.nhle.com/v1/draft/picks/{year}/all"
 LANDING = datasource.NHL_API + "/player/{id}/landing"
+SCHEDULE = datasource.NHL_API + "/club-schedule-season/{abbr}/{season}"
 
 
 def last_season(season_year, log=print):
@@ -48,6 +51,28 @@ def last_season(season_year, log=print):
         time.sleep(0.1)
     log(f"last season {season}: {len(out)} players, {len(unsigned)} of them unsigned now")
     return sorted(out, key=lambda p: p['nhl_id'] or 0)
+
+
+def schedule(season_year, log=print):
+    """[[date, home, away]] of every regular-season game of the season that starts in `season_year`
+    (teams as NHL.com's codes), sorted by date and game id. Each game is in two teams' schedules: it is
+    listed once. Preseason games (type 1) and the playoffs are left out."""
+    from legacy_roster.layout import API_TO_SLOT
+    season = f"{season_year}{season_year + 1}"
+    games = {}
+    for abbr in sorted(API_TO_SLOT):
+        for g in datasource.http_json(SCHEDULE.format(abbr=abbr, season=season)).get('games', []):
+            if g.get('gameType') == 2:
+                games[g['id']] = [g['gameDate'], g['homeTeam']['abbrev'], g['awayTeam']['abbrev']]
+        time.sleep(0.1)
+    out = [games[k] for k in sorted(games, key=lambda k: (games[k][0], k))]
+    per_team = {}
+    for _date, home, away in out:
+        for t in (home, away):
+            per_team[t] = per_team.get(t, 0) + 1
+    log(f"schedule {season}: {len(out)} games, {min(per_team.values())}-{max(per_team.values())} per team, "
+        f"{out[0][0]} to {out[-1][0]}")
+    return out
 
 
 def drafts(first_year, last_year, log=print):

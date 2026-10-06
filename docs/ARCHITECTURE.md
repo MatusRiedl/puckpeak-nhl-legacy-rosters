@@ -11,7 +11,9 @@ The user's RPCS3 holds roster saves of NHL Legacy Edition. The program reads one
 fetches today's NHL rosters from NHL.com, takes everything else (EA ratings, national teams,
 European club rosters) from a bundled "data pack", rewrites the roster database in memory,
 checks the result against every rule the game is known to enforce, and writes it as a **new**
-save folder next to the old ones. It never changes or deletes an existing save, never adds a
+save folder next to the old ones. It changes an existing save only when the player chooses "Update this roster" (a backup copy first,
+`savedata.update_in_place`), and never deletes one by itself (the player's own **Delete** button in the window moves one to the
+Recycle Bin, `savedata.trash_save`), never adds a
 team and never moves a team to another league (hard limits of the game).
 
 ```
@@ -386,8 +388,11 @@ version (`_Writer` over several folders). The pipeline passes the versions in `t
      disc's own logos of that kind fill (`images.LOGO_BOX`, 0.8.0: before, big logos covered the
      team's record and calendar logos spilled out of their cells), and for the 32 NHL slots the sixth,
      `r` (logo on its reflection, 256×512, the favourite-team screens; `install.logo_kinds`). NHL
-     logos are ESPN's versions for dark backgrounds (`500-dark`: a white Tampa Bay bolt, as on the
-     disc, and Washington with white edges);
+     logos come from ESPN in two versions: the plain `500` one for the pictures with a white edge
+     (`t`, `d`, `r`; `install.EDGED_KINDS`, `install.plain_logo_url`) and the `500-dark` one for the
+     banner, watermark and calendar (`s`, `w`, `c`). The dark ones are white silhouettes for Tampa Bay,
+     Washington and Toronto and in part Boston, Vancouver, Los Angeles and Detroit; with the edge they
+     came out as white blobs on the favourite-team screen (owner, 2026-10-06; `LOGO_DRAWING` '#3');
    - encodes them (Pillow's DXT5 for portraits, plain 32-bit for logos) into a copy of the template
      (`bigf.ArtFile.with_image`) and writes them as loose files (portraits in `p0_4000`,
      `p4001_8000` or `p8001_12000`);
@@ -448,18 +453,19 @@ Pillow is the only package outside the standard library the engine uses, and onl
     it is close to the game's own figure, not identical.
   - Players are matched across rosters by person (`edits.who_of`: plain name + birthdate).
 - `model.compare(before, after, team)` gives each team's joined, left and changed players. It
-  colours the table against the raw "as is" roster.
+  colours the table against the roster as it was opened (so only this visit's edits show).
+- `model.apply_edits(raw, edits, teams, season)` builds the roster with edits and no update step.
 
-**Views.**
-- **As is** = the chosen save rebuilt with the edits only: `pipeline.build(raw, Data(), steps=[],
-  my_edits=...)`, about 2 s.
-- **To be** = a dry run of `pipeline.update` with the Update tab's switches, then the edits on top.
-  Picking "To be" runs it (`EditorTab.preview`) when there is none yet or the switches changed
-  since (`preview_steps`); **Refresh update** runs it again. A request while a job runs waits
-  (`after_busy`).
+**The view.** One: the roster save picked on the Update tab as it is (`EditorTab.view`, with the file's size
+and time in `source`, so a changed file is read again) plus the edits made in this visit (`session`,
+`session_teams`; `apply_edits` with no update step, about 2 s). The edits kept in `edits.json` (`self.edits`)
+are applied by every update (the Update tab's "My edits"), not shown over a roster that was saved with
+them. (Until 0.8.0 there was an "As is" and a "To be" view: a dry run of the update, removed 2026-10-06.)
+**Saving** follows the Update tab's choice (`App.save_mode`): `savedata.update_in_place` (expected = the
+bytes read when the roster was opened) or a new save (`savedata.install`); the game's own roster is always
+a new save.
 - **The picture on the card** (`editor/pictures.py`, Pillow): the player's own picture if he has
-  one; in "To be" with photos on, the photo the update brings (`new_photos` from the dry run's
-  `Builder.photos`, drawn from the photo pack or downloaded); else what the game shows now for his
+  one; else what the game shows now for his
   `artid` (the loose file in RPCS3's game folder, else the disc's own file). Made in a thread; a
   token drops a late result for a player no longer shown.
 - Worker threads hand results back through `App.queue` as `('ui', callable)`.
@@ -565,7 +571,8 @@ With every league on, all 16 spare slots are used.
 
 | Where | What |
 |---|---|
-| `…\savedata\<TITLEID>02NN\` | A new roster save per update and version saved for. Nothing else in `savedata` is ever written, changed or deleted |
+| `…\savedata\<TITLEID>02NN\` | A new roster save per update and version saved for, or (the default since 2026-10-06) the picked roster's `SYS-DATA` replaced in place (`savedata.update_in_place`: backup first, written next to the save folder and moved over the old file, never while RPCS3 runs, only a roster save directly in `savedata`, not the game's own roster). Nothing else in `savedata` is ever written or changed. The only removal is the window's **Delete** button on a roster save: a move to the Recycle Bin / Trash (`savedata.trash_save`; never while RPCS3 runs, never a folder that is not a roster save in that folder, never permanent) |
+| `%LOCALAPPDATA%\NHLLegacyRosterUpdater\backups\<TITLEID>02NN_<time>\` | The old `ICON0.PNG`, `PARAM.SFO`, `SYS-DATA` of a roster before it was updated in place (the newest 10 per roster are kept; never inside `savedata`: the game lists every folder that starts like a roster save) |
 | `%LOCALAPPDATA%\NHLLegacyRosterUpdater\settings.json` | Path of `rpcs3.exe` (`rpcs3`), switch positions (`steps`) |
 | `…\cache\` | `nhl_<season>.json`, `missing_<hash>.json`, a downloaded `datapack.json.gz` |
 | `…\reports\` | The list of changes per update, as a page and a CSV (`<folder>_<time>.html` / `.csv`, `failed_…`, `dryrun_…`) |

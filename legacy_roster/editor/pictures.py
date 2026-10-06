@@ -19,7 +19,7 @@ from ..art.lab import ART, Disc, portrait_folder
 from ..art.photopack import PhotoPack
 
 SIZE = (512, 256)
-NOW, AFTER, MINE = "In the game now", "After the update", "Your picture"
+NOW, MINE = "In the game now", "Your picture"
 NO_PHOTO = "No photo in the game (it shows a silhouette)"
 NO_GAME = "No picture: RPCS3 does not say where the game is"
 
@@ -38,7 +38,6 @@ class Pictures:
         self.pack = PhotoPack.open() if pack is None else pack or None
         self._disc = None
         self._lock = threading.Lock()
-        self._new = {}              # link -> picture (None: no head found / no download)
 
     def _art_file(self, artid):
         """The bytes of the portrait file the game uses for `artid` (None when it has none)."""
@@ -69,19 +68,6 @@ class Pictures:
         img = Image.open(io.BytesIO(bigf.ArtFile(raw).image()))
         img.load()
         return _top(img), NOW
-
-    def new(self, link):
-        if link not in self._new:
-            pic = self.pack.portrait(link, (512, 512)) if self.pack else None
-            if pic is None:
-                from ..art import images
-                from ..art.install import _download
-                try:
-                    pic = images.portrait(_download(link), (512, 512))
-                except Exception:           # no connection or not a picture: show what the game has
-                    pic = None
-            self._new[link] = _top(pic) if pic is not None else None
-        return self._new[link], AFTER
 
     @staticmethod
     def mine(link):

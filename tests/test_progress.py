@@ -54,3 +54,8 @@ def test_every_message_of_a_real_update_is_understood_in_order(base_bytes, data,
         else:
             assert is_remark(message), f"neither a stage nor a known remark: {message}"
     assert at == 1.0
+
+
+def test_an_update_in_place_finishes_the_bar():
+    assert fraction('Updated "ROSTER2526" in place (BLES021530202, EU)') == 1.0
+    assert fraction("Already up to date: the roster is the same as the new one") == 1.0
