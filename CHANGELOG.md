@@ -3,6 +3,19 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.9.1 (2026-10-07)
+
+- **Restore buttons.** Every row in "What should be updated?" has a **Restore** button: press it and, in the next save, that part
+  comes back as the game had it (press again to undo). Rosters (NHL, ratings, national teams, leagues) start from the game's own
+  roster, with the rows you left on applied on top; the calendar is the game's own calendar (Season mode and Be a GM have their
+  complete 82-game season back); "Photos, logos and team names" puts the game's own pictures, team names and jerseys back.
+  The game's own roster is read from the game's clean roster save (`...0200`) when it still is EA's own, otherwise from your game disc.
+  It is only read, never changed.
+- **Restore default.** One big button puts everything back: rosters, calendar, pictures, team names and jerseys. It asks first, then saves
+  as a new roster or replaces the picked roster (after a backup copy), as you chose in step 4.
+- Not changed in this version: the calendar still has the 30 original teams, so teams play 76-80 games; use **Restore** on the
+  calendar row if that bothers you in Season mode.
+
 ## 0.9.0 (2026-10-07)
 
 - **New jerseys and centre-ice logos for Utah, Seattle and Vegas.** With "Photos, logos and team names" on, the update

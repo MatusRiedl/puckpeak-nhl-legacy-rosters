@@ -151,6 +151,12 @@ wording (`progress.py`).
 
 ## Current state
 
+Version 0.9.1 (2026-10-07): **Restore.** `restore.py` (`default_slot`: the version's `...0200` save when `check_base` says it is the game's own
+roster, else the disc; `copy_calendar`), `pipeline.update(restore_parts=, default=)` (ROSTERS: start from the default, written as it is when no step
+is left; CALENDAR: copy `ihmS`/`Iwiq`, `verify(calendar_source=)`; PICTURES: `art.install.remove`), a Restore button per row (`widgets.SwitchRow(restore=)`,
+`App.toggle_restore`) and the big **Restore default** (`App.restore_default`). The default is only read. Not built: balancing games played per team
+(the 30-team calendar gives 76-80), per-kind picture removal (names / jerseys separately), equipment (docs: plan not built).
+
 Version 0.9.0 (released 2026-10-07; CHANGELOG.md has the players' version), from the owner's tests of 0.8.1 on 2026-10-06:
 - **Calendar 2026-27: confirmed in the game** (all four CAL tests matched NHL.com), now a normal step, on by default, 30 teams.
   The game's year label stays 2015 (not in any data file; owner: leave it). Seattle and Vegas cannot be in Season mode / Be a GM.

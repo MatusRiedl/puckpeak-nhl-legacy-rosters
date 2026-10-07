@@ -16,7 +16,7 @@ except ImportError:      # only when run from source without the window's one ex
     sys.exit("The window needs the 'customtkinter' package:  pip install customtkinter\n"
              "(the command line works without it:  python -m legacy_roster list --rpcs3 <rpcs3.exe>)")
 
-from . import __version__, datasource, layout, pipeline, savedata
+from . import __version__, datasource, layout, pipeline, restore, savedata
 from . import theme as T
 from .art.install import ArtError, installed as art_installed, remove as remove_art
 from .art.photopack import PhotoPack
@@ -264,24 +264,33 @@ class App:
                          ).pack(side='bottom', fill='x', pady=(4, 0))
         # shown only while photos and logos are installed
         self.remove_art = GhostButton(card.body, "Restore the game's own pictures", self.remove_photos, height=28)
+        # one button puts everything back as the game had it (rosters, calendar, pictures, names, jerseys)
+        self.restore_all = PrimaryButton(card.body, "Restore default: rosters, calendar and pictures",
+                                         self.restore_default, width=300, height=46)
+        self.restore_all.pack(side='bottom', fill='x', pady=(8, 0))
+        self.marks = {}         # a row marked "Restore" -> (its part of restore.py, its switch variable)
         # the list scrolls: on a small screen, or once more leagues are available than fit
         rows = ctk.CTkScrollableFrame(card.body, fg_color='transparent', height=96,
                                       scrollbar_button_color=T.BORDER_STRONG, scrollbar_button_hover_color=T.FAINT)
         rows.pack(fill='both', expand=True)
-        self.steps, self.switches = {}, []
+        self.steps, self.switches, self.step_rows = {}, [], {}
         for step in available:
             var = tk.BooleanVar(value=remembered.get(step, step in pipeline.default_steps(self.pack)))
             self.steps[step] = var
+            part = restore.CALENDAR if step == pipeline.SCHEDULE else restore.ROSTERS
             row = SwitchRow(rows, pipeline.STEP_LABELS[step], notes.get(step) or self._dated(sources.get(step)),
-                            var, self.refresh_state, extra=pipeline.left_out_note(self.pack, step))
+                            var, self.refresh_state, extra=pipeline.left_out_note(self.pack, step),
+                            restore=lambda k=step, part=part: self.toggle_restore(self.step_rows[k], part, self.steps[k]))
             row.pack(fill='x', pady=(0, 5), padx=(1, 10))
             self.switches.append(row)
+            self.step_rows[step] = row
         bundled = PhotoPack.open()
         self.photos = tk.BooleanVar(value=remembered.get(PHOTOS, bundled is not None))
         note = (f"{len(bundled):,} photos and logos inside this program ({bundled.built}); new players' "
                 "are downloaded" if bundled else "Current photos and club logos (downloaded), and the clubs' real names")
         row = SwitchRow(rows, "Photos, logos and team names", note, self.photos, self.refresh_state,
-                        extra="RPCS3 must be closed. The game's own pictures are kept and can be put back.")
+                        extra="RPCS3 must be closed. The game's own pictures are kept and can be put back.",
+                        restore=lambda: self.toggle_restore(self.photos_row, restore.PICTURES, self.photos))
         row.pack(fill='x', pady=(0, 5), padx=(1, 10))
         self.switches.append(row)
         self.photos_row = row               # needs RPCS3: off for a plain save folder (savedata.SaveFolder)
@@ -782,10 +791,18 @@ class App:
                                                       f"\"{slot.name}\" and your other rosters are not changed.{why}")
         else:
             configure_if_changed(self.name_note, text="This is the name you will see in the game's Load Roster list.")
-        any_step = any(v.get() for v in self.steps.values())
+        for row, (_part, var) in list(self.marks.items()):    # a switch turned on again cancels its "Restore"
+            if var.get():
+                del self.marks[row]
+                row.mark_restore(False)
+        any_step = any(v.get() for v in self.steps.values()) or bool(self.marks)
         self.go.enable(ready and any_step)
+        configure_if_changed(self.restore_all, state='normal' if ready else 'disabled',
+                             fg_color=T.ACCENT if ready else T.BORDER_STRONG)
         if not self.busy:
-            configure_if_changed(self.go, text="Update roster" if in_place else "Make new roster")
+            ticked = any(v.get() for v in self.steps.values())
+            configure_if_changed(self.go, text=("Update roster" if in_place else "Make new roster") if not self.marks else
+                                 ("Update and restore" if ticked else "Restore"))
         if not self.busy and not self.banner.winfo_ismapped():
             self.set_status("Looking for your rosters..." if self.scanning else
                             "Ready." if ready and any_step else
@@ -808,13 +825,42 @@ class App:
             self.remove_art.pack_forget()
 
     # --- the update ------------------------------------------------------------------------------
-    def start(self):
+    def toggle_restore(self, row, part, var):
+        """The Restore button of a row: that part is put back as the game had it in the next save (press again to undo)."""
+        if self.busy or self.scanning:
+            return
+        if row in self.marks:
+            del self.marks[row]
+            row.mark_restore(False)
+        else:
+            self.marks[row] = (part, var)
+            row.mark_restore(True)
+            var.set(False)
+        self.refresh_state()
+
+    def restore_default(self):
+        """The big button: everything back as the game had it, after a question."""
+        slot = self.selected_slot()
+        if slot is None or self.busy or self.scanning:
+            return
+        where = (f"\"{slot.name}\" is replaced (its old version is copied to the backups folder first)"
+                 if self.in_place(slot) else "A new roster is saved next to your others; nothing you have is replaced")
+        if not messagebox.askyesno("Restore default",
+                                   "This puts back the game's own rosters, calendar, pictures, team names and jerseys.\n\n"
+                                   f"{where}. RPCS3 must be closed.\n\nGo on?"):
+            return
+        self.start(everything=True)
+
+    def start(self, everything=False):
         if self.export_mode:
             self.start_export()
             return
         slot = self.selected_slot()
         steps = [s for s in self.steps if self.steps[s].get()]
-        if slot is None or self.busy or self.scanning or not steps:
+        parts = set(restore.ALL_PARTS) if everything else {part for part, _var in self.marks.values()}
+        if everything:
+            steps = []
+        if slot is None or self.busy or self.scanning or not (steps or parts):
             return
         save_settings(self.settings)
         in_place = self.in_place(slot)
@@ -836,18 +882,19 @@ class App:
         configure_if_changed(self.go, text="Updating...")
         self.set_status("0%   Starting...", T.BODY)
         self.clear_details()
-        art = self.rpcs3 if self.photos.get() and not self.rpcs3.plain else None
+        art = self.rpcs3 if self.photos.get() and not self.rpcs3.plain and not everything else None
         self.photos_running = art is not None
-        mine = (my_edits.load(), my_edits.load_teams()) if self.use_edits.get() else (None, None)
+        mine = (my_edits.load(), my_edits.load_teams()) if self.use_edits.get() and not everything else (None, None)
         threading.Thread(target=self.work, args=(self.rpcs3.savedata, slot, steps, name, art, mine,
-                                                 self.save_targets(slot), in_place), daemon=True).start()
+                                                 self.save_targets(slot), in_place, parts), daemon=True).start()
 
-    def work(self, folder, slot, steps, name, art=None, mine=(None, None), targets=None, in_place=False):
+    def work(self, folder, slot, steps, name, art=None, mine=(None, None), targets=None, in_place=False, parts=()):
         try:
+            default = restore.default_slot(self.rpcs3, slot.title_id) if parts else None
             result = pipeline.update(folder, slot.folder, steps, name, lambda msg: self.queue.put(('say', msg)),
                                      art_rpcs3=art, my_edits=mine[0] or None, team_edits=mine[1] or None,
                                      targets=targets, disc=slot if getattr(slot, 'disc', False) else None,
-                                     in_place=in_place)
+                                     in_place=in_place, restore_parts=parts, default=default)
             self.queue.put(('done', (result, savedata.running_rpcs3() is not None)))
         except (layout.LayoutError, datasource.Offline, FileNotFoundError, ArtError, StockError,
                 savedata.InPlaceError) as err:
@@ -894,7 +941,7 @@ class App:
 
     def report(self, result, rpcs3_running):
         self.last_report = result.report_path
-        items = result.build.lines()
+        items = result.build.lines() + [("Restored", text) for text in result.restored]
         if result.exported and result.slot is not None:
             self.say("", "What changed:", *(f"   {title}: {text}" for title, text in items))
             self.say(f"Done. {HOW_TO_USE_EXPORT}")
@@ -937,12 +984,12 @@ class App:
             where = ("The roster is already the same as the new one: nothing was changed." if result.unchanged
                      else f"Updated: {result.saved_where()}.")
             lines = [where] + ([f"The old roster is kept in {result.backup}"] if result.backup else []) \
-                + ([art] if art else []) + [how]
+                + result.restored + ([art] if art else []) + [how]
             title = f"Already up to date: \"{name}\"" if result.unchanged else f"Updated \"{name}\""
             self.set_status(f"Done: {'already up to date' if result.unchanged else 'updated'} \"{name}\".", T.GREEN)
         else:
             where = f"New save: {result.saved_where()}."
-            lines = [where] + ([art] if art else []) + [how]
+            lines = [where] + result.restored + ([art] if art else []) + [how]
             title = f"Saved as \"{name}\""
             self.set_status(f"Done: saved as \"{name}\".", T.GREEN)
         self.say(where)

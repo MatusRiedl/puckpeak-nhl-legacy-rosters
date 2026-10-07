@@ -137,7 +137,7 @@ def structure(R, full_lineup=FULL_LINEUP):
 NO_MARKER = b'\x00\x00\xff\xff'      # a table header's word at 0x18 when no row was removed last
 
 
-def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_moves=(), calendar=None):
+def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_moves=(), calendar=None, calendar_source=None):
     """Check `built` (bytes of a SYS-DATA) against `source` (the Roster it was built from).
 
     `nhl_players`: the official rosters the build used; when given, every listed player must be
@@ -146,7 +146,7 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     the player's own edits changed on purpose; only the official-roster check lets them differ.
     `league_moves`: team slots allowed to change league (only the in-game league test, lab.py).
     `calendar`: what schedule.apply returned when the calendar step ran: the schedule tables are then checked
-    (schedule.check); otherwise they must be the source's.
+    (schedule.check); otherwise they must be the source's (or `calendar_source`'s: the game's own calendar put back).
     Returns (problems, info); the save must not be used if there are problems."""
     edited_keys, edited_rows = edited or (set(), set())
     rebuilt = set(rebuilt)
@@ -174,9 +174,10 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     if calendar is not None:
         problems += schedule.check(R, source, calendar)
     else:
+        base = calendar_source or source
         problems += [f"schedule table {tag} changed" for tag in ('ihmS', 'Iwiq', 'byED') if
-                     R.f[tag].cur_rec != source.f[tag].cur_rec or any(
-                         R.f[tag].record_bytes(i) != source.f[tag].record_bytes(i) for i in range(source.f[tag].cur_rec))]
+                     R.f[tag].cur_rec != base.f[tag].cur_rec or any(
+                         R.f[tag].record_bytes(i) != base.f[tag].record_bytes(i) for i in range(base.f[tag].cur_rec))]
 
     # every link resolves to a player, every roster entry id is unique
     for i in range(U.cur_rec):

@@ -231,7 +231,7 @@ class RosterRow(ctk.CTkFrame):
 class SwitchRow(ctk.CTkFrame):
     """One thing that can be updated: title, where the data comes from, and an on/off switch."""
 
-    def __init__(self, master, title, note, variable, command, extra=None):
+    def __init__(self, master, title, note, variable, command, extra=None, restore=None):
         super().__init__(master, fg_color=T.CELL, corner_radius=10)
         self.columnconfigure(0, weight=1)
         rows = 3 if extra else 2
@@ -246,11 +246,23 @@ class SwitchRow(ctk.CTkFrame):
                                     progress_color=T.ACCENT, fg_color=T.BORDER_STRONG,
                                     button_color=T.TEXT, button_hover_color='#ffffff')
         self.switch.grid(row=0, column=2, rowspan=rows, padx=(0, 10))
+        self.restore_button = None
+        if restore:     # "Restore": this part goes back to the game's own, in the next save
+            self.restore_button = GhostButton(self, "Restore", restore, height=26)
+            self.restore_button.grid(row=0, column=1, rowspan=rows, padx=(4, 10))
         bind_click(self, self.switch.toggle)
         self.configure(cursor='hand2')
 
     def enable(self, on):
         configure_if_changed(self.switch, state='normal' if on else 'disabled')
+        if self.restore_button is not None:
+            configure_if_changed(self.restore_button, state='normal' if on else 'disabled')
+
+    def mark_restore(self, on):
+        """Show that this part will be put back as the game had it."""
+        if self.restore_button is not None:
+            configure_if_changed(self.restore_button, text="Restoring (undo)" if on else "Restore",
+                                 fg_color=T.ACCENT_SOFT if on else 'transparent')
 
 
 class Banner(ctk.CTkFrame):

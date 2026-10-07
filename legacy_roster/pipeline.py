@@ -6,7 +6,7 @@ import os
 import sys
 from collections import Counter
 
-from . import datasource, draft, savedata, schedule, stock
+from . import datasource, draft, restore, savedata, schedule, stock
 from . import layout as L
 from .builder import FREE_AGENTS, Builder, drop_removed_player
 from .leagues import clubs, pools
@@ -228,13 +228,13 @@ class BuildResult:
 
 
 def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry=None, my_edits=None,
-          team_edits=None):
+          team_edits=None, calendar_from=None):
     """Build an updated roster from `source` (path or bytes of a SYS-DATA).
 
     `data` is a builder.Data; `steps` the steps to run (see steps_for()). `my_edits` and
     `team_edits` are the player's own edits of players and teams (edits.py), applied last. With `art_registry` (an art.portraits.Registry:
     photos and logos are on) the placed players get portrait ids and the result's `art` lists the
-    pictures to install."""
+    pictures to install. `calendar_from` (a Roster: the game's own) puts that roster's calendar back."""
     say = progress or (lambda msg: None)
     steps = set(steps)
     if isinstance(source, (bytes, bytearray)):
@@ -349,6 +349,9 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     if SCHEDULE in steps and data.schedule:
         say("Calendar: writing the season's games")
         b.calendar = schedule.apply(R, data.schedule, data.calendar or schedule.THIRTY)
+    if calendar_from is not None and SCHEDULE not in steps:
+        say("Calendar: putting the game's own calendar back")
+        restore.copy_calendar(R, calendar_from)
     b.finish()
     art = None
     if art_registry is not None:
@@ -361,7 +364,8 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     if check:
         say("Checking the new roster")
         problems, info = verify(out, Roster(src_bytes), data.nhl_players if NHL in steps else None, rebuilt,
-                                edited=getattr(b, 'edited', None), calendar=b.calendar)
+                                edited=getattr(b, 'edited', None), calendar=b.calendar,
+                                calendar_source=calendar_from)
     result = BuildResult(out, sorted(b.log, key=lambda r: (str(r[0]), str(r[1]), str(r[2]))), problems, info, b)
     result.art = art            # ({portrait id: photo link}, {team art id: (logo link, colours)}, team names) or None
     return result
@@ -380,6 +384,7 @@ class UpdateResult:
         self.report_path = report_path
         self.name = name
         self.art = art                  # (pictures installed, already there, failed), a message, or None
+        self.restored = []              # lines about what was put back as the game had it (restore.py)
 
     def saved_where(self):
         """'BLES021530210 (EU) and BLUS315400200 (NA)': the new folders, for the player."""
@@ -421,7 +426,8 @@ def write_report(result, title, heading=None, leagues=None):
 
 def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress=None,
            offline=False, dry_run=False, data=None, art_rpcs3=None, art_registry=None, my_edits=None,
-           team_edits=None, targets=None, disc=None, in_place=False, backup_root=None):
+           team_edits=None, targets=None, disc=None, in_place=False, backup_root=None, restore_parts=None,
+           default=None):
     """The whole job: read the chosen roster save, gather data, build, check, write a new save.
 
     `save_folder`: anything savedata.find_savedata() accepts. `source_folder`: the roster save to
@@ -435,8 +441,20 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
     `in_place` updates the chosen roster save itself instead of making a new one (savedata.update_in_place:
     after a backup copy in `backup_root`, default the program's backups folder; only the source's own
     version, never the game's own roster; RPCS3 must be closed); `name` then renames it, no name keeps it.
-    Nothing is written when the integrity check finds a problem or `dry_run` is set."""
+    `restore_parts` (restore.ROSTERS / CALENDAR / PICTURES) puts the game's own things back in this save, taken from
+    `default` (restore.default_slot: only read): the rosters start from the game's own roster (written as it is when no step is
+    left), the calendar is copied from it, and the pictures, names and jerseys are put back after the save. Steps still
+    switched on are applied on top. Nothing is written when the integrity check finds a problem or `dry_run` is set."""
     say = progress or (lambda msg: None)
+    parts = set(restore_parts or ())
+    steps = list(steps)
+    if parts:
+        if default is None:
+            raise FileNotFoundError("The game's own roster was not found: there is no clean roster save and no game disc.")
+        if restore.CALENDAR in parts:
+            steps = [s for s in steps if s != SCHEDULE]
+        if restore.PICTURES in parts and not dry_run and savedata.running_rpcs3():
+            raise savedata.InPlaceError("Close RPCS3 first: the game's own pictures can only be put back while the game is closed.")
     if in_place and disc is not None:
         raise savedata.InPlaceError("The game's own roster cannot be updated in place: save it as a new roster.")
     if disc is not None:
@@ -448,6 +466,9 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         source = next((s for s in slots if s.folder == wanted), None) if wanted else slots[0]
         if source is None:
             raise FileNotFoundError(f"roster save {wanted} was not found in {folder}")
+    target = source                     # the roster save that "update in place" replaces
+    if restore.ROSTERS in parts:
+        source = default                # the update starts from the game's own roster
     targets = sorted(set(targets or [source.title_id]), key=lambda t: (t != source.title_id, t))
     if in_place and targets != [source.title_id]:
         raise savedata.InPlaceError("A roster is updated in place in its own version of the game only: "
@@ -465,19 +486,27 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         art_registry = art_registry or portraits.Registry()
     say(f"Starting from \"{source.name}\" ({source.folder})")
     src_bytes = savedata.read_roster(source)
-    if data is None:
-        pack = datasource.load_pack(say, offline)
-        R = Roster(src_bytes)
-        L.check_base(R)
-        data = datasource.gather(R, set(steps), pack, say, offline)
-    result = build(src_bytes, data, steps, say, art_registry=art_registry if art_rpcs3 is not None else None,
-                   my_edits=my_edits, team_edits=team_edits)
+    target_bytes = src_bytes if target is source else savedata.read_roster(target)
+    raw = restore.ROSTERS in parts and not steps         # nothing to update: the game's own roster, as it is
+    if raw:
+        say("Putting the game's own roster back as it is")
+        result = BuildResult(src_bytes, [], [], {}, restore._Raw())
+        result.art = None
+    else:
+        calendar_from = Roster(savedata.read_roster(default)) if restore.CALENDAR in parts else None
+        if data is None:
+            pack = datasource.load_pack(say, offline)
+            R = Roster(src_bytes)
+            L.check_base(R)
+            data = datasource.gather(R, set(steps), pack, say, offline)
+        result = build(src_bytes, data, steps, say, art_registry=art_registry if art_rpcs3 is not None else None,
+                       my_edits=my_edits, team_edits=team_edits, calendar_from=calendar_from)
     asked_name = name
-    name = savedata.clean_name(name or (source.name if in_place else savedata.default_name()))
+    name = savedata.clean_name(name or (target.name if in_place else savedata.default_name()))
     stamp = f"{datetime.datetime.now():%Y%m%d-%H%M%S}"
     heading = f"\"{name}\", made from \"{source.name}\""
     def report_as(title):
-        return write_report(result, title, heading, data.leagues)
+        return write_report(result, title, heading, getattr(data, 'leagues', None))
     if not result.ok:
         report = report_as(f"failed_{stamp}")
         say(f"The new roster did not pass {len(result.problems)} integrity checks, so nothing was saved.")
@@ -487,7 +516,7 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
     saved, backup, unchanged = [], None, False
     if in_place:
         slot, backup, changed = savedata.update_in_place(
-            folder, source, result.data, asked_name, expected=src_bytes,
+            folder, target, result.data, asked_name, expected=target_bytes,
             backup_root=backup_root or datasource.app_dir('backups'))
         saved, unchanged = [slot], not changed
         say("Already up to date: the roster is the same as the new one" if unchanged else
@@ -514,8 +543,22 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         if skipped:                     # in the list of changes, by name: a player can tell us who
             note_skipped(result, skipped)
             report = report_as(title)
-    return UpdateResult(result, saved[0], report, name, art, slots=saved, in_place=in_place, backup=backup,
+    done = UpdateResult(result, saved[0], report, name, art, slots=saved, in_place=in_place, backup=backup,
                         unchanged=unchanged)
+    if restore.PICTURES in parts:
+        from .art import install
+        try:
+            n = install.remove(say)
+            done.restored.append("The game's own pictures, team names and jerseys are back." if n else
+                                 "No photos or logos were installed: the pictures are the game's own.")
+        except install.ArtError as err:
+            say(str(err))
+            done.restored.append(str(err))
+    if restore.ROSTERS in parts:
+        done.restored.insert(0, "The rosters start from " + restore.describe(default)[0].lower() + restore.describe(default)[1:])
+    if restore.CALENDAR in parts:
+        done.restored.insert(0, "The calendar is the game's own.")
+    return done
 
 
 def install_looks(result, rpcs3, title, targets, say):
