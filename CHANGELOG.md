@@ -3,6 +3,12 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.9.2 (2026-10-07)
+
+- **Linux fix** (from a tester's own fixes, who ran it on Linux). The Linux window now starts (it stopped at start before).
+  Teams without an IIHF roster, such as Russia, no longer end up with too few defencemen and left empty: places are kept for
+  every position.
+
 ## 0.9.1 (2026-10-07)
 
 - **Restore buttons.** Every row in "What should be updated?" has a **Restore** button: press it and, in the next save, that part

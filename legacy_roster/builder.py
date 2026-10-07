@@ -1109,6 +1109,14 @@ class Builder:
             qual = lambda m: (quality(m[0]) if isinstance(m[0], int) else
                               (self._national_estimate(m[0], code, prof) or (0, 0, 0, 0))[3])
             have = {self.person(m[0]) for m in members if isinstance(m[0], int)}
+
+            def room_for(g):
+                """A free place for one more player of group g that still leaves enough places for
+                every other group's minimum (Russia has no IIHF roster: its best NHL players alone
+                would be 26 forwards and goalies, and the game needs 6 defencemen)."""
+                count = Counter(grp(m) for m in members)
+                short = sum(max(0, need - count[h]) for h, need in self.NATIONAL_MINIMUM.items() if h != g)
+                return len(members) < 26 and (count[g] < self.NATIONAL_MINIMUM[g] or 26 - len(members) > short)
             # NHL players of that nationality (save nationality and NHL birth country agree)
             nhl_cands = sorted((prow for k, prow in nhl_now.items()
                                 if k not in have and P.get(prow, 'hleL') == L.NAT_CODE[code]
@@ -1116,9 +1124,9 @@ class Builder:
                                key=quality, reverse=True)
             for prow in nhl_cands:
                 same = [m for m in members if grp(m) == group(prow)]
-                if len(members) < 26:
+                if room_for(group(prow)):
                     members.append((prow, None, 'NHL'))
-                elif same:
+                elif len(members) >= 26 and same:
                     weakest = min(same, key=qual)
                     if quality(prow) > qual(weakest):
                         members.remove(weakest)
@@ -1136,10 +1144,19 @@ class Builder:
                     break
                 if sum(grp(m) == g for m in members) < self.NATIONAL_MINIMUM[g]:
                     members.append((prow, None, 'club'))
+            # places kept for a position nobody else could fill: the best NHL players left
+            have = {self.person(m[0]) for m in members if isinstance(m[0], int)}
+            for prow in nhl_cands:
+                if len(members) >= 26:
+                    break
+                if self.person(prow) not in have:
+                    members.append((prow, None, 'NHL'))
             count = Counter(grp(m) for m in members)
-            if count['G'] < 2 or count['D'] + count['F'] < 18:
+            # the game dresses 2 goalies, 6 defencemen and 12 forwards (verify.structure)
+            if count['G'] < 2 or count['D'] < 6 or count['D'] + count['F'] < 18:
                 self.log.append([code, 'national team: left empty', R.team_name(team),
-                                 f"{count['G']} goalies and {count['D'] + count['F']} skaters found", ''])
+                                 f"{count['G']} goalies, {count['D']} defencemen and "
+                                 f"{count['D'] + count['F']} skaters found", ''])
                 continue
             self.filled_now.add(team)
             numbers = Counter()

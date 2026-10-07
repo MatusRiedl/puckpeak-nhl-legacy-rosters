@@ -27,12 +27,15 @@ if [ ! -f "$data/photopack.zip" ]; then
     echo "To put them inside, run first:  $py tools/build_photopack.py"
 fi
 
+# PIL._tkinter_finder: Pillow's bridge to Tk, imported only on a fallback path that PyInstaller does
+# not see; without it the window stops at start ("invalid command name PyImagingPhoto").
 common=(--noconfirm --clean
         --add-data "$data:legacy_roster/data"
         --add-data "$cacert:legacy_roster/data"
         --hidden-import PIL.PngImagePlugin --hidden-import PIL.JpegImagePlugin
         --hidden-import PIL.WebPImagePlugin --hidden-import PIL.GifImagePlugin
         --hidden-import PIL.DdsImagePlugin --hidden-import legacy_roster.art.images
+        --hidden-import legacy_roster.art.looks --hidden-import PIL._tkinter_finder
         --distpath dist --workpath build --specpath build)
 
 if [ "$(uname)" = "Darwin" ]; then
