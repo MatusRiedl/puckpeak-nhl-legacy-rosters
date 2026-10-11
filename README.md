@@ -1,15 +1,44 @@
-# NHL Legacy Roster Updater
+<div align="center">
 
-**New here? Read the [Quick start](QUICKSTART.md)**, then download the program from
-[Releases](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest):
-`NHLLegacyRosterUpdater.exe` (Windows), `...-macos.zip` (Mac) or `...-linux.tar.gz` (Linux).
-What changed: [CHANGELOG.md](CHANGELOG.md).
+# 🏒 NHL Legacy Roster Updater
 
-Keeps the rosters of **NHL Legacy Edition** (PS3, played on RPCS3) up to date. You show it where
-RPCS3 is, switch on what you want updated, and it saves a **new** roster named with today's date
-and time, or **updates the roster you picked** (its old version is copied to a backup folder first).
+### The ultimate toolkit for **NHL Legacy Edition** on PS3 / RPCS3.
+*One click and your 2014 game plays the 2026-27 season.*
 
-![The updater window after an update](docs/window.png)
+[**⬇ Download the latest version**](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest)
+&nbsp;·&nbsp; [Quick start](QUICKSTART.md) &nbsp;·&nbsp; [What's new](CHANGELOG.md)
+
+<img src="docs/shot_done.png" width="720" alt="The updater after an update">
+
+</div>
+
+## ✨ Highlights
+
+- 🏟 **Today's NHL, in your old game.** Every player on his real team, lines, captains, contracts, draft, ratings.
+- 🌍 **The whole hockey world.** National teams plus Liiga, Extraliga, SHL, DEL, National League, AHL and the CHL, with real rosters.
+- 📸 **Real faces, real logos, real names.** Today's photos and club logos in the game's menus; Utah, Seattle and Vegas as they should be.
+- 👕 **New jerseys and ice.** The new franchises get their own jerseys, helmets and centre-ice logo, and you can paint your own.
+- 🗓 **The real 2026-27 calendar.** Played in Season mode.
+- ✏️ **A full Roster editor.** Ratings, numbers, teams, photos, new players, jerseys, and **real-life equipment**: sticks, tape, helmets, gloves, skates and tucks.
+- 🥅 **Goalies too.** Pads, blocker, trapper, mask, and **your own picture on the mask**.
+- 🔒 **Safe.** Your save is backed up first, every result passes a safety check, and one button puts the game's own roster back.
+- 🔄 **Stays fresh.** Checks for new versions itself and updates in one click.
+
+<div align="center">
+<img src="docs/shot_editor.png" width="48%" alt="The Roster editor"> <img src="docs/shot_equipment.png" width="48%" alt="Equipment">
+<img src="docs/shot_uniforms.png" width="48%" alt="Jerseys and ice">
+</div>
+
+## 🚀 Get started
+
+1. Download `NHLLegacyRosterUpdater.exe` (Windows; Mac and Linux builds are on the release page too).
+2. Show it where `rpcs3.exe` is, pick a roster, switch on what you want, press **Update**.
+3. Start the game. That is all.
+
+No roster yet? It can start from the game's own. Built for the NHL Legacy community, by [Puck Peak](https://www.puckpeak.com).
+
+<details>
+<summary><b>Everything it does, in detail</b></summary>
 
 ## What it updates
 
@@ -293,3 +322,5 @@ window wears Puck Peak's look and logo, and the logo links to www.puckpeak.com. 
 The classic window of 0.9 uses [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) (CC0) and the font
 [Source Sans 3](https://github.com/adobe-fonts/source-sans) (SIL Open Font License, included in
 `legacy_roster/data/fonts`).
+
+</details>
