@@ -155,6 +155,8 @@ wording (`progress.py`).
 
 ## Current state
 
+Version 0.10.1 (2026-10-11, hotfix): European clubs' short codes are three plain letters (Frölunda FRO, Färjestad FAR, Davos DAV ...): `abbr` in `tools/club_slots.json` for SHL, Liiga, Extraliga, DEL, National League, Norway (AHL / CHL unchanged), data pack rebuilt (only `abbr` fields differ), `build_datapack.short_code` for left-out clubs. Reaches a roster on the next update with "Photos, logos and team names" on (the names hash includes the code). Not checked in the game yet.
+
 Version 0.10.0 addendum (2026-10-11 evening, owner's testers): **Start RPCS3** really fixed: `savedata.launch()` also clears the
 exe launcher's `SetDllDirectory` (the child inherited it; 0.10.0's first fix only cleaned PATH): NOT tried by the owner yet; if
 the error stays, remove the buttons. **Equipment editor** (skaters): `equipment.py` (table `ajmx`, the choices), `app/equipment.py`

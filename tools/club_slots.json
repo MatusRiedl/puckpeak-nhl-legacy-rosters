@@ -5,21 +5,21 @@
     "league_id": 3,
     "country": "FIN",
     "slots": {
-      "76": {"source": "Ässät", "full": "Porin Ässät", "short": "Ässät", "abbr": "ÄSS", "art": "ASS"},
-      "77": {"source": "K-Espoo", "full": "Kiekko-Espoo", "short": "Espoo", "abbr": "KES", "art": "BLU"},
+      "76": {"source": "Ässät", "full": "Porin Ässät", "short": "Ässät", "abbr": "ASA", "art": "ASS"},
+      "77": {"source": "K-Espoo", "full": "Kiekko-Espoo", "short": "Espoo", "abbr": "ESP", "art": "BLU"},
       "78": {"source": "HPK", "full": "HPK Hämeenlinna", "short": "HPK", "abbr": "HPK", "art": "HPK"},
-      "79": {"source": "HIFK", "full": "Helsingin IFK", "short": "HIFK", "abbr": "IFK", "art": "IFK", "wiki": "HIFK (ice hockey)"},
+      "79": {"source": "HIFK", "full": "Helsingin IFK", "short": "HIFK", "abbr": "HIF", "art": "IFK", "wiki": "HIFK (ice hockey)"},
       "80": {"source": "Ilves", "full": "Tampereen Ilves", "short": "Ilves", "abbr": "ILV", "art": "ILV"},
       "81": {"source": "JYP", "full": "JYP Jyväskylä", "short": "JYP", "abbr": "JYP", "art": "JYP"},
       "82": {"source": "KalPa", "full": "KalPa Kuopio", "short": "KalPa", "abbr": "KAL", "art": "KAL"},
-      "83": {"source": "Kärpät", "full": "Oulun Kärpät", "short": "Kärpät", "abbr": "KÄR", "art": "KAR"},
-      "84": {"source": "KooKoo", "full": "KooKoo Kouvola", "short": "Kouvola", "abbr": "KOU", "art": "KOU", "wiki": "KooKoo (ice hockey)"},
+      "83": {"source": "Kärpät", "full": "Oulun Kärpät", "short": "Kärpät", "abbr": "KAR", "art": "KAR"},
+      "84": {"source": "KooKoo", "full": "KooKoo Kouvola", "short": "Kouvola", "abbr": "KOO", "art": "KOU", "wiki": "KooKoo (ice hockey)"},
       "85": {"source": "Lukko", "full": "Rauman Lukko", "short": "Lukko", "abbr": "LUK", "art": "LUK"},
       "86": {"source": "Pelicans", "full": "Pelicans Lahti", "short": "Pelicans", "abbr": "PEL", "art": "PEL"},
       "87": {"source": "SaiPa", "full": "SaiPa Lappeenranta", "short": "SaiPa", "abbr": "SAI", "art": "SAI"},
       "88": {"source": "Tappara", "full": "Tampereen Tappara", "short": "Tappara", "abbr": "TAP", "art": "TAP"},
       "89": {"source": "TPS", "full": "TPS Turku", "short": "TPS", "abbr": "TPS", "art": "TPS", "wiki": "HC TPS"},
-      "90": {"source": "Sport", "full": "Vaasan Sport", "short": "Vaasa", "abbr": "VAA", "art": "VAA"}
+      "90": {"source": "Sport", "full": "Vaasan Sport", "short": "Vaasa", "abbr": "SPO", "art": "VAA"}
     }
   },
   "extraliga": {
@@ -27,20 +27,20 @@
     "league_id": 5,
     "country": "CZE",
     "slots": {
-      "105": {"source": "/klub/hc-kometa-brno/22", "full": "HC Kometa Brno", "short": "Brno", "abbr": "BRNO", "art": "BRNO"},
-      "106": {"source": "/klub/mountfield-hk/1711", "full": "Mountfield HK", "short": "Hradec Kralove", "abbr": "MHK", "art": "CBE"},
+      "105": {"source": "/klub/hc-kometa-brno/22", "full": "HC Kometa Brno", "short": "Brno", "abbr": "KOM", "art": "BRNO"},
+      "106": {"source": "/klub/mountfield-hk/1711", "full": "Mountfield HK", "short": "Hradec Kralove", "abbr": "HRA", "art": "CBE"},
       "107": {"source": "/klub/rytiri-kladno/828", "full": "Rytíři Kladno", "short": "Kladno", "abbr": "KLA", "art": "CHOM"},
       "108": {"source": "/klub/hc-energie-karlovy-vary/5", "full": "HC Energie Karlovy Vary", "short": "Karlovy Vary", "abbr": "KVA", "art": "KVA"},
-      "109": {"source": "/klub/bili-tygri-liberec/18", "full": "Bílí Tygři Liberec", "short": "Liberec", "abbr": "LBC", "art": "LBC"},
+      "109": {"source": "/klub/bili-tygri-liberec/18", "full": "Bílí Tygři Liberec", "short": "Liberec", "abbr": "LIB", "art": "LBC"},
       "110": {"source": "/klub/hc-verva-litvinov/823", "full": "HC Verva Litvínov", "short": "Litvinov", "abbr": "LIT", "art": "LIT"},
-      "111": {"source": "/klub/bk-mlada-boleslav/89", "full": "BK Mladá Boleslav", "short": "Mlada Boleslav", "abbr": "MBL", "art": "MBL"},
+      "111": {"source": "/klub/bk-mlada-boleslav/89", "full": "BK Mladá Boleslav", "short": "Mlada Boleslav", "abbr": "MBO", "art": "MBL"},
       "112": {"source": "/klub/hc-olomouc/24", "full": "HC Olomouc", "short": "Olomouc", "abbr": "OLO", "art": "OLO"},
-      "113": {"source": "/klub/hc-dynamo-pardubice/12", "full": "HC Dynamo Pardubice", "short": "Pardubice", "abbr": "PCE", "art": "PCE"},
+      "113": {"source": "/klub/hc-dynamo-pardubice/12", "full": "HC Dynamo Pardubice", "short": "Pardubice", "abbr": "PAR", "art": "PCE"},
       "114": {"source": "/klub/hc-skoda-plzen/917", "full": "HC Škoda Plzeň", "short": "Plzen", "abbr": "PLZ", "art": "PLZ"},
       "115": {"source": "/klub/hc-sparta-praha/8", "full": "HC Sparta Praha", "short": "Sparta Praha", "abbr": "SPA", "art": "SPA"},
       "116": {"source": "/klub/hc-ocelari-trinec/11", "full": "HC Oceláři Třinec", "short": "Trinec", "abbr": "TRI", "art": "TRI"},
       "117": {"source": "/klub/hc-vitkovice-ridera/7", "full": "HC Vítkovice Ridera", "short": "Vitkovice", "abbr": "VIT", "art": "VIT"},
-      "118": {"source": "/klub/banes-motor-c-budejovice/1721", "full": "Motor České Budějovice", "short": "C. Budejovice", "abbr": "CEB", "art": "ZLN"}
+      "118": {"source": "/klub/banes-motor-c-budejovice/1721", "full": "Motor České Budějovice", "short": "C. Budejovice", "abbr": "MOT", "art": "ZLN"}
     }
   },
   "shl": {
@@ -48,20 +48,20 @@
     "league_id": 2,
     "country": "SWE",
     "slots": {
-      "62": {"source": "Brynäs IF", "full": "Brynäs IF", "short": "Brynäs", "abbr": "BIF", "art": "BIF"},
-      "63": {"source": "Djurgårdens IF", "full": "Djurgårdens IF", "short": "Djurgården", "abbr": "DIF", "art": "DIF"},
-      "64": {"source": "Färjestad BK", "full": "Färjestad BK", "short": "Färjestad", "abbr": "FBK", "art": "FBK"},
-      "65": {"source": "Frölunda HC", "full": "Frölunda HC", "short": "Frölunda", "abbr": "FHC", "art": "VF"},
-      "66": {"source": "HV71", "full": "HV71", "short": "HV71", "abbr": "HV71", "art": "HV"},
-      "67": {"source": "Björklöven", "full": "IF Björklöven", "short": "Björklöven", "abbr": "IFB", "art": "KRLS"},
-      "68": {"source": "Linköping HC", "full": "Linköping HC", "short": "Linköping", "abbr": "LHC", "art": "LHC"},
-      "69": {"source": "Luleå Hockey", "full": "Luleå Hockey", "short": "Luleå", "abbr": "LHF", "art": "LHF"},
-      "70": {"source": "Malmö Redhawks", "full": "Malmö Redhawks", "short": "Malmö", "abbr": "MIF", "art": "MALM"},
-      "71": {"source": "Timrå IK", "full": "Timrå IK", "short": "Timrå", "abbr": "TIK", "art": "MOD"},
-      "72": {"source": "Örebro Hockey", "full": "Örebro Hockey", "short": "Örebro", "abbr": "OHK", "art": "ORE"},
-      "73": {"source": "Rögle BK", "full": "Rögle BK", "short": "Rögle", "abbr": "RBK", "art": "ROG"},
-      "74": {"source": "Skellefteå AIK", "full": "Skellefteå AIK", "short": "Skellefteå", "abbr": "SAIK", "art": "SKE"},
-      "75": {"source": "Växjö Lakers", "full": "Växjö Lakers", "short": "Växjö", "abbr": "VLH", "art": "VXJ"}
+      "62": {"source": "Brynäs IF", "full": "Brynäs IF", "short": "Brynäs", "abbr": "BRY", "art": "BIF"},
+      "63": {"source": "Djurgårdens IF", "full": "Djurgårdens IF", "short": "Djurgården", "abbr": "DJU", "art": "DIF"},
+      "64": {"source": "Färjestad BK", "full": "Färjestad BK", "short": "Färjestad", "abbr": "FAR", "art": "FBK"},
+      "65": {"source": "Frölunda HC", "full": "Frölunda HC", "short": "Frölunda", "abbr": "FRO", "art": "VF"},
+      "66": {"source": "HV71", "full": "HV71", "short": "HV71", "abbr": "HV7", "art": "HV"},
+      "67": {"source": "Björklöven", "full": "IF Björklöven", "short": "Björklöven", "abbr": "BJO", "art": "KRLS"},
+      "68": {"source": "Linköping HC", "full": "Linköping HC", "short": "Linköping", "abbr": "LIN", "art": "LHC"},
+      "69": {"source": "Luleå Hockey", "full": "Luleå Hockey", "short": "Luleå", "abbr": "LUL", "art": "LHF"},
+      "70": {"source": "Malmö Redhawks", "full": "Malmö Redhawks", "short": "Malmö", "abbr": "MAL", "art": "MALM"},
+      "71": {"source": "Timrå IK", "full": "Timrå IK", "short": "Timrå", "abbr": "TIM", "art": "MOD"},
+      "72": {"source": "Örebro Hockey", "full": "Örebro Hockey", "short": "Örebro", "abbr": "ORE", "art": "ORE"},
+      "73": {"source": "Rögle BK", "full": "Rögle BK", "short": "Rögle", "abbr": "ROG", "art": "ROG"},
+      "74": {"source": "Skellefteå AIK", "full": "Skellefteå AIK", "short": "Skellefteå", "abbr": "SKE", "art": "SKE"},
+      "75": {"source": "Växjö Lakers", "full": "Växjö Lakers", "short": "Växjö", "abbr": "VAX", "art": "VXJ"}
     }
   },
   "del": {
@@ -69,20 +69,20 @@
     "league_id": 4,
     "country": "DEU",
     "slots": {
-      "91": {"source": "augsburger-panther", "full": "Augsburger Panther", "short": "Augsburg", "abbr": "AEV", "art": "AUG"},
-      "92": {"source": "eisbaeren-berlin", "full": "Eisbären Berlin", "short": "Berlin", "abbr": "EBB", "art": "EBB"},
+      "91": {"source": "augsburger-panther", "full": "Augsburger Panther", "short": "Augsburg", "abbr": "AUG", "art": "AUG"},
+      "92": {"source": "eisbaeren-berlin", "full": "Eisbären Berlin", "short": "Berlin", "abbr": "BLN", "art": "EBB"},
       "93": {"source": "loewen-frankfurt", "full": "Löwen Frankfurt", "short": "Frankfurt", "abbr": "FRA", "art": "DEG"},
-      "94": {"source": "pinguins-bremerhaven", "full": "Pinguins Bremerhaven", "short": "Bremerhaven", "abbr": "BHV", "art": "HHF", "wiki": "Fischtown Pinguins"},
+      "94": {"source": "pinguins-bremerhaven", "full": "Pinguins Bremerhaven", "short": "Bremerhaven", "abbr": "BRE", "art": "HHF", "wiki": "Fischtown Pinguins"},
       "95": {"source": "erc-ingolstadt", "full": "ERC Ingolstadt", "short": "Ingolstadt", "abbr": "ING", "art": "ING"},
-      "96": {"source": "iserlohn-roosters", "full": "Iserlohn Roosters", "short": "Iserlohn", "abbr": "IEC", "art": "IEC"},
-      "97": {"source": "koelner-haie", "full": "Kölner Haie", "short": "Köln", "abbr": "KEC", "art": "KEC"},
-      "98": {"source": "krefeld-pinguine", "full": "Krefeld Pinguine", "short": "Krefeld", "abbr": "KEV", "art": "KEV"},
+      "96": {"source": "iserlohn-roosters", "full": "Iserlohn Roosters", "short": "Iserlohn", "abbr": "ISE", "art": "IEC"},
+      "97": {"source": "koelner-haie", "full": "Kölner Haie", "short": "Köln", "abbr": "KOL", "art": "KEC"},
+      "98": {"source": "krefeld-pinguine", "full": "Krefeld Pinguine", "short": "Krefeld", "abbr": "KRE", "art": "KEV"},
       "99": {"source": "adler-mannheim", "full": "Adler Mannheim", "short": "Mannheim", "abbr": "MAN", "art": "MAN"},
-      "100": {"source": "ehc-red-bull-muenchen", "full": "EHC Red Bull München", "short": "München", "abbr": "RBM", "art": "EHC"},
-      "101": {"source": "nuernberg-ice-tigers", "full": "Nürnberg Ice Tigers", "short": "Nürnberg", "abbr": "NIT", "art": "NIT"},
-      "102": {"source": "schwenninger-wild-wings", "full": "Schwenninger Wild Wings", "short": "Schwenningen", "abbr": "SWW", "art": "SCHW"},
+      "100": {"source": "ehc-red-bull-muenchen", "full": "EHC Red Bull München", "short": "München", "abbr": "MUN", "art": "EHC"},
+      "101": {"source": "nuernberg-ice-tigers", "full": "Nürnberg Ice Tigers", "short": "Nürnberg", "abbr": "NUR", "art": "NIT"},
+      "102": {"source": "schwenninger-wild-wings", "full": "Schwenninger Wild Wings", "short": "Schwenningen", "abbr": "SCH", "art": "SCHW"},
       "103": {"source": "straubing-tigers", "full": "Straubing Tigers", "short": "Straubing", "abbr": "STR", "art": "STR"},
-      "104": {"source": "grizzlys-wolfsburg", "full": "Grizzlys Wolfsburg", "short": "Wolfsburg", "abbr": "WOB", "art": "WOF"}
+      "104": {"source": "grizzlys-wolfsburg", "full": "Grizzlys Wolfsburg", "short": "Wolfsburg", "abbr": "WOL", "art": "WOF"}
     }
   },
   "nl": {
@@ -90,17 +90,17 @@
     "league_id": 6,
     "country": "CHE",
     "slots": {
-      "119": {"source": "HC Ambri-Piotta", "full": "HC Ambri-Piotta", "short": "Ambri-Piotta", "abbr": "HCAP", "art": "HCAP"},
-      "120": {"source": "SC Bern", "full": "SC Bern", "short": "Bern", "abbr": "SCB", "art": "BERN"},
-      "121": {"source": "EHC Biel-Bienne", "full": "EHC Biel-Bienne", "short": "Biel", "abbr": "EHCB", "art": "BIEL"},
-      "122": {"source": "HC Davos", "full": "HC Davos", "short": "Davos", "abbr": "HCD", "art": "HCD"},
-      "123": {"source": "Fribourg-Gottéron", "full": "HC Fribourg-Gottéron", "short": "Fribourg", "abbr": "HCFG", "art": "FRI"},
-      "124": {"source": "Genève-Servette HC", "full": "Genève-Servette HC", "short": "Genève", "abbr": "GSHC", "art": "GEN"},
-      "125": {"source": "EHC Kloten", "full": "EHC Kloten", "short": "Kloten", "abbr": "EHCK", "art": "KLOT"},
-      "126": {"source": "Lausanne HC", "full": "Lausanne HC", "short": "Lausanne", "abbr": "LHC", "art": "LAU"},
-      "127": {"source": "HC Lugano", "full": "HC Lugano", "short": "Lugano", "abbr": "HCL", "art": "HCL"},
+      "119": {"source": "HC Ambri-Piotta", "full": "HC Ambri-Piotta", "short": "Ambri-Piotta", "abbr": "AMB", "art": "HCAP"},
+      "120": {"source": "SC Bern", "full": "SC Bern", "short": "Bern", "abbr": "BER", "art": "BERN"},
+      "121": {"source": "EHC Biel-Bienne", "full": "EHC Biel-Bienne", "short": "Biel", "abbr": "BIE", "art": "BIEL"},
+      "122": {"source": "HC Davos", "full": "HC Davos", "short": "Davos", "abbr": "DAV", "art": "HCD"},
+      "123": {"source": "Fribourg-Gottéron", "full": "HC Fribourg-Gottéron", "short": "Fribourg", "abbr": "FRI", "art": "FRI"},
+      "124": {"source": "Genève-Servette HC", "full": "Genève-Servette HC", "short": "Genève", "abbr": "SER", "art": "GEN"},
+      "125": {"source": "EHC Kloten", "full": "EHC Kloten", "short": "Kloten", "abbr": "KLO", "art": "KLOT"},
+      "126": {"source": "Lausanne HC", "full": "Lausanne HC", "short": "Lausanne", "abbr": "LAU", "art": "LAU"},
+      "127": {"source": "HC Lugano", "full": "HC Lugano", "short": "Lugano", "abbr": "LUG", "art": "HCL"},
       "128": {"source": "SCL Tigers", "full": "SCL Tigers", "short": "Langnau", "abbr": "SCL", "art": "SCL"},
-      "129": {"source": "EV Zug", "full": "EV Zug", "short": "Zug", "abbr": "EVZ", "art": "ZUG"},
+      "129": {"source": "EV Zug", "full": "EV Zug", "short": "Zug", "abbr": "ZUG", "art": "ZUG"},
       "130": {"source": "ZSC Lions", "full": "ZSC Lions", "short": "Zürich", "abbr": "ZSC", "art": "ZSC"}
     }
   },
@@ -109,8 +109,8 @@
     "league_id": 7,
     "country": "NOR",
     "slots": {
-      "131": {"source": "Stavanger Oilers", "full": "Stavanger Oilers", "short": "Stavanger", "abbr": "OIL", "art": "STAV"},
-      "132": {"source": "Vålerenga Ishockey", "full": "Vålerenga Ishockey", "short": "Vålerenga", "abbr": "VIF", "art": "VALE"}
+      "131": {"source": "Stavanger Oilers", "full": "Stavanger Oilers", "short": "Stavanger", "abbr": "STA", "art": "STAV"},
+      "132": {"source": "Vålerenga Ishockey", "full": "Vålerenga Ishockey", "short": "Vålerenga", "abbr": "VAL", "art": "VALE"}
     }
   },
   "ahl": {

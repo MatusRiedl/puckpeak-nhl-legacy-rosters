@@ -95,6 +95,17 @@ def nhl_logos():
     return {abbr: NHL_LOGO.format(ESPN_CODE.get(abbr, abbr.lower())) for abbr in API_TO_SLOT}
 
 
+def short_code(name):
+    """Three plain capital letters for a club the game has no slot for: the start of its most
+    distinctive word ('HC Something' -> 'SOM'), accents dropped."""
+    import re
+    import unicodedata
+    plain = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode()
+    words = [re.sub('[^A-Za-z]', '', w) for w in plain.split()]
+    words = [w for w in words if len(w) >= 3 and w.upper() not in ('HC', 'EHC', 'EV', 'SC', 'THE')] or words
+    return (words[0] if words else 'XXX')[:3].upper().ljust(3, 'X')
+
+
 def parts_of(conf, key):
     """[(part key, league_id, slots)] of a league in club_slots.json."""
     if 'parts' in conf:
@@ -142,7 +153,7 @@ def build_league(key, conf, refresh):
         for name in sorted(set(clubs) - set(sources)):
             left_out.append(name)
             # no slot in the game: kept for a player's own custom team of that name (clubs.own_teams)
-            extra.append({'league_id': league_id, 'full': name, 'short': name, 'abbr': name[:3].upper(),
+            extra.append({'league_id': league_id, 'full': name, 'short': name, 'abbr': short_code(name),
                           'art': name[:3].upper(), 'logo': feed_logos.get(name), 'players': plausible(name, clubs[name])})
         dates.append(file_date(cache))
     # a picture several players share is a feed's "no photo" placeholder, not a photo

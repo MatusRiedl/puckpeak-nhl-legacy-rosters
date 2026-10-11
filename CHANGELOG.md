@@ -3,6 +3,13 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.10.1 (2026-10-11)
+
+- **Easier short names for European clubs** on the scoreboard and in Select Teams: three letters, the way each club is best
+  known: Frölunda **FRO**, Färjestad **FAR**, Davos **DAV**, Servette **SER**, Nürnberg **NUR**, Sparta **SPA** and so on for
+  the SHL, Liiga, Extraliga, DEL, National League and Norway. (The old ones were the leagues' own codes: FHC, FBK, HCD, GSHC ...)
+  AHL and junior clubs keep theirs. Run the update once more with "Photos, logos and team names" on to get them.
+
 ## 0.10.0 (2026-10-11)
 
 - **The program looks for a newer version** when it starts (at most twice a day, silently when you are offline). If one is out

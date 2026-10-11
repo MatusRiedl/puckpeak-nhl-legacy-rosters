@@ -30,14 +30,14 @@ def test_team_names_go_where_the_game_looks_for_them():
 
 
 def test_a_known_name_still_gets_its_short_code():
-    """Frölunda: the game already names it right, but the scoreboard says VF, not FHC."""
+    """Frölunda: the game already names it right, but the scoreboard says VF, not FRO."""
     f = loc.LocFile(loc.LocFile.blank({'NHLTeamName_VF': 'Frölunda HC', 'X_XLA_TEAM_VF': 'VF',
                                        'NHLTeamName_FBK': 'Färjestad BK', 'X_XLA_TEAM_FBK': 'FBK'}).build())
-    names = {'teams': [('VF', 'Frölunda HC', 'Göteborg', 'Frölunda HC', 'FHC'),
-                       ('FBK', 'Färjestad BK', 'Karlstad', 'Färjestad BK', 'FBK')], 'force': set()}
-    assert loc.apply_names(f, names) == 1
+    names = {'teams': [('VF', 'Frölunda HC', 'Göteborg', 'Frölunda HC', 'FRO'),
+                       ('FBK', 'Färjestad BK', 'Karlstad', 'Färjestad BK', 'FAR')], 'force': set()}
+    assert loc.apply_names(f, names) == 2
     g = loc.LocFile(f.build())
-    assert g.get('X_XLA_TEAM_VF') == 'FHC' and g.get('X_XLA_TEAM_FBK') == 'FBK'
+    assert g.get('X_XLA_TEAM_VF') == 'FRO' and g.get('X_XLA_TEAM_FBK') == 'FAR'
     assert g.get('NHLTeamName_VF') == 'Frölunda HC'
 
 
@@ -141,3 +141,18 @@ def test_an_empty_text_is_written_as_no_text_like_the_games_own_file():
     g = loc.LocFile(f.build())
     assert g.get('Teamline1_MOD') == '' and g.by_hash[loc.key_hash('Teamline1_MOD')][4]
     assert g.by_hash[loc.key_hash('Teamline2_MOD')][4]
+
+
+def test_european_clubs_have_three_plain_capital_letters():
+    """0.10.1: Frölunda FRO, Färjestad FAR, Davos DAV ... (the AHL and junior leagues keep their codes)."""
+    import json
+    import os
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(here, 'tools', 'club_slots.json'), encoding='utf-8') as f:
+        conf = json.load(f)
+    for key in ('liiga', 'extraliga', 'shl', 'del', 'nl', 'norway'):
+        codes = [c['abbr'] for c in conf[key]['slots'].values()]
+        for code in codes:
+            assert len(code) == 3 and code.isascii() and code == code.upper(), (key, code)
+        assert len(set(codes)) == len(codes), key
+    assert conf['shl']['slots']['65']['abbr'] == 'FRO' and conf['shl']['slots']['64']['abbr'] == 'FAR'
