@@ -83,10 +83,9 @@ refreshing the data pack, and before building:
 
 Today a new pack reaches players only inside a new exe.
 
-The program is ready to download packs instead: set `PACK_URL` in `legacy_roster/datasource.py`
-(or the environment variable `LEGACY_ROSTER_PACK_URL` for testing) to a stable address, for
-example a GitHub release asset with a fixed tag:
-`https://github.com/<owner>/<repo>/releases/download/data-pack/datapack.json.gz`. On each update
+Since 0.10.0 `PACK_URL` in `legacy_roster/datasource.py` points at the newest release's
+`datapack.json.gz` (the environment variable `LEGACY_ROSTER_PACK_URL` overrides it for testing; a
+release without that file just means the bundled pack is used). On each update
 the program tries that address (20 s timeout), keeps a valid download in its cache, and uses
 whichever pack has the newest `generated` stamp: download, cache or bundled. New data then
 means uploading a new pack; no new exe.
@@ -152,7 +151,11 @@ go-ahead (ROADMAP.md).
    CHANGELOG.md (the release text is made from it) and keep the README's "What it updates" table
    in step.
 8. Publish (only with the owner's go-ahead): commit, tag `vX.Y.Z`, push, then a GitHub Release
-   with `NHLLegacyRosterUpdater.exe` and its `.sha256` (`Get-FileHash`). There is no `gh` on the
+   with `NHLLegacyRosterUpdater.exe`, `SHA256SUMS.txt` (made by `build.ps1` in `dist\`) and
+   `datapack.json.gz` (copy of `legacy_roster/data/datapack.json.gz`). **The exe's own update check
+   (`app/selfupdate.py`) needs the exact asset names `NHLLegacyRosterUpdater.exe` and `SHA256SUMS.txt`
+   (or GitHub's own `digest` of the exe), and a tag like `v0.11.0` (a draft or prerelease is ignored).
+   The data pack is downloaded from `releases/latest/download/datapack.json.gz`.** There is no `gh` on the
    owner's PC: the release is made through GitHub's REST API with git's stored login (`git
    credential fill`; 0.6-0.8 did it that way). Pushing the tag also starts
    `.github/workflows/build.yml`, which tests on three systems and attaches the Mac zip and the

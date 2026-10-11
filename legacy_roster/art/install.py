@@ -43,9 +43,10 @@ PORTRAIT_TEMPLATE = 100              # the disc portrait whose file new portrait
 # how logos are drawn (images.logo); a change redraws every installed logo once. '#2': the game's own
 # sizes (images.LOGO_BOX), 0.8.0. '#3': the pictures with a white edge are drawn from ESPN's plain logos,
 # not the white-silhouette ones for dark backgrounds (Tampa Bay and Toronto came out all white), 0.8.1.
+# '#5': logos centred on their own middle, not on the shadow (testers, 0.9.0)
 # '#4': the other kinds take the plain logo too where the game's own picture of that kind is coloured
 # and the dark one a white silhouette (Toronto's calendar and wide logos)
-LOGO_DRAWING = '#4'
+LOGO_DRAWING = '#5'
 SILHOUETTE = 0.8                     # share of white in a dark-background logo that makes it a silhouette
 COLOURED = 0.3                       # average saturation of the game's own logo picture that makes it coloured
 LOGO_ONLY_KINDS = ('c', 'w')         # pictures that are the logo alone (the banner 's' is mostly its colour band)
@@ -344,7 +345,13 @@ def install_names(disc, writer, names, say):
         if original is None:
             continue
         text = loc.LocFile(original)
+        limits = text.limits()
         if loc.apply_names(text, names):
+            over = text.over_limit(limits)
+            if over:               # never install a text the game's buffers cannot hold
+                say(f"Photos and logos: team names NOT written in {lang}: {over[0][0]} is {over[0][1]} bytes "
+                    f"(the game allows {over[0][2]})")
+                continue
             writer.write(rel, text.build(), source)
             written += 1
     if written:

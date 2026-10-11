@@ -29,6 +29,18 @@ def test_team_names_go_where_the_game_looks_for_them():
     assert loc.key_hash('LAS_VEGAS') == 1194855491              # as the game's own file has it
 
 
+def test_a_known_name_still_gets_its_short_code():
+    """Frölunda: the game already names it right, but the scoreboard says VF, not FHC."""
+    f = loc.LocFile(loc.LocFile.blank({'NHLTeamName_VF': 'Frölunda HC', 'X_XLA_TEAM_VF': 'VF',
+                                       'NHLTeamName_FBK': 'Färjestad BK', 'X_XLA_TEAM_FBK': 'FBK'}).build())
+    names = {'teams': [('VF', 'Frölunda HC', 'Göteborg', 'Frölunda HC', 'FHC'),
+                       ('FBK', 'Färjestad BK', 'Karlstad', 'Färjestad BK', 'FBK')], 'force': set()}
+    assert loc.apply_names(f, names) == 1
+    g = loc.LocFile(f.build())
+    assert g.get('X_XLA_TEAM_VF') == 'FHC' and g.get('X_XLA_TEAM_FBK') == 'FBK'
+    assert g.get('NHLTeamName_VF') == 'Frölunda HC'
+
+
 def test_an_added_text_keeps_its_key_as_the_game_asks_for_it():
     """The game keeps its keys in their own case; texts added under a capitalised key did not show."""
     f = loc.LocFile(loc.LocFile.blank({'NHLTeamName_CHOM': 'Piráti Chomutov'}).build())
@@ -87,3 +99,45 @@ def test_select_lines_follow_the_games_own_way_of_splitting_a_name():
     assert loc.select_lines('Tampa Bay Lightning', 'Tampa Bay', 'Lightning', '®') == ('Tampa Bay', 'Lightning®')
     assert loc.select_lines('Rytíři Kladno', 'Kladno', 'Rytíři') == ('Rytíři', 'Kladno')
     assert loc.select_lines('Timrå IK', 'Timrå', 'Timrå IK') == ('', 'Timrå IK')
+
+
+def test_long_names_are_split_or_shortened_to_what_the_game_keeps():
+    """0.9.3: 'Motor České Budějovice' (25 bytes) on a line the game keeps at 17 overwrote memory and
+    crashed Select Teams in the Czech league."""
+    for full, city, nick in (('Motor České Budějovice', 'C. Budejovice', 'Motor České Budějovice'),
+                             ('HC Vítkovice Ridera', 'Vitkovice', 'HC Vítkovice Ridera'),
+                             ('HC Fribourg-Gottéron', 'Fribourg', 'HC Fribourg-Gottéron'),
+                             ('Golden Knights', 'Vegas', 'Golden Knights')):
+        a, b = loc.select_lines(full, city, nick, '®', 21, 14)
+        assert len(a.encode()) <= 21 and len(b.encode()) <= 14, (full, a, b)
+    assert loc.select_lines('Motor České Budějovice', 'C. Budejovice', '', '', 21, 17) == ('Motor České', 'Budějovice')
+    assert loc.fit('Motor České Budějovice', 16) == 'Budějovice'
+    assert loc.fit('Golden Knights®', 14) == 'Golden Knights'
+    assert loc.fit('Černý', 3) == 'Če'                # never cut inside a character
+
+
+def test_a_city_with_accents_still_splits_off_the_name():
+    assert loc.select_lines('Litvínov Hockey', 'Litvinov', 'Hockey') == ('Litvínov', 'Hockey')
+
+
+def test_names_never_go_over_the_limits_of_the_games_file():
+    f = loc.LocFile(loc.LocFile.blank({'NHLTeamName_ZLN': 'PSG Zlín', 'TXT_NICKNAME_ZLN': 'Zlín',
+                                       'TEAMLINE2_ZLN': 'Zlín', 'NICKLINE2_ZLN': 'Zlín'}).build())
+    limits = f.limits()
+    loc.apply_names(f, {'teams': [('ZLN', 'Motor České Budějovice', 'C. Budejovice', 'Motor České Budějovice', 'CEB')],
+                        'cities': {}, 'force': set()})
+    assert f.over_limit(limits) == []
+    text = {e[1]: e[2] for e in f.entries}
+    assert text['TXT_NICKNAME_ZLN'] == 'Budějovice' and text['NHLTeamName_ZLN'] == 'Motor České Budějovice'
+    f.set('TEAMLINE2_ZLN', 'x' * 40)
+    assert f.over_limit(limits)[0][0] == 'TEAMLINE2_ZLN'
+
+
+def test_an_empty_text_is_written_as_no_text_like_the_games_own_file():
+    """The game's own files hold no text of length 0 (an empty one is 'no text'); a written one crashed Select Teams."""
+    f = loc.LocFile.blank({'Teamline1_MOD': 'MODO', 'Teamline2_MOD': 'MODO Hockey'})
+    f.set_existing('Teamline1_MOD', '')
+    f.set('Teamline2_MOD', '')
+    g = loc.LocFile(f.build())
+    assert g.get('Teamline1_MOD') == '' and g.by_hash[loc.key_hash('Teamline1_MOD')][4]
+    assert g.by_hash[loc.key_hash('Teamline2_MOD')][4]

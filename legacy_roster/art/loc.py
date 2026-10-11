@@ -38,30 +38,91 @@ TEAM_KEYS = {'full': 'NHLTeamName_{}', 'city': 'NHLCityName_{}', 'nick': 'TXT_NI
 
 
 # which texts apply_names writes; a change rewrites every installed text file once. '#2': the lines
-# of the team screens (TEAMLINE1/2, NICKLINE2, Abbr3, the NHL slots' numbered texts), 0.8.1
-NAMES_VERSION = '#2'
+# of the team screens (TEAMLINE1/2, NICKLINE2, Abbr3, the NHL slots' numbered texts), 0.8.1;
+# '#3': no text longer than the longest the game itself keeps under that kind of key (0.9.3: a
+# longer one overwrote memory and crashed Select Teams when a league with long names came up)
+NAMES_VERSION = '#5'   # '#5': the short codes (scoreboard) of clubs whose name the game already has
 LANGUAGES = ('eng_us', 'fre_fr', 'ger_de', 'swe_se', 'fin_fi', 'cze_cz', 'rus_ru')
+
+# the kinds of team text with a length limit, longest key prefix first
+KINDS = ('NHLTEAMNAME_ABBR3', 'TXT_NICKNAME_ALT', 'TXT_NICKNAME', 'NHLTEAMNAME', 'NHLCITYNAME', 'TEAMLINE1',
+         'TEAMLINE2', 'NICKLINE2', 'CITYLINE1', 'X_XLA_TEAM')
+# the longest text (bytes) the game's English file keeps per kind; a language's own file may allow more
+DEFAULT_LIMITS = {'TEAMLINE1': 21, 'TEAMLINE2': 17, 'NICKLINE2': 14, 'TXT_NICKNAME': 16, 'TXT_NICKNAME_ALT': 16,
+                  'NHLTEAMNAME': 31, 'NHLCITYNAME': 21, 'CITYLINE1': 12, 'NHLTEAMNAME_ABBR3': 4, 'X_XLA_TEAM': 6}
+PART_KIND = {'full': 'NHLTEAMNAME', 'city': 'NHLCITYNAME', 'nick': 'TXT_NICKNAME', 'nick_alt': 'TXT_NICKNAME_ALT',
+             'abbr': 'X_XLA_TEAM'}
 
 
 def key_hash(key):
     return zlib.crc32(key.upper().encode('utf-8'), 0xFFFFFFFF) ^ 0xFFFFFFFF
 
 
-def select_lines(full, city, nick, mark=''):
+def kind_of(key):
+    """The kind of team text a key belongs to (NHLTeamName_CHOM -> 'NHLTEAMNAME'), or None."""
+    up = (key or '').upper()
+    return next((k for k in KINDS if up.startswith(k + '_')), None)
+
+
+def _size(text):
+    return len(text.encode('utf-8'))
+
+
+def _fits(text, limit):
+    return limit is None or _size(text) <= limit
+
+
+def fit(text, limit):
+    """`text` made to fit `limit` bytes: the registered mark goes first, then leading words
+    ('HC Vítkovice Ridera' -> 'Ridera'), at last the end is cut (never inside a character)."""
+    text = (text or '').strip()
+    if _fits(text, limit):
+        return text
+    text = text.replace('®', '').replace('™', '').strip()
+    words = text.split()
+    for i in range(len(words)):
+        if _fits(' '.join(words[i:]), limit):
+            return ' '.join(words[i:])
+    word = words[-1] if words else ''
+    for part in word.split('-'):               # 'Fribourg-Gottéron': a part of it
+        if part and _fits(part, limit):
+            return part
+    while word and not _fits(word, limit):
+        word = word[:-1]
+    return word
+
+
+def select_lines(full, city, nick, mark='', max1=None, max2=None):
     """The two lines the team screens show for a team, in the game's own way: a city first and then
     the nickname ('Tampa Bay' / 'Lightning®'), a nickname first and then the city for a name that
     ends in its city ('Piráti' / 'Chomutov'), the whole name on the big line when it has no city
-    ('' / 'MODO Hockey')."""
+    ('' / 'MODO Hockey'). `max1` / `max2` (bytes) are the longest the small and the big line may be:
+    a name that does not fit is split between the lines at a word ('Motor České' / 'Budějovice')."""
     full, city, nick = (full or '').strip(), (city or '').strip(), (nick or '').strip()
-    if city and full.lower().startswith(city.lower() + ' '):
-        rest = full[len(city):].strip()
-        if len(rest) >= 3:                      # not "Timrå" + "IK"
-            return city, rest + mark
-    if city and full.lower().endswith(' ' + city.lower()):
-        rest = full[:-len(city)].strip()
-        if len(rest) >= 3:
-            return rest, city
-    return '', full + mark
+    first, second, marks = '', full, (mark, '')
+    if city and _plain(full).startswith(_plain(city) + ' ') and len(full[len(city):].strip()) >= 3:
+        first, second = full[:len(city)].strip(), full[len(city):].strip()      # not "Timrå" + "IK"
+    elif city and _plain(full).endswith(' ' + _plain(city)) and len(full[:-len(city)].strip()) >= 3:
+        first, second, marks = full[:-len(city)].strip(), full[-len(city):].strip(), ('',)
+    for tail in marks:
+        if _fits(first, max1) and _fits(second + tail, max2):
+            return first, second + tail
+    return _split(full, mark, max1, max2)
+
+
+def _plain(text):
+    import unicodedata
+    return ''.join(c for c in unicodedata.normalize('NFKD', text.lower()) if not unicodedata.combining(c))
+
+
+def _split(full, mark, max1, max2):
+    words = full.split()
+    for tail in (mark, ''):
+        for k in range(len(words)):
+            a, b = ' '.join(words[:k]), ' '.join(words[k:]) + tail
+            if _fits(a, max1) and _fits(b, max2):
+                return a, b
+    return '', fit(full, max2)
 
 
 def apply_names(loc, names):
@@ -70,18 +131,26 @@ def apply_names(loc, names):
     changed = 0
     plain = lambda s: (s or '').replace('®', '').replace('™', '').strip().lower()
     marked = names.get('marked', ())
+    limits = loc.limits()               # of the file as the game made it: asked before anything changes
+    max1 = limits['TEAMLINE1']
+    max2 = min(limits['TEAMLINE2'], limits['NICKLINE2'])        # the big line is both
     for art, full, city, nick, abbr in names.get('teams', []):
         if not art or not full:
             continue
         if art in names.get('force', ()) or plain(loc.get(TEAM_KEYS['full'].format(art))) != plain(full):
             loc.set_team(art, full=full, city=city or full, nick=nick, abbr=abbr)
-            line1, line2 = select_lines(full, city, nick, '®' if art in marked else '')
+            line1, line2 = select_lines(full, city, nick, '®' if art in marked else '', max1, max2)
             loc.set_select_lines(art, line1, line2, abbr=abbr)
+            changed += 1
+        elif abbr and loc.get(TEAM_KEYS['abbr'].format(art)) not in (None, abbr.strip()):
+            # the game's name is right but its short code is the old club's ('VF' for Frölunda)
+            loc.set_team(art, abbr=abbr)
+            loc.set_select_lines(art, None, None, abbr=abbr)
             changed += 1
     for slot, (full, city, nick, abbr) in sorted((int(s), v) for s, v in names.get('numbered', {}).items()):
         # the NHL slots the community gave to newer teams also have texts under their number
-        line1, line2 = select_lines(full, city, nick, '®')
-        loc.set_existing(f"NHLTeamName_{slot}", full)
+        line1, line2 = select_lines(full, city, nick, '®', max1, max2)
+        loc.set_existing(f"NHLTeamName_{slot}", fit(full, limits['NHLTEAMNAME']))
         loc.set_select_lines(slot, line1, line2, abbr=abbr, city=city)
         changed += 1
     for key, text in sorted(names.get('cities', {}).items()):
@@ -179,18 +248,37 @@ class LocFile:
         h = key_hash(key)
         e = self.by_hash.get(h)
         if e is None:
-            e = [h, key, text, False, False]
+            e = [h, key, text, False, not text]
             self.entries.append(e)
             self.by_hash[h] = e
             if self._by_key is not None:
                 self._by_key[key.upper()] = e
         else:
-            e[2], e[4] = text, False
+            e[2], e[4] = text, not text       # the game's own file never holds a text of length 0: an empty one is 'no text'
+
+    def limits(self):
+        """The longest text (bytes) per kind of team text: what the game's own file keeps, at least the
+        English file's. Asked once, before the file is changed. The game copies these texts into
+        buffers of that size; a longer one overwrites memory (Select Teams crashed)."""
+        if getattr(self, '_limits', None) is None:
+            seen = dict(DEFAULT_LIMITS)
+            for e in self.entries:
+                kind = kind_of(e[1])
+                if kind and not e[4]:
+                    seen[kind] = max(seen[kind], _size(e[2]))
+            self._limits = seen
+        return self._limits
+
+    def over_limit(self, limits):
+        """[(key, bytes, limit)] for the texts longer than their kind's limit."""
+        return [(e[1], _size(e[2]), limits[kind]) for e in self.entries
+                if (kind := kind_of(e[1])) and not e[4] and _size(e[2]) > limits[kind]]
 
     def set_team(self, art, full=None, city=None, nick=None, abbr=None):
+        limits = self.limits()
         for part, value in (('full', full), ('city', city), ('nick', nick), ('nick_alt', nick), ('abbr', abbr)):
             if value:
-                self.set(TEAM_KEYS[part].format(art), value)
+                self.set(TEAM_KEYS[part].format(art), fit(value, limits[PART_KIND[part]]))
 
     def set_existing(self, key, text):
         """Change the text under a key the game has, found by the key as stored (not by hash: the
@@ -201,18 +289,19 @@ class LocFile:
         e = self._by_key.get(key.upper())
         if e is None:
             return False
-        e[2], e[4] = text, False
+        e[2], e[4] = text, not text         # empty = 'no text', as in the game's own file
         return True
 
     def set_select_lines(self, key_tail, line1, line2, abbr=None, city=None):
         """The texts the team screens (Play Now "Select Teams", Season) read: TEAMLINE1/2 are the small
         line above and the big line of a team's name, NICKLINE2 the big line again, Abbr3 the short
         code, CITYLINE1 and NHLCityName a city, under `key_tail` (a team's art code, or an NHL slot number)."""
+        limits = self.limits()
         for key, text in ((f"TEAMLINE1_{key_tail}", line1), (f"TEAMLINE2_{key_tail}", line2),
                           (f"NICKLINE2_{key_tail}", line2), (f"NHLTeamName_Abbr3_{key_tail}", abbr),
                           (f"CITYLINE1_{key_tail}", city), (f"NHLCityName_{key_tail}", city)):
             if text is not None:
-                self.set_existing(key, text)
+                self.set_existing(key, fit(text, limits[kind_of(key)]))
 
     # --- writing -------------------------------------------------------------------------------------------
     def _codes(self, tree):

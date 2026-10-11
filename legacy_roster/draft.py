@@ -64,6 +64,8 @@ class Drafts:
             code = slot + 1 if slot is not None and slot + 1 <= P.field('uWgv').mask else 0
             return (year - 1900, min(rnd, P.field('Ujcc').mask), min(overall, P.field('WfTt').mask), code)
         born = real_birth_year(P, prow, self.stale)
+        if not 1940 <= born <= self.season_year:       # a placeholder record (a birth year of 2160): nothing to say
+            return None
         month, day = P.get(prow, 'pLKJ') + 1, P.get(prow, 'iwsK') + 1
         eligible = born + 18 + (1 if (month, day) > (9, 15) else 0)     # 18 by September 15 of the draft year
         if eligible > self.season_year:     # this season's draft is over: a junior waits for his

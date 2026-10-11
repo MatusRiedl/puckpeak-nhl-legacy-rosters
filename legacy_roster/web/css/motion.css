@@ -1,0 +1,28 @@
+/* Animations. Everything here moves only transform and opacity. "Reduce motion" in the system's
+   settings, or ?still in the address (screenshots), turns them off. */
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes slide-l { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+@keyframes slide-r { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@keyframes shimmer { from { background-position: -60px 0; } to { background-position: calc(100% + 60px) 0; } }
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@keyframes sheen { from { transform: translateX(-120%) skewX(-20deg); } to { transform: translateX(420%) skewX(-20deg); } }
+@keyframes glow-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+.enter .card, .enter .result-wrap { animation: rise-in .42s var(--ease) both; animation-delay: calc(var(--i, 0) * 60ms); }
+.enter .header { animation: fade-in .5s ease-out both; }
+.pane.from-left { animation: slide-l .24s var(--ease) both; }
+.pane.from-right { animation: slide-r .24s var(--ease) both; }
+.list > .appear { animation: rise-in .3s var(--ease) both; }
+
+/* a short shine over a roster when it is picked, as the game does on its menus */
+.roster.sel::before { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 22%; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(160, 220, 255, .18), transparent);
+  animation: sheen .7s var(--ease) both; }
+.btn.primary.working { animation: glow-pulse 1.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+.still *, .still *::before, .still *::after { animation: none !important; transition: none !important; }

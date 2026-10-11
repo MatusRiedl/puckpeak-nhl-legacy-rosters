@@ -17,14 +17,16 @@ $py = Join-Path $root '.venv\Scripts\python.exe'
 if (-not (Test-Path $py)) {
     python -m venv .venv
 }
-# customtkinter draws the window; Pillow makes the photos and logos (and the brand assets, make_assets.py);
+# pywebview shows the window (the page in legacy_roster\web, drawn by Windows' Edge WebView2); customtkinter draws the
+# classic window (kept for 0.10.x as the fallback); Pillow makes the photos and logos (and the brand assets, make_assets.py);
 # certifi brings Mozilla's list of trusted certificates (Windows' own list can lack the one a site uses)
-& $py -m pip install --quiet --upgrade pip pyinstaller "customtkinter>=6.0,<7" "pillow>=11.2" certifi
-if ($LASTEXITCODE -ne 0) { throw "could not install PyInstaller, customtkinter, Pillow and certifi" }
+& $py -m pip install --quiet --upgrade pip pyinstaller "pywebview==6.2.1" "customtkinter>=6.0,<7" "pillow>=11.2" certifi
+if ($LASTEXITCODE -ne 0) { throw "could not install PyInstaller, pywebview, customtkinter, Pillow and certifi" }
 
 $version = (& $py -c "import legacy_roster; print(legacy_roster.__version__)").Trim()
 $cacert = (& $py -c "import certifi; print(certifi.where())").Trim()
 $data = Join-Path $root 'legacy_roster\data'
+$web = Join-Path $root 'legacy_roster\web'
 $common = @(
     '--noconfirm', '--clean', '--onefile',
     '--add-data', "$data;legacy_roster\data",
@@ -47,16 +49,23 @@ if (-not (Test-Path $pack)) {
 }
 $old = Join-Path $root 'dist\NHLLegacyRosterUpdater-Photos.exe'     # the second exe of 0.4-0.5
 if (Test-Path $old) { Remove-Item -Force $old }
-& $py -m PyInstaller @common --windowed --collect-all customtkinter --name NHLLegacyRosterUpdater packaging\launcher.py
+& $py -m PyInstaller @common --windowed --add-data "$web;legacy_roster\web" `
+    --collect-all webview --collect-all pythonnet --collect-all clr_loader --collect-all customtkinter `
+    --name NHLLegacyRosterUpdater packaging\launcher.py
 if ($LASTEXITCODE -ne 0) { throw "building the window program failed" }
 # the command line stays small: no pack (it downloads, and keeps what it downloaded)
 if (Test-Path $pack) { Move-Item -Force $pack $aside }
 try {
     & $py -m PyInstaller @common --console --exclude-module customtkinter --exclude-module tkinter `
+        --exclude-module webview --exclude-module pythonnet --exclude-module clr_loader --exclude-module clr `
         --name NHLLegacyRosterUpdater-cli packaging\launcher_cli.py
     if ($LASTEXITCODE -ne 0) { throw "building the command-line program failed" }
 } finally {
     if (Test-Path $aside) { Move-Item -Force $aside $pack }
 }
+
+# checksums of the programs, to attach to the release (the update check compares the download with them)
+Get-ChildItem dist\*.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
+    Set-Content -Encoding ascii dist\SHA256SUMS.txt
 
 Get-ChildItem dist\*.exe | ForEach-Object { "{0}  {1:N1} MB  (version {2})" -f $_.Name, ($_.Length / 1MB), $version }

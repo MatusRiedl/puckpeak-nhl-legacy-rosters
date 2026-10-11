@@ -269,6 +269,8 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
         log.append(['ALL', 'summary', what, detail, ''])
     if kind == L.STOCK and b.nhl_identity():
         log.append(['ALL', 'summary', "arenas and colours of Utah, Seattle and Vegas", 3, ''])
+    if NHL in steps and b.nhl_gear():
+        log.append(['ALL', 'summary', "helmets and gear of Utah, Seattle and Vegas", "in their colours", ''])
     # the club leagues as they will be built (with the player's own teams named after left-out clubs):
     # their players' records are reserved from the start
     leagues = [key for key in LEAGUE_ORDER if key in steps and key in data.leagues]
@@ -535,6 +537,7 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         skipped = []
         try:
             install_looks(result, art_rpcs3, art_title, targets, say)
+            install_masks(result, art_rpcs3, art_title, targets, say)
             art = install.install(art_rpcs3, art_title, portraits_, logos, say, names=names,
                                   also=[t for t in targets if t != art_title], skipped=skipped)
         except install.ArtError as err:  # the roster is saved; only the pictures are missing
@@ -577,6 +580,16 @@ def install_looks(result, rpcs3, title, targets, say):
         return
     if made:
         looks.install_looks(rpcs3, title, made, say, also=[t for t in targets if t != title])
+
+
+def install_masks(result, rpcs3, title, targets, say):
+    """The goalies' own mask pictures (art/masks.py), with the photos and logos."""
+    from .art import masks
+    try:
+        masks.install_masks(rpcs3, title, dict(getattr(result.builder, 'mask_looks', {})), say,
+                            also=[t for t in targets if t != title])
+    except Exception as err:
+        say(f"Goalie masks: left out ({err})")
 
 
 ExportSlot = collections.namedtuple('ExportSlot', 'name folder region')

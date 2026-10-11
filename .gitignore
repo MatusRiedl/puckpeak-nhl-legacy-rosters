@@ -28,3 +28,18 @@ dist/
 
 # Local editor settings
 .vscode/
+
+# Working notes for the maintainer and the AI that helps (not for players)
+PLAN.md
+.claude/
+docs/plans/
+docs/notes/
+docs/HANDOVER.md
+docs/32_TEAM_INVESTIGATION.md
+CLAUDE.md
+docs/SEASON_PLAN.md
+docs/CALENDAR_AND_LOOK.md
+tools/decode_schema.py
+tools/isotools.py
+tools/look_preview.py
+tools/names_report.py

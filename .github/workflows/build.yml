@@ -44,7 +44,10 @@ jobs:
         with:
           python-version: '3.12'
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y python3-tk
+        # WebKitGTK and the GObject headers for the window (pywebview), Tk for the classic window it falls back to
+        run: >-
+          sudo apt-get update && sudo apt-get install -y python3-tk gir1.2-webkit2-4.1 libgirepository1.0-dev
+          libcairo2-dev pkg-config
       - name: photo pack (every picture inside the program)
         run: |
           python -m venv .venv-build

@@ -20,9 +20,9 @@ from . import layout as L
 from .builder import Data
 from .matching import match, norm
 
-# Where a newer data pack is published. Empty until the project has a public home; can be
-# overridden with the LEGACY_ROSTER_PACK_URL environment variable.
-PACK_URL = ""
+# Where a newer data pack is published: a file attached to the newest GitHub release (MAINTAINING.md: attach it
+# with every release). Can be overridden with the LEGACY_ROSTER_PACK_URL environment variable.
+PACK_URL = "https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest/download/datapack.json.gz"
 BUNDLED_PACK = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'datapack.json.gz')
 # Mozilla's list of trusted certificates (certifi's cacert.pem), put into the exe by build.ps1; not in git
 CA_BUNDLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'cacert.pem')

@@ -89,12 +89,34 @@ def test_without_any_roster_the_games_own_roster_is_saved_from_scratch(tmp_path,
     assert (slot.title_id, slot.region, slot.folder, slot.disc) == ('BLUS31540', 'NA', 'BLUS31540 game', True)
     monkeypatch.setattr(stock, 'disc_icon', lambda path: b'\x89PNG icon of the disc')
     new = savedata.install(r.savedata, slot, base_bytes, 'From the game')
-    assert new.folder == 'BLUS315400200' and new.region == 'NA' and new.name == 'From the game'
+    assert new.folder == 'BLUS315400201' and new.region == 'NA' and new.name == 'From the game'
     assert open(os.path.join(new.path, 'ICON0.PNG'), 'rb').read() == b'\x89PNG icon of the disc'
     sfo = Sfo.load(os.path.join(new.path, 'PARAM.SFO'))
     assert sfo.get('TITLE') == savedata.TITLES['BLUS31540'] and sfo.get('SAVEDATA_DIRECTORY') == new.folder
     again = savedata.install(r.savedata, slot, base_bytes, 'Again')      # from now on, from that save
-    assert again.folder == 'BLUS315400201'
+    assert again.folder == 'BLUS315400202'
+
+
+def test_disc_sources_can_create_eu_and_na_saves_without_a_community_roster(tmp_path, monkeypatch, base_bytes):
+    from legacy_roster import stock
+    (tmp_path / 'rpcs3.exe').write_bytes(b'MZ')
+    eu_disc, na_disc = tmp_path / 'EU.iso', tmp_path / 'NA.iso'
+    eu_disc.write_bytes(b'placeholder')
+    na_disc.write_bytes(b'placeholder')
+    (tmp_path / 'config').mkdir()
+    (tmp_path / 'config' / 'games.yml').write_text(
+        f'BLES02153: "{eu_disc.as_posix()}"\nBLUS31540: "{na_disc.as_posix()}"\n', encoding='utf-8')
+    monkeypatch.setattr(stock, 'disc_icon', lambda path: b'\x89PNG icon of the disc')
+    r = savedata.find_rpcs3(str(tmp_path / 'rpcs3.exe'))
+    sources = {slot.title_id: slot for slot in r.disc_slots()}
+
+    eu = savedata.install(r.savedata, sources['BLES02153'], base_bytes, 'Fresh EU')
+    na = savedata.install(r.savedata, sources['BLUS31540'], base_bytes, 'Fresh NA')
+
+    assert (eu.folder, eu.region, eu.name) == ('BLES021530201', 'EU', 'Fresh EU')
+    assert (na.folder, na.region, na.name) == ('BLUS315400201', 'NA', 'Fresh NA')
+    assert open(eu.sys_data, 'rb').read() == base_bytes
+    assert open(na.sys_data, 'rb').read() == base_bytes
 
 
 def test_a_roster_saves_param_sfo_can_be_made_from_scratch(base_dir):
@@ -158,6 +180,22 @@ def test_install_writes_a_new_save_and_leaves_the_source_alone(rpcs3, base_bytes
     assert not [n for n in os.listdir(os.path.dirname(sd)) if n.startswith('.roster-updater')]   # no leftovers
 
 
+def test_install_never_removes_a_preexisting_temporary_path(rpcs3, base_bytes):
+    sd, _ = savedata.find_savedata(str(rpcs3))
+    source = savedata.list_rosters(sd)[0]
+    collision = os.path.join(os.path.dirname(sd), '.roster-updater-BLES021530203')
+    os.makedirs(collision)
+    sentinel = os.path.join(collision, 'keep.txt')
+    with open(sentinel, 'w', encoding='utf-8') as f:
+        f.write('user data')
+
+    new = savedata.install(sd, source, base_bytes, 'Safe temporary path')
+
+    assert new.folder == 'BLES021530203'
+    assert open(sentinel, encoding='utf-8').read() == 'user data'
+    assert sorted(os.listdir(collision)) == ['keep.txt']
+
+
 def test_rosters_carry_their_version_of_the_game(rpcs3):
     sd, _ = savedata.find_savedata(str(rpcs3))
     slot = savedata.list_rosters(sd)[0]
@@ -178,13 +216,13 @@ def test_a_roster_can_be_saved_for_the_other_version(rpcs3, base_bytes):
     sfo.set_str('TITLE', 'NHL® Legacy Edition (from its own save)')
     sfo.save(os.path.join(profile, 'PARAM.SFO'))
     na = savedata.install(sd, source, base_bytes, 'Both', title_id='BLUS31540')
-    assert (na.folder, na.region, na.name) == ('BLUS315400200', 'NA', 'Both')
+    assert (na.folder, na.region, na.name) == ('BLUS315400201', 'NA', 'Both')
     got = Sfo.load(os.path.join(na.path, 'PARAM.SFO'))
     assert got.get('TITLE') == 'NHL® Legacy Edition (from its own save)' and got.get('SAVEDATA_DIRECTORY') == na.folder
     assert open(na.sys_data, 'rb').read() == base_bytes
     shutil.rmtree(profile)
     again = savedata.install(sd, source, base_bytes, 'Again', title_id='BLUS31540')
-    assert again.folder == 'BLUS315400201'
+    assert again.folder == 'BLUS315400202'
     assert Sfo.load(os.path.join(again.path, 'PARAM.SFO')).get('TITLE') == got.get('TITLE')   # from the NA roster
     eu = savedata.install(sd, source, base_bytes, 'EU too')
     assert eu.folder == 'BLES021530203' and Sfo.load(os.path.join(eu.path, 'PARAM.SFO')).get('TITLE') == sfo_title(source)
@@ -381,3 +419,64 @@ def test_only_the_newest_backups_are_kept(in_place):
         savedata.update_in_place(sd, slot, data, backup_root=backups)
     kept = sorted(os.listdir(backups))
     assert len(kept) == savedata.KEEP_BACKUPS and all(n.startswith(slot.folder + '_') for n in kept)
+
+
+def _fake_rpcs3_without_saves(tmp_path):
+    (tmp_path / 'rpcs3.exe').write_bytes(b'MZ')
+    (tmp_path / 'dev_hdd0' / 'home' / '00000001' / 'savedata').mkdir(parents=True)
+    return str(tmp_path / 'rpcs3.exe')
+
+
+def _fake_game_folder(root, title='BLES02153'):
+    from legacy_roster.sfo import Sfo
+    game = root / 'PS3_GAME'
+    game.mkdir(parents=True)
+    (game / 'PARAM.SFO').write_bytes(Sfo.new([('TITLE_ID', 0x0204, title.encode(), 16)]).to_bytes())
+    return str(root)
+
+
+def test_a_player_without_a_roster_or_a_games_list_entry_can_point_at_the_game(tmp_path):
+    (tmp_path / 'emu').mkdir()
+    exe = _fake_rpcs3_without_saves(tmp_path / 'emu')
+    with pytest.raises(savedata.NoGameError, match="Pick the game") as err:
+        savedata.find_rpcs3(exe)
+    assert err.value.rpcs3.disc_slots() == []                    # RPCS3 itself was found
+    game = _fake_game_folder(tmp_path / 'my game')
+    assert savedata.game_title_id(game) == 'BLES02153' and savedata.game_title_id(str(tmp_path)) is None
+    found = savedata.find_rpcs3(exe, games={'BLES02153': game})
+    assert [s.title_id for s in found.disc_slots()] == ['BLES02153'] and found.games() == ['BLES02153']
+
+
+def test_a_game_in_rpcs3s_own_disc_folder_is_found(tmp_path):
+    exe = _fake_rpcs3_without_saves(tmp_path)
+    game = _fake_game_folder(tmp_path / 'dev_hdd0' / 'disc' / 'BLES02153')
+    assert savedata.find_rpcs3(exe).game_disc('BLES02153') == game
+
+
+def test_a_first_roster_never_takes_the_slot_the_game_saves_into(tmp_path):
+    assert savedata.next_free(str(tmp_path), 'BLES02153') == 'BLES021530201'
+
+
+def test_rpcs3_is_started_without_the_exes_own_unpacked_folder_in_the_path(monkeypatch, tmp_path):
+    """Inside the exe, PyInstaller's _MEI folder leads PATH; RPCS3 then loaded our vcruntime140.dll and stopped."""
+    import sys
+    unpacked = str(tmp_path / '_MEI123')
+    monkeypatch.setattr(sys, '_MEIPASS', unpacked, raising=False)
+    monkeypatch.setenv('PATH', os.pathsep.join([unpacked, r'C:\Windows', os.path.join(unpacked, 'lib')]))
+    env = savedata.clean_environment()
+    assert env['PATH'] == r'C:\Windows' and env['PYINSTALLER_RESET_ENVIRONMENT'] == '1'
+
+
+def test_launch_clears_the_dll_folder_while_the_child_starts(monkeypatch, tmp_path):
+    """The exe's launcher sets the DLL search folder to _MEI...; a child inherits it, so it is cleared for the start."""
+    import sys
+    import types
+    calls = []
+    kernel = types.SimpleNamespace(SetDllDirectoryW=lambda value: calls.append(('dll', value)))
+    fake_ctypes = types.SimpleNamespace(windll=types.SimpleNamespace(kernel32=kernel))
+    monkeypatch.setitem(sys.modules, 'ctypes', fake_ctypes)
+    monkeypatch.setattr(sys, '_MEIPASS', 'unpacked', raising=False)
+    monkeypatch.setattr(savedata.os, 'name', 'nt')
+    monkeypatch.setattr(savedata.subprocess, 'Popen', lambda args, **kw: calls.append(('start', args)) or 'child')
+    assert savedata.launch(['x.exe']) == 'child'
+    assert calls == [('dll', None), ('start', ['x.exe']), ('dll', 'unpacked')]

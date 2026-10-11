@@ -94,3 +94,20 @@ def test_the_default_is_a_clean_roster_save_else_the_disc(save_folder, base_dir)
     found = restore.default_slot(Fake(), 'BLES02153')
     assert getattr(found, 'disc', False)
     assert restore.default_slot(Fake(), 'BLUS31540') is None
+
+
+def test_a_game_disc_is_the_default_even_when_a_made_roster_has_the_games_own_layout(save_folder, monkeypatch):
+    """A roster made here from the game's own roster has the game's layout too: it must not be its own default."""
+    class Fake:
+        savedata = save_folder
+
+        def disc_slots(self):
+            return [savedata.DiscSlot('BLES02153', 'x.iso')]
+    monkeypatch.setattr(restore.L, 'check_base', lambda R: restore.L.STOCK)
+    assert getattr(restore.default_slot(Fake(), 'BLES02153'), 'disc', False)
+
+    class NoDisc(Fake):
+        def disc_slots(self):
+            return []
+    found = restore.default_slot(NoDisc(), 'BLES02153')
+    assert found is None or found.number == 0

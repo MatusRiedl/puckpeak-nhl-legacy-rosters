@@ -237,6 +237,21 @@ def test_logos_stay_where_the_games_own_logos_are():
             assert (box[2] - box[0]) >= 0.8 * (r - l) * size[0] or (box[3] - box[1]) >= 0.8 * (b - t) * size[1], kind
 
 
+def test_plain_and_dynasty_logos_sit_in_the_middle_of_their_area():
+    """The shadow falls to one side; the logo itself must still be centred (testers, 0.9.0)."""
+    pytest.importorskip('PIL')
+    from PIL import Image
+    from legacy_roster.art import images
+    square = Image.new('RGBA', (200, 200), (200, 30, 30, 255))
+    for kind in ('t', 'd'):
+        out = images.logo(square, kind, (256, 256))
+        x, y, w, h = images._box((256, 256), kind)
+        a = out.getchannel('A')
+        core = a.point(lambda v: 255 if v > 250 else 0).getbbox()
+        assert abs((core[0] + core[2]) / 2 - (x + w / 2)) <= 1.5
+        assert abs((core[1] + core[3]) / 2 - (y + h / 2)) <= 1.5
+
+
 def test_only_nhl_teams_get_the_favourite_team_logo():
     assert install.REFLECTION in install.logo_kinds(22) and install.REFLECTION in install.logo_kinds(31)
     assert install.REFLECTION not in install.logo_kinds(40) and install.REFLECTION not in install.logo_kinds(20073)
@@ -483,4 +498,4 @@ def test_calendar_and_wide_pictures_follow_the_games_own_colours(monkeypatch):
         navy = lambda kind: any(a == 255 and b > r + 60 for r, g, b, a in zip(*[iter(made[('f', kind)].tobytes())] * 4))
         assert all(navy(k) for k in 'tdr') and not navy('s')            # the banner always keeps the dark one
         assert navy('c') == coloured and navy('w') == coloured
-    assert install.LOGO_DRAWING == '#4'
+    assert install.LOGO_DRAWING == '#5'

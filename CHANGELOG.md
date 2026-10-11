@@ -3,6 +3,67 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.10.0 (2026-10-11)
+
+- **The program looks for a newer version** when it starts (at most twice a day, silently when you are offline). If one is out
+  it asks: **Update now** downloads it, checks the file, and restarts into the new version; **Later**; or **Skip this version**.
+  Your settings and rosters stay. It can be switched off in step 1. Ratings and league data are also downloaded from the
+  newest release, so they stay fresh between versions. (Windows only; Mac and Linux are shown the download page.)
+- **"Start RPCS3" from the program** no longer ends in RPCS3's error "vcruntime140.dll was incorrectly installed": RPCS3 was
+  given the program's own temporary folder in its search path and loaded our copy of that file. (A first fix only cleaned the
+  path; the program also told Windows to look in its own folder first. Both are cleared now.)
+- **Goalies' equipment and a picture of your own on the mask.** On a goalie's card, **Equipment...** has the mask, pads, blocker,
+  trapper, stick, tape, jersey tuck and neck guard (the game's own choices, with its pictures). **My picture...** puts a picture
+  of your own on his mask (512 x 512; **Save the mask layout to paint on** gives you the game's own to paint over). The goalie gets
+  a mask number nobody else wears, so no other goalie changes; it shows in the game after "Photos, logos and team names" is run.
+  A goalie's jersey is his team's jersey: use **Jerseys and ice...** (My picture) for it. Not played in the game yet.
+- **Equipment in the Roster editor.** On a skater's card, **Equipment...** opens the game's own choices: stick (with the game's
+  menu pictures), tape (black / white), helmet, visor, gloves, skates, jersey tuck and sock tuck. **Apply to this player**, or
+  **Apply to the whole team** for tape, helmet, visor and the tucks. Kept in My edits and applied after every update. The game has
+  2014 models only: pick the nearest to what the player uses. Which tuck number is which (front /
+  back, none / short / long / full) is a guess from the game's words until someone checks it in the game.
+- **Short team names on the scoreboard.** Clubs whose name the game already knows kept their old short code (Frölunda
+  showed "VF" instead of "FHC"). The short codes are now written for every club. Run the update once more with
+  "Photos, logos and team names" on.
+- **Utah's jersey** no longer shows a faint Arizona coyote under the new logo (the shine map still carried it).
+- **Helmets:** Utah, Seattle and Vegas now have their own logo on the helmet, and their helmets, gloves and gear are in
+  their own colours instead of Arizona's red and the All-Star colours.
+- **Centre ice (Utah):** the rink picture under the centre-ice logo no longer shows the coyote.
+- **Team logos** on the team screens (top left) were drawn a little up and to the left of their frame; they are now centred.
+- Not done yet: the home ice of Seattle and Vegas still uses Nashville's centre logo (they share its arena in the game's files).
+
+- **A new window in the look of the game's menus.** Stadium blue, the white and red arc, the Help bar at the bottom
+  with the keys (Enter updates, D shows the details, L1 / R1 or Ctrl+Page Up / Page Down switch tabs). The window no longer flickers or tears when
+  you move it or change its size, and buttons, tabs and lists move smoothly.
+- **A real progress bar** in the Help bar, with the percentage and what is being done right now.
+- The result of an update opens in its own panel next to step 2 and stays (dimmed) while the next update runs.
+- Questions (delete a roster, restore default, close while working) and the Roster editor's windows (Team, My edits,
+  Jerseys and ice) now open inside the window.
+- Roster editor: click a column title to sort the players, arrow keys move through the list, Ctrl+S saves.
+- Roster editor: a rating below 40 that the game's own roster gives a player (for example a defenceman's Faceoffs)
+  no longer stops Apply.
+- Windows: the window needs Microsoft Edge WebView2 Runtime (part of Windows 11 and an updated Windows 10). Without it
+  the old window opens, as before.
+
+## 0.9.3 (2026-10-11)
+
+- **Game crash in Select Teams** (switching league, for example to the Czech one). The team names the program wrote were
+  longer than the game has room for. Names are now cut to fit the game's own limits (long names split over two lines,
+  for example "Motor České" / "Budějovice"), and a text file that would still be too long is not installed.
+  Run the update once more with "Photos, logos and team names" on to rewrite the names.
+- **Likely real cause of that crash:** the program wrote some team name lines as an empty text (for example the small line
+  above "Timrå IK"); the game's own files never do that and Select Teams crashed on those teams. Empty lines are now written
+  as the game writes them. Run the update once more with "Photos, logos and team names" on.
+- **Restore default** put back the pictures but left the roster as it was: it took the roster you were restoring (made
+  by this program from the game's own roster) for the game's own roster. It now starts from your game disc.
+- **"Something went wrong: 273 does not fit in 8 bits"** (a tester with the American game and rosters of the game's own
+  layout). A placeholder player record with an impossible birth year made the draft step fail; such records are now left alone.
+- **Roster editor ratings.** Changes you typed but had not pressed Apply on are now taken when you save or click another
+  player, and a player who is also on a national team gets the new ratings on both cards.
+- **First start without any saved roster.** If RPCS3 does not list your game, the window asks you to pick the game
+  (.iso file or its folder) and starts from the game's own roster. Command line: `--game`. A new save never takes the
+  game's own slot (...00) any more; the first one is ...01.
+
 ## 0.9.2 (2026-10-07)
 
 - **Linux fix** (from a tester's own fixes, who ran it on Linux). The Linux window now starts (it stopped at start before).

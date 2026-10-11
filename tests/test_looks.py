@@ -83,6 +83,24 @@ def test_every_file_keeps_the_size_and_layout_of_the_discs_and_is_made_the_same_
         'jersey_1_30_4_cm').getpixel((100, 100))[:3]
 
 
+def test_utahs_old_crest_is_gone_from_every_map_and_the_helmet_and_rink_carry_the_new_logo(disc):
+    maker = looks.Maker(disc)
+    files = maker.files(_look(22, ((3, False),)))
+    mine = rpsgl.Rpsgl(files['rendering/jersey/texlib_1_22_3.rpsgl'])
+    own = rpsgl.Rpsgl(disc.render('rendering/jersey/texlib_1_22_3.rpsgl'))
+    for name in ('jersey_1_22_3_sm', 'jersey_1_22_3_0_nm'):                       # the shine and relief of the old crest
+        box = looks.CREST
+        assert mine.image(name).crop(box).tobytes() != own.image(name).crop(box).tobytes()
+        assert len(set(mine.image(name).crop((box[0] + 20, box[1] + 20, box[2] - 20, box[3] - 20)).tobytes())) < 40
+    decal = rpsgl.Rpsgl(files['rendering/logo/texlib_22_1_3.rpsgl']).image('logo_22_1_3_0')
+    assert decal.getchannel('A').getextrema()[1] == 255 and decal.getpixel((128, 64)) !=         rpsgl.Rpsgl(disc.render('rendering/logo/texlib_22_1_3.rpsgl')).image('logo_22_1_3_0').getpixel((128, 64))
+    rink = rpsgl.Rpsgl(files['rendering/icesurface/icesurface_22_bm.rpsgl']).image('icesurface_22_bm').convert('RGB')
+    old = rpsgl.Rpsgl(disc.render('rendering/icesurface/icesurface_22_bm.rpsgl')).image('icesurface_22_bm').convert('RGB')
+    assert max(abs(a - b) for a, b in zip(rink.getpixel((20, 20)), old.getpixel((20, 20)))) < 8          # the rest is as it was
+    assert max(abs(a - b) for a, b in zip(rink.getpixel((257, 240)), old.getpixel((257, 240)))) > 30     # the coyote is not
+    assert sorted(files) == sorted(looks.look_paths(_look(22, ((3, False),))))
+
+
 def test_installing_twice_writes_once_and_restoring_puts_the_game_back(disc, tmp_path, monkeypatch):
     monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
@@ -159,3 +177,20 @@ def test_a_players_own_jersey_and_ice_are_installed_and_put_back_when_chosen_awa
     assert os.path.exists(os.path.join(game, 'rendering', 'jersey', f'texlib_1_{slot}_{other}.rpsgl'))
     install.remove(lambda msg: None)
     assert install.installed() == 0 and n > 3
+
+
+def test_a_goalies_own_mask_picture_is_installed_and_put_back_when_dropped(disc, tmp_path, monkeypatch):
+    from legacy_roster.art import masks
+    found, title = _fake_rpcs3(tmp_path, monkeypatch)
+    pic = Image.new('RGB', (512, 512), (0, 200, 0))
+    mine = tmp_path / 'mask.png'
+    pic.save(mine)
+    assert masks.own_picture(disc, 120).size == (512, 512)
+    assert masks.install_masks(found, title, {291: 'file:' + str(mine)}, lambda msg: None) == 1
+    path = os.path.join(found.game_folder(title), 'rendering', 'goaliehelmet', 'goaliehelmet_0_291_cm.rpsgl')
+    shown = rpsgl.Rpsgl(open(path, 'rb').read()).image('goaliehelmet_0_291_cm').getpixel((256, 256))
+    assert shown[1] > 150 and shown[0] < 80                                   # his green picture is in the game's file
+    assert masks.install_masks(found, title, {291: 'file:' + str(mine)}, lambda msg: None) == 0     # installed already
+    masks.install_masks(found, title, {}, lambda msg: None)                    # no goalie wears a picture any more
+    assert not os.path.exists(path)
+    install.remove(lambda msg: None)

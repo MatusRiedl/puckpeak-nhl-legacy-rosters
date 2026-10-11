@@ -7,7 +7,7 @@ another record. `apply_edits()` makes the roster with the edits (no window neede
 """
 import datetime
 
-from .. import edits, ratings
+from .. import edits, equipment, ratings
 from .. import layout as L
 from ..roster import Roster
 from ..schema import EA_GOALIE, EA_SKATER, RATING_BASE
@@ -34,7 +34,7 @@ GOALIE_ATTRIBUTES = _labels(EA_GOALIE)
 
 class Player:
     __slots__ = ('who', 'prow', 'pid', 'first', 'last', 'pos', 'num', 'birth', 'country', 'shoots', 'height_in',
-                 'weight_lb', 'teams', 'ovr', 'ratings', 'artid', 'hasportrait')
+                 'weight_lb', 'teams', 'ovr', 'ratings', 'artid', 'hasportrait', 'equipment')
 
     @property
     def name(self):
@@ -48,7 +48,7 @@ class Player:
         """What can be edited, for comparing two rosters."""
         return {'first': self.first, 'last': self.last, 'num': self.num, 'pos': self.pos, 'shoots': self.shoots,
                 'birth': self.birth, 'country': self.country, 'height_in': self.height_in,
-                'weight_lb': self.weight_lb, 'ovr': self.ovr}
+                'weight_lb': self.weight_lb, 'ovr': self.ovr, 'equipment': self.equipment}
 
 
 class Snapshot:
@@ -79,6 +79,10 @@ class Snapshot:
             t = R.f[tname]
             for i in range(t.cur_rec):
                 ai[t.get(i, 'zIBw')] = (tname, i)
+        gear = R.f[equipment.TABLE]
+        gear_row = equipment.row_of(gear)
+        pads = R.f[equipment.GOALIE_TABLE]
+        pads_row = equipment.row_of(pads, 'goalie')
         self.players = {}
         for pid in set(teams_of) | set(self.free_agents):
             prow = R.p_by_id.get(pid)
@@ -98,6 +102,8 @@ class Snapshot:
             p.teams = sorted(teams_of.get(pid, []))
             p.artid, p.hasportrait = P.get(prow, 'artid'), P.get(prow, 'hasportrait')     # his menu photo
             p.ratings, p.ovr = {}, None
+            p.equipment = (equipment.read(pads, pads_row[pid], 'goalie') if p.pos == 'G' and pid in pads_row else
+                           equipment.read(gear, gear_row[pid]) if p.pos != 'G' and pid in gear_row else None)
             where = ai.get(pid)
             if where:
                 table = R.f[where[0]]

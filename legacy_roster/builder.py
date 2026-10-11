@@ -256,6 +256,15 @@ class Builder:
     def pid_of_entry(self, e):
         return self.R.link_to_pid.get(self.U.get(e, 'TWSX'))
 
+    def equipment_row(self, prow, kind='skater'):
+        """The row of a player's equipment (`kind` skater or goalie), or None."""
+        from . import equipment
+        table = self.R.f[equipment.KINDS[kind][0]]
+        cache = self.__dict__.setdefault('_equipment_rows', {})
+        if cache.get(kind, (None,))[0] != table.cur_rec:     # new players add rows
+            cache[kind] = (table.cur_rec, equipment.row_of(table, kind))
+        return cache[kind][1].get(self.P.get(prow, 'zIBw'))
+
     def prow_of_entry(self, e):
         return self.R.p_by_id.get(self.pid_of_entry(e))
 
@@ -788,6 +797,34 @@ class Builder:
                     T.set(slot, f"{kind}color_{channel}", value)
             done += 1
         return done
+
+    def nhl_gear(self):
+        """The helmets, gloves and the rest of Utah's, Seattle's and Vegas's equipment in their colours. The game's
+        equipment table still holds Arizona's red and the All-Star teams' colours (NHL_LOOK has the new ones): a
+        colour with a hue becomes the team's first colour, a near-black one its second, cream becomes white; greys,
+        white and black stay. Doing it again changes nothing. Returns how many colours changed."""
+        E = self.R.f['vbHh']
+        changed = 0
+        for row in range(E.cur_rec):
+            slot = E.get(row, 'team')
+            if slot not in NHL_LOOK:
+                continue
+            _arena, _city, primary, secondary = NHL_LOOK[slot]
+            for zone in range(1, 10):
+                names = [f"zone{zone}_{c}" for c in 'rgb']
+                colour = tuple(E.get(row, n) for n in names)
+                top, low = max(colour), min(colour)
+                if top and (top - low) / top >= 0.25:
+                    new = secondary if top < 75 else primary
+                elif top > 200 and colour[0] - colour[2] >= 15:
+                    new = (231, 231, 231)
+                else:
+                    continue
+                if new != colour:
+                    for n, v in zip(names, new):
+                        E.set(row, n, v)
+                    changed += 1
+        return changed
 
     def relink_free_agents(self):
         """Every free agent gets a new link number; his old link row goes in finish() when nothing else

@@ -17,7 +17,7 @@ Recycle Bin, `savedata.trash_save`), never adds a
 team and never moves a team to another league (hard limits of the game).
 
 ```
- NHLLegacyRosterUpdater.exe ──► gui.py (window)  ─┐
+ NHLLegacyRosterUpdater.exe ──► window/ + app/ ──┐   (the page in web/; gui.py = old window, fallback)
  NHLLegacyRosterUpdater-cli.exe ► cli.py ─────────┤
                                                   ▼
                                     pipeline.update()
@@ -46,9 +46,9 @@ The exe is not signed, so Windows SmartScreen warns on first start.
 
 Dependencies: the engine and the command line use only the Python standard library, except
 "Photos and logos", which draws pictures with Pillow (`art/images.py`, imported only when the
-switch is on; both exes carry it). The window adds
-[CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) on top of tkinter. PyInstaller is
-used only to build.
+switch is on; both exes carry it). The window adds [pywebview](https://pywebview.flowrl.com)
+(Edge WebView2 through pythonnet on Windows, WebKit on Mac / Linux) and, for the classic window kept as a fallback in
+0.10.x, [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter). PyInstaller is used only to build.
 
 ## Without RPCS3
 
@@ -590,7 +590,47 @@ With every league on, all 16 spare slots are used.
 | `…\art\pictures\` | Photos and logos: every picture this PC downloaded, drawn (the photo pack's layout), so none is downloaded twice |
 | `<dev_hdd0>\game\<TITLEID>\USRDIR\fe\ion\artassets\…` | Photos and logos only (switch on, RPCS3 closed): loose picture files the game reads before its disc. "Restore the game's own pictures" puts back every file as it was |
 
-## The window (`gui.py`, `widgets.py`, `theme.py`, `progress.py`)
+## The window (0.10: `window/`, `app/`, `web/`)
+
+The 0.9 window (CustomTkinter) tore and redrew while it was moved or resized. Since 0.10 the window is a web page in
+a native window: pywebview serves `legacy_roster/web/` over its local http server (ES modules do not load from
+`file://`) to Edge WebView2 (Windows) or WebKit (Mac, Linux).
+
+```
+ web/ (React 18 + htm, no build step)      window/                       app/ (no window toolkit)
+   main.js  update.js  editor.js   ◄────  host.py: WebHost pushes   ◄──  UpdateController  (update.py)
+   ui.js    shell.js   store.js           window.LR.receive({slices,      EditorController  (editor.py)
+   bridge.js ── call('x', …) ─────────►   log, events}) at most 25 Hz     UniformsController (uniforms.py)
+                                          api.py: Api methods  ─────────►  jobs.py, settings.py, texts.py
+```
+
+- **Python holds all state; the page only shows it.** Each controller has `snapshot()` → a JSON "slice" (`update`,
+  `editor`, `picture`, `uniforms`, `thumbs`). After a change a controller calls `host.changed(name)`; the pusher thread
+  sends the newest snapshot of each changed slice in one `evaluate_js` per tick (25 Hz at most, the latest wins), so a
+  burst of engine messages costs one repaint. The page keeps the slices in `store.js` (`useSlice`).
+- **Calls** go `bridge.call(name, …)` → `window.pywebview.api.<name>` (`window/api.py`). Errors are logged to error.log
+  and returned as `{error}`, never raised into the page. pywebview runs each call on its own thread: every controller has an
+  `RLock`. Lock order: `uniforms.lock` may take `editor.lock`; the editor never takes `uniforms.lock` while holding its
+  own; the update controller never takes the editor's.
+- **Long jobs** (`app/jobs.py`) run in a thread and report through the controller; the update's engine messages feed
+  `progress.fraction` exactly as before (**the wording of engine messages is still an interface**).
+- **Pictures** (portraits, logos, jersey thumbnails) go to the page as `data:` WebP links (`app/dataurl.py`) in their own
+  slices, with a request token so only the latest asked-for picture is shown.
+- **Player card**: the form lives in the page and is sent with Apply, Save (`editor_save(card)`) and a player pick
+  (`editor_player(id, card)`) only when it was changed; the controller checks it with `editor/card.py` (shared with the
+  old window) and bumps `card.key` to reset the form.
+- **In-page windows**: questions (Delete, Restore default, close while busy) and the editor's Team, My edits and Jerseys
+  and ice are `Modal`s in the look of the game's "Help" box. File pickers are the system's (`host.ask_open` / `ask_save`).
+- **Look**: tokens in `web/css/tokens.css` (stadium blue, accent `#2597c9`), Titillium Web (`web/fonts`, OFL), the Puck
+  Peak logo `web/img/logo.png` (made with the other brand files by `packaging/make_assets.py`). Motion uses transform and opacity only; `?still` and
+  `prefers-reduced-motion` turn it off.
+- **Start** (`window/main.py`): checks the unpacked files and WebView2 (`window/webview2.py`, registry); if WebView2,
+  pywebview or the start fails, the classic window opens instead (logged in error.log), else a plain message. Windows 11
+  gets a dark title bar in the panels' colour (DWM). `python -m legacy_roster --classic` opens the old window on purpose.
+- **Offline page** (`?demo` / `?fixture=`, `js/demo.js`; `window.__FIXTURE__`): the page without Python, used by
+  `tools/window_shot.py` (headless Edge) and for design work in a normal browser (`--browser`).
+
+## The classic window, 0.9 (`gui.py`, `widgets.py`, `theme.py`; kept in 0.10.x as the fallback, to delete in 0.11)
 
 - **Layout**: header (Puck Peak logo, title line, glow line); cards 1 RPCS3 (rosters found per
   version), 2 roster list (each row with the flag of its version; the game's own roster last),
@@ -603,8 +643,9 @@ With every league on, all 16 spare slots are used.
   text only.
 - **Few redraws** (the owner saw flicker and slow repaints):
   - `set_rpcs3` reads and checks the saves in a thread, and caches the checks by (path, size,
-    time);
-  - `list_rosters` keeps rows that did not change (`RosterRow.shows`);
+    time); only the latest scan may update the window;
+  - `list_rosters` keeps rows that did not change (`RosterRow.shows`) and reorders them in place;
+  - selection redraws only the previous and newly selected rows;
   - `refresh_state` changes only what changed (`widgets.configure_if_changed`, `App.set_status`;
     options set through that helper must not be set with `configure()` elsewhere);
   - `poll` shows everything the engine said since the last look in one go;
@@ -639,5 +680,20 @@ With every league on, all 16 spare slots are used.
 | Add a club league | A provider in `tools/providers/`, `tools/club_slots.json`, `FEEDS` in `tools/build_datapack.py`, `estimate.LEAGUE_GAP`, the league's key in `pipeline.LEAGUE_ORDER`; mark it in `pipeline.EXPERIMENTAL` until played in the game (step by step in DEVELOPING.md) |
 | Add a data source to the pack | `tools/build_datapack.py` (+ provider), a `sources` entry for the window's date line, `datasource.gather()` to pass it into `builder.Data` |
 | Change a rule the game enforces | `verify.py` first (so a build that breaks it cannot be installed), then the builder; document it in FORMAT.md section 5 |
-| Change the window | `widgets.py` for a new component, `gui.py` to place it, `theme.py` for colours and fonts; keep Tk out of the engine. Look at the result with `tools/window_shot.py` |
+| Change the window | Behaviour and state in the controller (`app/update.py`, `app/editor.py`, `app/uniforms.py`, `app/equipment.py`: a field in `snapshot()`, a method), the call in `window/api.py`, the look in `web/js/*.js` and `web/css/*.css` (shared pieces in `ui.js`). Keep the window toolkit out of `app/` and the engine. Test the controller with `tests/test_app.py`'s FakeHost; look at the result with `tools/window_shot.py`. The classic window is frozen |
 | Add a command-line command | `cli.py` (`main()` registers sub-commands) |
+
+
+## Starting without a roster save or a games-list entry (0.9.3)
+
+`savedata.Rpcs3.game_disc(title_id)` looks in this order: RPCS3's `config/games.yml`, a game the player picked
+(`Rpcs3(games={title_id: path})`, the window keeps them in settings.json `games`, the command line takes `--game`),
+`dev_hdd0/disc/<id>` and `<rpcs3 folder>/games/<id>` (a folder with `PS3_GAME`). `savedata.game_title_id(path)` reads the title
+id from an ISO's or folder's PARAM.SFO. `find_rpcs3` raises `NoGameError` (it carries the found `Rpcs3`) when RPCS3 has neither a
+roster nor a game; the window then shows the "Pick the game" buttons (`App.browse_game`). `next_free` never gives `...00`
+(the game's own slot): the first new save is `...01`. `restore.default_slot` is the game disc first (always EA's own data), else the
+`...0200` save while it has the game's own layout: a roster this program made from the game's own roster has that layout too
+and was wrongly taken as its own default (Restore default did nothing to the roster, fixed 0.9.3).
+
+The Roster editor saves with `EditorTab.apply(quiet)` first (a card with typed but not applied changes is no longer lost on
+Save or when another player is clicked) and `edits.people_and_copies` gives a player's national-team record the same edits.

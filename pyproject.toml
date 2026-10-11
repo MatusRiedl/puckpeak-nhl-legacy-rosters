@@ -6,7 +6,8 @@ dynamic = ["version"]
 dependencies = []
 
 [project.optional-dependencies]
-gui = ["customtkinter>=6.0,<7"]     # the window only; the command line needs nothing
+gui = ["pywebview>=6.2,<7", "pillow>=11.2"]   # the window only; the command line needs nothing
+classic = ["customtkinter>=6.0,<7"]           # the old window (0.10.x fallback, `--classic`)
 
 [project.scripts]
 legacy-roster = "legacy_roster.__main__:main"
@@ -16,10 +17,12 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["legacy_roster", "legacy_roster.leagues"]
+packages = ["legacy_roster", "legacy_roster.leagues", "legacy_roster.art", "legacy_roster.editor",
+            "legacy_roster.app", "legacy_roster.window"]
 
 [tool.setuptools.package-data]
-legacy_roster = ["data/*", "data/fonts/*"]
+legacy_roster = ["data/*", "data/fonts/*", "web/*.html", "web/css/*", "web/js/*", "web/fonts/*", "web/img/*",
+                 "web/vendor/*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "legacy_roster.__version__" }

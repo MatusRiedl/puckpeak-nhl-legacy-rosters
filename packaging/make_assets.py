@@ -3,6 +3,7 @@
     .venv\\Scripts\\python packaging\\make_assets.py ["<puck-peak>\\assets"]
 
   logo_<scale>.png   the header logo (Puck Peak's BB.png) for 100 / 125 / 150 / 200 % screens
+  web/img/logo.png   the same logo, transparent, for the new window
   app.ico            the Puck Peak puck (drawn from favicon.svg's shapes), 16 to 256 px
 
 Needs Pillow; run when the brand assets change. The results are committed, so building the
@@ -15,6 +16,7 @@ from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'legacy_roster', 'data')
+WEB_OUT = os.path.join(ROOT, 'legacy_roster', 'web', 'img')
 DEFAULT_ASSETS = os.path.join(os.path.expanduser('~'), 'Documents', 'puck-peak', 'assets')
 PAGE = (0x0b, 0x13, 0x18)          # the window background the logo sits on
 LOGO_HEIGHT = 46                   # at 100 % scaling
@@ -33,6 +35,17 @@ def logos(assets):
         flat.paste(img, mask=img.split()[3])
         flat.save(os.path.join(OUT, f"logo_{scale}.png"), optimize=True)
         print(f"logo_{scale}.png  {w}x{h}")
+
+
+def web_logo(assets):
+    """The new window's header logo: transparent, 3x the shown height so it stays sharp at 200 %."""
+    src = Image.open(os.path.join(assets, 'BB.png')).convert('RGBA')
+    box = src.getbbox()
+    src = src.crop(box) if box else src
+    h = LOGO_HEIGHT * 3
+    img = src.resize((round(src.width * h / src.height), h), Image.LANCZOS) if src.height > h else src
+    img.save(os.path.join(WEB_OUT, 'logo.png'), optimize=True)
+    print(f"web/img/logo.png  {img.width}x{img.height}")
 
 
 def icon():
@@ -76,5 +89,7 @@ def icon():
 if __name__ == '__main__':
     assets = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_ASSETS
     os.makedirs(OUT, exist_ok=True)
+    os.makedirs(WEB_OUT, exist_ok=True)
     logos(assets)
+    web_logo(assets)
     icon()

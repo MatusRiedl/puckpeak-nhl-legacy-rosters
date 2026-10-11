@@ -7,6 +7,7 @@ it finds him in any later roster whichever record he has there.
 
     edits.json  {"version": 1, "players": {who: edit}, "teams": {slot: team edit}}
     team edit   {"full", "city", "abbr", "logo": "file:<path>",
+                 "equipment": {"tape": 1, "sock_tuck": 3, ...},   for every skater of the team, except what he chose himself
                  "uniforms": {"colours": {"primary": "#rrggbb", "secondary": "#rrggbb", "crest": "file:<path>"},
                               "versions": {"<variant>": "game" | "colours" | "file:<path of a 1024 x 1024 colour map>"}},
                  "ice": {"use": "game" | "logo" | "file:<path>", "arena": "<name on the ice>"}}   (apply_teams;
@@ -18,6 +19,9 @@ it finds him in any later roster whichever record he has there.
                  "ratings": {"Passing": 90, ...},           EA attribute names (schema.EA_SKATER / EA_GOALIE)
                  "ovr": 75,                                 a new player without ratings: all attributes at this level
                  "team": <slot> or "FA",                    move, sign or release
+                 "equipment": {"stick": 105, "tape": 1, ...},  skaters: equipment.CHOICES, goalies: equipment.GOALIE_CHOICES
+                                                            (the game's own model numbers)
+                 "mask_picture": "file:<path>",             a goalie's own picture on his mask (512 x 512)
                  "photo": "file:<path>",                    a picture of the player's own
                  "new": true}                               a player the game does not have: created
 
@@ -28,7 +32,7 @@ report ("edit skipped: ..."), never half done. `verify()` still checks the resul
 import json
 import os
 
-from . import datasource, lines, ratings
+from . import datasource, equipment, lines, ratings
 from . import layout as L
 from .art.portraits import person_key
 from .schema import EA_GOALIE, EA_SKATER, RATING_BASE
@@ -107,6 +111,8 @@ def apply_teams(b, teams, say=None):
             b.team_names[slot] = True
         if e.get('logo'):
             b.logos[slot] = e['logo']
+        if e.get('equipment'):
+            _team_equipment(b, slot, e['equipment'])
         if e.get('uniforms') or e.get('ice'):
             b.looks_edits[slot] = {k: e[k] for k in ('uniforms', 'ice') if e.get(k)}
         b.log.append(['edits', 'team edited', b.R.team_name(slot), ', '.join(sorted(e)), ''])
@@ -128,6 +134,12 @@ def who_of(P, prow, base=1910):
 def people(b):
     """person key -> player row, for everyone on a team or on the free-agent list. A person with
     two records (national-team goalies) is found by the one on a club team."""
+    return people_and_copies(b)[0]
+
+
+def people_and_copies(b):
+    """(people(b), person key -> the player's other records): a person on a club and a national team
+    (23 goalies, Binnington) has a record for each, and an edit has to reach both."""
     R, P = b.R, b.P
     live = b.live_entries()
     fa = {R.link_to_pid.get(l) for l in b.fa_links}
@@ -142,10 +154,14 @@ def people(b):
         prow = R.p_by_id.get(pid)
         if prow is not None:
             rank.setdefault(prow, 0)
-    out = {}
+    out, copies = {}, {}
     for prow in sorted(rank, key=lambda r: (rank[r], r)):
-        out.setdefault(who_of(P, prow), prow)
-    return out
+        who = who_of(P, prow)
+        if who in out:
+            copies.setdefault(who, []).append(prow)
+        else:
+            out[who] = prow
+    return out, copies
 
 
 def restore(R, edits):
@@ -179,7 +195,7 @@ def apply(b, edits, say=None):
     say = say or (lambda msg: None)
     if not edits:
         return set()
-    found = people(b)
+    found, copies = people_and_copies(b)
     changed = set()
     done = skipped = 0
     b.edited = (set(edits), set())     # who the edits name and the records they changed (verify lets them differ)
@@ -204,6 +220,14 @@ def apply(b, edits, say=None):
             b.photos[prow] = e['photo']
         problems = _set_fields(b, prow, e.get('set') or {}, changed)
         _set_ratings(b, prow, e.get('ratings') or {}, e.get('ovr') if e.get('new') else None)
+        problems += _set_equipment(b, prow, e.get('equipment'))
+        for other in copies.get(who, []):          # the same person's national-team record: same name, same ratings
+            b.edited[1].add(other)
+            _set_fields(b, other, {k: v for k, v in (e.get('set') or {}).items() if k not in ('pos', 'num')}, set())
+            _set_ratings(b, other, e.get('ratings') or {})
+            _set_equipment(b, other, e.get('equipment'))
+        if e.get('mask_picture'):
+            problems += _mask_picture(b, [prow] + list(copies.get(who, [])), e['mask_picture'])
         if 'team' in e:
             problems += _move(b, prow, e['team'], changed)
         for text in problems:
@@ -294,6 +318,77 @@ def _set_ratings(b, prow, values, ovr=None):
     for label, v in values.items():
         if label in amap and v is not None:
             table.set(row, amap[label], ratings.clamp(int(v) - RATING_BASE))
+
+
+def _set_equipment(b, prow, values):
+    """A player's own equipment choices (equipment.CHOICES for skaters, equipment.GOALIE_CHOICES for goalies).
+    Returns the problems."""
+    if not values:
+        return []
+    kind = 'goalie' if b.P.get(prow, 'aljv') == 4 else 'skater'
+    table = b.R.f[equipment.KINDS[kind][0]]
+    row = b.equipment_row(prow, kind)
+    if row is None:
+        return ["equipment: this player has no equipment record"]
+    ok, problems = equipment.clean(values, table, kind)
+    equipment.write(table, row, ok, kind)
+    if kind == 'goalie' and 'mask' in ok:
+        table.set(row, equipment.GOALIE_CODE[equipment.MASK_TYPE], 0)
+    if not hasattr(b, 'equipment_set'):
+        b.equipment_set = {}
+    b.equipment_set.setdefault(prow, set()).update(ok)       # the team's choices do not override these
+    return problems
+
+
+def _mask_picture(b, prows, path):
+    """A goalie's own picture on his mask (art/masks.py installs it). The goalie (and his national-team copies, `prows`)
+    wears a mask number that has a texture on the disc and that nobody else wears: his own when it is that already (so a
+    second run changes nothing), else the highest free one. Returns the problems."""
+    rows = [r for r in (b.equipment_row(p, 'goalie') for p in prows if b.P.get(p, 'aljv') == 4) if r is not None]
+    if not rows:
+        return ["mask picture: only a goalie has a mask"]
+    if not hasattr(b, 'mask_looks'):
+        b.mask_looks = {}
+    table = b.R.f[equipment.GOALIE_TABLE]
+    code = equipment.GOALIE_CODE
+    now = table.get(rows[0], code['maskid'])
+    wearers = {i for i in range(table.cur_rec)
+               if table.get(i, code[equipment.MASK_TYPE]) == 0 and table.get(i, code['maskid']) == now}
+    same = [n for n, other in b.mask_looks.items() if other == path]       # the same picture, the same mask
+    if same:
+        n = same[0]
+    elif (table.get(rows[0], code[equipment.MASK_TYPE]) == 0 and 0 < now <= equipment.MASK_LARGEST
+          and now not in equipment.MASK_FILES_MISSING and now not in b.mask_looks and wearers <= set(rows)):
+        n = now
+    else:
+        free = equipment.free_mask_ids(table, b.mask_looks)
+        if not free:
+            return ["mask picture: no free mask is left"]
+        n = free[0]
+    for row in rows:
+        table.set(row, code['maskid'], n)
+        table.set(row, code[equipment.MASK_TYPE], 0)
+    b.mask_looks[n] = path
+    return []
+
+
+def _team_equipment(b, slot, values):
+    """Choices for a whole team (tape, tucks, ...): every skater on it, except for what he has a choice of his own."""
+    table = b.R.f[equipment.TABLE]
+    ok, problems = equipment.clean({c: v for c, v in values.items() if c in equipment.TEAM_WIDE}, table)
+    own = getattr(b, 'equipment_set', {})
+    n = 0
+    for e in b.entries_on(slot):
+        prow = b.prow_of_entry(e)
+        if prow is None or b.P.get(prow, 'aljv') == 4:
+            continue
+        row = b.equipment_row(prow)
+        if row is not None:
+            equipment.write(table, row, {c: v for c, v in ok.items() if c not in own.get(prow, ())})
+            n += 1
+    for text in problems:
+        b.log.append(['edits', 'edit skipped', b.R.team_name(slot), text, ''])
+    b.log.append(['edits', 'team equipment', b.R.team_name(slot), f"{n} skaters", ''])
 
 
 def _move(b, prow, target, changed):

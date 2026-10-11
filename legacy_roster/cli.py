@@ -30,10 +30,21 @@ from .roster import Roster
 from .tdb import RosterFile
 
 
+def _find(args):
+    """RPCS3 from --rpcs3; --game (the .iso or its folder) says where the game is when RPCS3 does not know."""
+    games = {}
+    for path in getattr(args, 'game', None) or []:
+        title = savedata.game_title_id(path)
+        if title not in savedata.GAMES:
+            sys.exit(f"{path} is not a copy of NHL Legacy Edition (give the .iso file or the folder with PS3_GAME)")
+        games[title] = path
+    return savedata.find_rpcs3(args.rpcs3, games=games or None)
+
+
 def _folder(args):
     """(savedata folder, roster folder pointed at or None) from --rpcs3 or --savedata."""
     if args.rpcs3:
-        return savedata.find_rpcs3(args.rpcs3).savedata, None
+        return _find(args).savedata, None
     return savedata.find_savedata(args.savedata)
 
 
@@ -41,7 +52,7 @@ def _disc_slot(args, wanted='disc'):
     """The game's own roster on the disc RPCS3 has (`wanted`: 'disc', 'disc:EU' or 'disc:NA')."""
     if not args.rpcs3:
         sys.exit("the game's own roster needs --rpcs3 <rpcs3.exe>: the disc is found from RPCS3's games list")
-    found = savedata.find_rpcs3(args.rpcs3)
+    found = _find(args)
     region = wanted.partition(':')[2].upper()
     slots = [s for s in found.disc_slots() if not region or s.region == region]
     if not slots:
@@ -78,7 +89,7 @@ def cmd_list(args):
             status = f"not usable: {err}"
         print(f"  {s.folder}  {s.region:<3} {s.name:<24} {s.modified:%Y-%m-%d %H:%M}  {status}")
     if args.rpcs3:
-        for s in savedata.find_rpcs3(args.rpcs3).disc_slots():
+        for s in _find(args).disc_slots():
             print(f"  disc:{s.region}        {s.region:<3} {s.name}  (from {s.path})")
 
 
@@ -134,7 +145,7 @@ def cmd_update(args):
     if args.photos:
         if not args.rpcs3:
             sys.exit("--photos needs --rpcs3 <rpcs3.exe>: the pictures go into RPCS3's game folder")
-        art_rpcs3 = savedata.find_rpcs3(args.rpcs3)
+        art_rpcs3 = _find(args)
     data = None
     if args.research:      # saved inputs instead of live data (tests, reproducing an old build)
         r = datasource.load_research_dir(args.research)
@@ -200,7 +211,7 @@ def _lab_source(args, allow_disc=True):
     from . import seasontest
     if allow_disc and args.source and args.source.lower().startswith('disc'):
         return _disc_slot(args, args.source.lower())
-    folder = savedata.find_rpcs3(args.rpcs3).savedata
+    folder = _find(args).savedata
     saves = savedata.list_rosters(folder)
     if args.source and args.source.lower().startswith('file:'):
         path = args.source[5:].strip('"')
@@ -216,7 +227,7 @@ def _lab_source(args, allow_disc=True):
 def cmd_rendering_test(args):
     """The owner's in-game check that the game takes 3D textures (jerseys, the ice) from loose files."""
     from .art import install, rendering
-    found = savedata.find_rpcs3(args.rpcs3)
+    found = _find(args)
     title = {'EU': 'BLES02153', 'NA': 'BLUS31540'}.get(args.version) if args.version else next(
         (t for t in savedata.GAMES if found.game_disc(t)), None)
     if title is None:
@@ -235,7 +246,7 @@ def cmd_looks_test(args):
     """The owner's in-game check of the new Utah, Seattle and Vegas jerseys and centre-ice logos."""
     from .art import install, looks
     from .art.photopack import PhotoPack, PictureCache
-    found = savedata.find_rpcs3(args.rpcs3)
+    found = _find(args)
     title = {'EU': 'BLES02153', 'NA': 'BLUS31540'}.get(args.version) if args.version else next(
         (t for t in savedata.GAMES if found.game_disc(t)), None)
     if title is None:
@@ -294,7 +305,7 @@ def cmd_photos(args):
 def cmd_league_test(args):
     from .art import lab
     try:
-        lab_slot = lab.league_test(savedata.find_rpcs3(args.rpcs3), args.source)
+        lab_slot = lab.league_test(_find(args), args.source)
     except RuntimeError as err:
         sys.exit(str(err))
     print(f"In the game: Roster Management > Load Roster > \"{lab_slot.name}\". Then look, as docs/ROADMAP.md "
@@ -305,7 +316,7 @@ def cmd_league_test(args):
 def cmd_draft_test(args):
     from .art import lab
     try:
-        lab_slot = lab.draft_test(savedata.find_rpcs3(args.rpcs3), args.source)
+        lab_slot = lab.draft_test(_find(args), args.source)
     except RuntimeError as err:
         sys.exit(str(err))
     print(f"In the game: Roster Management > Load Roster > \"{lab_slot.name}\". Start Be a GM and open the list of "
@@ -321,7 +332,7 @@ def cmd_art_test(args):
             return
         if not args.rpcs3:
             sys.exit("art-test install needs --rpcs3 <rpcs3.exe>")
-        lab_slot = lab.install(savedata.find_rpcs3(args.rpcs3), args.source)
+        lab_slot = lab.install(_find(args), args.source)
     except RuntimeError as err:          # RPCS3 running, test already installed: a sentence for the user
         sys.exit(str(err))
     print(f"In the game: Roster Management > Load Roster > \"{lab_slot.name}\". Then look at the pictures "
@@ -340,6 +351,9 @@ def main(argv=None):
         where.add_argument('--rpcs3', help="your rpcs3.exe (or the folder it is in); the saves are found from there")
         where.add_argument('--savedata',
                            help="instead of --rpcs3: a savedata folder, anything above it, or one roster save folder")
+        p.add_argument('--game', action='append', metavar='ISO_OR_FOLDER',
+                       help="where your NHL Legacy game is (.iso or its folder), when RPCS3 does not list it; "
+                            "repeat for the EU and the NA game")
         if name != 'list':
             p.add_argument('--source', help="roster save to start from (folder or roster name), or disc / disc:EU / "
                                             "disc:NA for the game's own roster; default: the newest save")

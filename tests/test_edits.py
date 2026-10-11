@@ -121,3 +121,71 @@ def test_the_editor_shows_the_roster_as_it_is_and_only_the_edits_made_now(base_b
     changed = {p.name for t in range(32) for p in after.roster(t)} ^ {p.name for t in range(32) for p in before.roster(t)}
     assert changed == {'Connor McDavid', 'Connor McDavidson'}           # only the edited player differs
     assert Roster(res.data).P.get(find(Roster(res.data), 'Connor McDavidson'), 'tRVs') == 98
+
+
+def test_a_rating_edit_reaches_the_national_team_copy_of_a_player(base_bytes, data, built):
+    """A person on a club and on a national team (23 goalies) has two player records: both get the edit."""
+    from legacy_roster.schema import EA_GOALIE
+    R = Roster(built.data)
+    by_person = {}
+    for prow in range(R.P.cur_rec):
+        if R.teams_of(prow):
+            by_person.setdefault(key_of(R, prow), []).append(prow)
+    who, rows = next((w, r) for w, r in by_person.items()
+                     if len(r) == 2 and all(R.P.get(x, 'aljv') == 4 for x in r)
+                     and any(t in L.NATIONAL for x in r for _, t in R.teams_of(x))
+                     and any(t not in L.NATIONAL for x in r for _, t in R.teams_of(x)))
+    label = next(iter(EA_GOALIE))
+    res = pipeline.build(built.data, data, my_edits={who: {'label': 'goalie', 'ratings': {label: 91}}})
+    assert res.ok, res.problems[:5]
+    R2, table = Roster(res.data), 'yuHm'
+    for prow in rows:
+        pid = R.P.get(prow, 'zIBw')
+        row = next(i for i in range(R2.f[table].cur_rec) if R2.f[table].get(i, 'zIBw') == pid)
+        assert R2.f[table].get(row, EA_GOALIE[label]) == 91 - RATING_BASE
+
+
+def test_equipment_edits_reach_the_player_and_his_team_and_change_nothing_twice(base_bytes, data, built):
+    from legacy_roster import equipment
+    R = Roster(built.data)
+    mcd, tkachuk = find(R, 'Connor McDavid'), find(R, 'Matthew Tkachuk')
+    edm = L.API_TO_SLOT['EDM']
+    mine = {key_of(R, mcd): {'label': 'Connor McDavid',
+                             'equipment': {'stick': 105, 'tape': 1, 'sock_tuck': 3, 'jersey_tuck': 1, 'bogus': 5}}}
+    teams = {str(edm): {'equipment': {'tape': 0, 'sock_tuck': 2, 'stick': 99}}}      # stick is not team-wide
+    first = pipeline.build(base_bytes, data, my_edits=mine, team_edits=teams)
+    assert first.ok, first.problems[:5]
+    R = Roster(first.data)
+    table = R.f[equipment.TABLE]
+    rows = equipment.row_of(table)
+    got = equipment.read(table, rows[R.P.get(find(R, 'Connor McDavid'), 'zIBw')])
+    assert got['stick'] == 105 and got['tape'] == 1 and got['sock_tuck'] == 3 and got['jersey_tuck'] == 1
+    tucks = {equipment.read(table, rows[R.P.get(p, 'zIBw')])['sock_tuck']
+              for _, p, _, _, _ in R.team_roster(edm) if p is not None and R.P.get(p, 'aljv') != 4 and p != find(R, 'Connor McDavid')}
+    assert tucks == {2}
+    assert any(r[1] == 'edit skipped' and 'bogus' in r[3] for r in first.log)
+    again = pipeline.build(first.data, data, my_edits=mine, team_edits=teams)
+    assert again.ok and again.data == first.data
+
+
+def test_goalie_equipment_and_a_mask_picture_get_a_mask_number_nobody_wears(base_bytes, data, built):
+    from legacy_roster import equipment
+    R = Roster(built.data)
+    goalie = find(R, 'Connor Hellebuyck')
+    mine = {key_of(R, goalie): {'label': 'Connor Hellebuyck', 'mask_picture': 'file:C:/nowhere/mask.png',
+                                'equipment': {'pads': 5, 'tape': 0, 'neck': 1, 'blocker': 4, 'bogus': 1}}}
+    first = pipeline.build(base_bytes, data, my_edits=mine)
+    assert first.ok, first.problems[:5]
+    R = Roster(first.data)
+    table = R.f[equipment.GOALIE_TABLE]
+    row = equipment.row_of(table, 'goalie')[R.P.get(find(R, 'Connor Hellebuyck'), 'zIBw')]
+    got = equipment.read(table, row, 'goalie')
+    assert got['pads'] == 5 and got['tape'] == 0 and got['neck'] == 1 and got['blocker'] == 4
+    wears = [equipment.read(table, i, 'goalie')['mask'] for i in range(table.cur_rec) if i != row
+             and table.get(i, equipment.GOALIE_CODE[equipment.MASK_TYPE]) == 0]
+    assert wears.count(got['mask']) <= 1 and got['mask'] not in equipment.MASK_FILES_MISSING      # at most his national-team copy
+    assert table.get(row, equipment.GOALIE_CODE[equipment.MASK_TYPE]) == 0
+    assert first.builder.mask_looks == {got['mask']: 'file:C:/nowhere/mask.png'}
+    assert any(r[1] == 'edit skipped' and 'bogus' in r[3] for r in first.log)
+    again = pipeline.build(first.data, data, my_edits=mine)
+    assert again.ok and again.data == first.data

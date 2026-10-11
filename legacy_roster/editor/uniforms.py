@@ -14,7 +14,6 @@ Reading the game's disc takes a moment, so it runs in a worker thread (editor/pi
 the window's queue like everything else in the editor.
 """
 import threading
-import tkinter as tk
 
 import customtkinter as ctk
 

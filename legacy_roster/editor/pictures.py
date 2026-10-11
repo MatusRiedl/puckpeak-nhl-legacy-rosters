@@ -69,6 +69,17 @@ class Pictures:
                 self._maker = looks.Maker(self._disc)
             return fn(self._maker)
 
+    def disc_work(self, fn):
+        """`fn(disc)` with the game's disc (art/lab.Disc), alone on its file handle; FileNotFoundError(NO_GAME)
+        when RPCS3 does not say where the game is."""
+        path = self.rpcs3.game_disc(self.title_id)
+        if not path:
+            raise FileNotFoundError(NO_GAME)
+        with self._lock:
+            if self._disc is None:
+                self._disc = Disc(path)
+            return fn(self._disc)
+
     def current(self, artid, hasportrait):
         if not artid or not hasportrait:
             return None, NO_PHOTO

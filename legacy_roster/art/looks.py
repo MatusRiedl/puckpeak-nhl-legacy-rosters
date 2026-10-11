@@ -32,6 +32,8 @@ JERSEY = "rendering/jersey/texlib_{s}_{a}_{v}.rpsgl"
 PANT = "rendering/pant/texlib_{s}_{a}_{v}.rpsgl"
 SOCK = "rendering/sock/sock_{s}_{a}_{v}_cm.rpsgl"
 CENTRE = "rendering/icesurface/centerlogo_{a}_cm.rpsgl"
+ICE_PICTURE = "rendering/icesurface/icesurface_{a}_bm.rpsgl"      # the rink seen from above: the NHL teams' arenas have one
+DECAL = "rendering/logo/texlib_{a}_{s}_{v}.rpsgl"                  # the logo on the helmets (and shoulders) of a version
 PREVIEW = "fe/ion/artassets/jerseys/jersey_{s}_{a}_{v}.big"
 FONT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'fonts', 'SourceSans3-Bold.ttf')
 
@@ -240,7 +242,6 @@ def _classes(c):
 def recolour_preview(img, mask, palette_colours):
     """The menu preview with its shirt (inside `mask`) in new colours: each colour's class decides which of the three
     new colours it becomes, its brightness (the shading) is kept."""
-    from PIL import Image
     rgba = img.convert('RGBA')
     px, mk = rgba.load(), mask.load()
     inside = [(x, y) for y in range(rgba.height) for x in range(rgba.width) if mk[x, y] and px[x, y][3]]
@@ -483,6 +484,60 @@ def centre_file(raw, art, logo, arena, colour, picture=None):
     return f.build()
 
 
+def has_ice_picture(art):
+    """Does the team's arena have a rink picture on the disc (the NHL teams 0-29 do, not the All-Star slots 30 and 31)?"""
+    return art < 30
+
+
+# where the centre-ice logo sits in the rink picture (512 x 512): its middle, and the half width of what to paint over
+RINK_CENTRE, RINK_REACH = (257, 255), 44
+
+
+def ice_picture_file(raw, art, logo):
+    """The team's rink picture with Arizona's coyote at centre ice taken out and the team's logo in its place (the red
+    line stays across it). The game shows this picture under the centre-ice logo."""
+    from PIL import Image
+    f = rpsgl.Rpsgl(raw)
+    name = f"icesurface_{art}_bm"
+    img = f.image(name).convert('RGBA')
+    cx, cy = RINK_CENTRE
+    box = (cx - RINK_REACH, cy - RINK_REACH, cx + RINK_REACH, cy + RINK_REACH)
+    line = [y for y in range(box[1], box[3]) if _is_red(img.getpixel((box[0] - 2, y)))]
+    for y in range(box[1], box[3]):                        # the ice as it is left of the old logo, across it
+        img.paste(Image.new('RGBA', (box[2] - box[0], 1), img.getpixel((box[0] - 2, y))), (box[0], y))
+    if logo is not None:
+        size = RINK_REACH * 1.3
+        k = min(size / logo.width, size / logo.height)
+        mark = logo.convert('RGBA').resize((max(1, round(logo.width * k)), max(1, round(logo.height * k))), Image.LANCZOS)
+        img.alpha_composite(mark, (cx - mark.width // 2, cy - mark.height // 2))
+    for y in line:                                         # the red line over the logo, as the game's own picture has it
+        red = f.image(name).getpixel((box[0] - 2, y))
+        over = Image.new('RGBA', (box[2] - box[0], 1), red[:3] + (100,))
+        img.alpha_composite(over, (box[0], y))
+    f.replace(name, img)
+    return f.build()
+
+
+def _is_red(c):
+    return c[0] - c[1] > 60 and c[0] - c[2] > 40
+
+
+def decal_file(raw, art, variant, logo):
+    """The team's logo on the helmet (and shoulder) decal of a version, on a white edge as the game's own are."""
+    from PIL import Image
+    from . import images
+    f = rpsgl.Rpsgl(raw)
+    name = f"logo_{art}_{STYLE}_{variant}_0"
+    r = f.rasters[name]
+    canvas = Image.new('RGBA', (r['width'], r['height']), (0, 0, 0, 0))
+    if logo is not None:
+        mark = images._crop_centred(images._outlined(images._fit(images._trim(logo), r['width'] * 0.8, r['height'] * 0.8), 2))
+        mark = images._fit(mark, r['width'] * 0.9, r['height'] * 0.9)
+        canvas.alpha_composite(mark, ((canvas.width - mark.width) // 2, (canvas.height - mark.height) // 2))
+    f.replace(name, canvas)
+    return f.build()
+
+
 # --- the files ---------------------------------------------------------------------------------------------------
 PANT_MASTERS = ((22, 22, 22), (234, 234, 234))                   # the chassis' pants: black with white stripes
 
@@ -646,13 +701,15 @@ class Maker:
         """Every file path a look writes (inside the game's USRDIR)."""
         out = []
         for variant, _light in look.versions:
-            out += [t.format(s=STYLE, a=look.art, v=variant) for t in (JERSEY, PANT, SOCK, PREVIEW)]
+            out += [t.format(s=STYLE, a=look.art, v=variant) for t in (JERSEY, PANT, SOCK, PREVIEW, DECAL)]
         for variant, _light, _path in look.files:
             out.append(JERSEY.format(s=STYLE, a=look.art, v=variant))
             if self.standard(look.art, variant):
                 out += [t.format(s=STYLE, a=look.art, v=variant) for t in (PANT, SOCK, PREVIEW)]
         if look.centre != 'game':
             out.append(CENTRE.format(a=look.art))
+            if has_ice_picture(look.art):
+                out.append(ICE_PICTURE.format(a=look.art))
         return out
 
     def files(self, look):
@@ -675,6 +732,10 @@ class Maker:
             raw = self.disc.find(inner)
             if raw is not None:
                 out[inner] = preview_file(self.preview_of_chassis(light), self.mask(), palette, logo, raw)
+            inner = DECAL.format(s=STYLE, a=art, v=variant)
+            raw = self.disc.render(inner)
+            if raw is not None:
+                out[inner] = decal_file(raw, art, variant, look.logos[0])
         for variant, light, path in look.files:
             mine = Image.open(path)
             mine.load()
@@ -702,6 +763,10 @@ class Maker:
             raw = self.disc.find(inner)
             if raw is not None:
                 out[inner] = preview_file(self.preview_of_chassis(light), self.mask(), palette, crest_of(mine, body), raw)
+        if look.centre != 'game' and has_ice_picture(art):
+            raw = self.disc.render(ICE_PICTURE.format(a=art))
+            if raw is not None:
+                out[ICE_PICTURE.format(a=art)] = ice_picture_file(raw, art, look.logos[1])
         if look.centre != 'game':
             inner = CENTRE.format(a=art)
             raw = self.disc.render(inner)
@@ -724,7 +789,8 @@ def jersey_file(raw, art, variant, chassis, light, palette, logo, colour_map=Non
     base, mine = f"{STYLE}_{CHASSIS_ART}_{v}", f"{STYLE}_{art}_{variant}"
     f.replace(f"jersey_{mine}_cm", colour_map if colour_map is not None
               else jersey_colour(src.image(f"jersey_{base}_cm"), palette, logo))
-    f.copy(f"jersey_{mine}_sm", src, f"jersey_{base}_sm")
+    # the shine map carries the old crest too (a glossy coyote head under the new logo): flattened like the relief
+    f.replace(f"jersey_{mine}_sm", flatten(src.image(f"jersey_{base}_sm"), NORMAL_FLAT))
     f.replace(f"jersey_{mine}_0_nm", flatten(src.image(f"jersey_{base}_0_nm"), NORMAL_FLAT))
     f.replace(f"font_{mine}_cm", recolour(src.image(f"font_{base}_cm"), MASTERS, palette.font))
     f.copy(f"font_{mine}_nm", src, f"font_{base}_nm")
@@ -751,7 +817,7 @@ def sock_file(raw, art, variant, chassis, light, palette):
 
 
 # --- choosing and installing the looks -------------------------------------------------------------------------------
-LOOKS_DRAWING = '#1'               # a change in how the pictures are drawn redraws every installed look once
+LOOKS_DRAWING = '#2'               # a change in how the pictures are drawn redraws every installed look once
 NEW_TEAMS = {22: 'UTA', 30: 'SEA', 31: 'VGK'}        # slot -> NHL.com code (the logo)
 # the versions that use the shared layout, with the roster's own flag for a light jersey (`stockteamjerseys`: the same in
 # the game's own roster and the community's): Utah style 1 v0 v3 dark, v1 v4 light; Seattle v3 v4 dark, v2 v5 light;
@@ -867,9 +933,13 @@ def look_paths(look, maker=None):
         return maker.paths(look)
     paths = []
     for variant, _light in look.versions:
-        paths += [t.format(s=STYLE, a=look.art, v=variant) for t in (JERSEY, PANT, SOCK, PREVIEW)]
+        paths += [t.format(s=STYLE, a=look.art, v=variant) for t in (JERSEY, PANT, SOCK, PREVIEW, DECAL)]
     paths += [JERSEY.format(s=STYLE, a=look.art, v=variant) for variant, _l, _p in look.files]
-    return paths + ([CENTRE.format(a=look.art)] if look.centre != 'game' else [])
+    if look.centre != 'game':
+        paths.append(CENTRE.format(a=look.art))
+        if has_ice_picture(look.art):
+            paths.append(ICE_PICTURE.format(a=look.art))
+    return paths
 
 
 def _file_hash(path):

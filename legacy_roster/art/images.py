@@ -251,7 +251,7 @@ def _trim(img):
             lambda v: 255 if v > 0 else 0)
         if 0.05 < sum(keep.histogram()[255:]) / (w * h) < 0.98:
             img.putalpha(keep.filter(ImageFilter.GaussianBlur(0.8)))
-    box = img.getchannel('A').getbbox()
+    box = img.getchannel('A').point(lambda v: 255 if v > 24 else 0).getbbox()      # soft halos do not count
     return img.crop(box) if box else img
 
 
@@ -281,6 +281,19 @@ def _outlined(img, width, colour=(255, 255, 255)):
                                              shadow.point(lambda v: v * 0.45))), (width // 2, width))
     out.alpha_composite(Image.merge('RGBA', (*Image.new('RGB', base.size, colour).split(), edge)))
     out.alpha_composite(base)
+    return out
+
+
+def _crop_centred(mark):
+    """`mark` (from _outlined, the logo in the middle of its canvas) cropped to what is drawn, but
+    evenly around the middle, so the shadow that falls to one side does not push the logo off centre."""
+    box = mark.getchannel('A').getbbox()
+    if not box:
+        return mark
+    cx, cy = mark.width / 2, mark.height / 2
+    hx, hy = max(cx - box[0], box[2] - cx), max(cy - box[1], box[3] - cy)
+    out = Image.new('RGBA', (round(hx * 2), round(hy * 2)), (0, 0, 0, 0))
+    out.alpha_composite(mark, (round(hx - cx), round(hy - cy)))
     return out
 
 
@@ -325,7 +338,7 @@ def _reflected(img, size):
     the reflection under it fading out within about 50 pixels)."""
     w, h = size
     mark = _outlined(_fit(img, w * 0.72, h * 0.3), max(2, w // 64))
-    mark = mark.crop(mark.getchannel('A').getbbox() or (0, 0, mark.width, mark.height))
+    mark = _crop_centred(mark)
     canvas = Image.new('RGBA', size, (0, 0, 0, 0))
     x, y = round((w - mark.width) / 2), round(h * 0.245 - mark.height / 2)
     canvas.alpha_composite(mark, (x, max(0, y)))
@@ -372,7 +385,7 @@ def logo(img, kind, size, colours=((60, 60, 60), (20, 20, 20))):
         _, _, w, h = _box(size, kind)
         edge = max(2, size[0] // 64) if kind == 't' else 2
         mark = _outlined(_fit(clean, w - 6 * edge, h - 6 * edge), edge)
-        mark = mark.crop(mark.getchannel('A').getbbox() or (0, 0, mark.width, mark.height))
+        mark = _crop_centred(mark)
         return _in_box(_fit(mark, w, h) if mark.width > w or mark.height > h else mark, size, kind)
     if kind == 'c':                         # an enlarged piece of the logo, fading out on the right
         x, y, w, h = _box(size, kind)

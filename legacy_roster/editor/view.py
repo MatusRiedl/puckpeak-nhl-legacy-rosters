@@ -500,8 +500,15 @@ class EditorTab(ctk.CTkFrame):
             p = self.snap.by_who.get(p.who)
             if p is None:
                 return
+        if self.player is not None and p.who == self.player.who:
+            return                              # the same row again: the card is kept as typed
+        lost = None
+        if self.player is not None and self.apply(quiet=True) == 'error':
+            lost = f"The changes to {self.player.name} were not taken: " + self.status.cget('text')
         self.player = p
         self._fill_card(p)
+        if lost:
+            self.set_status(lost, T.RED)
 
     def _fill_card(self, p):
         snap = self.snap
@@ -602,13 +609,14 @@ class EditorTab(ctk.CTkFrame):
             return None, "Pick the team from the list."
         out['team'] = self.choice_slot[f['team']]
         rated = {}
+        current = self.player.ratings if self.player is not None else {}
         for label, w in self.rating_fields.items():
             v = w.get().strip()
             if not v:
                 continue
             try:
                 rated[label] = int(v)
-                if not 40 <= rated[label] <= 99:
+                if rated[label] != current.get(label) and not 40 <= rated[label] <= 99:   # the game's own go below 40
                     raise ValueError
             except ValueError:
                 return None, f"{label}: ratings go from 40 to 99."
@@ -620,17 +628,20 @@ class EditorTab(ctk.CTkFrame):
                 return None, "Give the new player an overall (40-99)."
         return out, None
 
-    def apply(self):
+    def apply(self, quiet=False):
+        """Take the card's values into the edits. Says what happened: 'applied' (the roster is being
+        rebuilt), 'nothing' (the card has no change) or 'error' (the card says why). `quiet`: the
+        player did not press Apply (Save or another player did); a card without a real change is left alone."""
         values, problem = self._read_card()
         if problem:
             self.set_status(problem, T.RED)
-            return
+            return 'error'
         p = self.player
         if p is None:                          # a new player
             who = person_key(values['first'], values['last'], values['birth'])
             if self.snap.by_who.get(who):
                 self.set_status("That player is in the roster already: edit him instead.", T.RED)
-                return
+                return 'error'
             fields = {k: values[k] for k in ('first', 'last', 'num', 'pos', 'shoots', 'birth', 'country',
                                              'height_in', 'weight_lb') if values.get(k) is not None}
             fields['pos'] = model.POS_KEY[values['pos']]
@@ -655,19 +666,23 @@ class EditorTab(ctk.CTkFrame):
             if rated:
                 e['ratings'] = dict(e.get('ratings') or {}, **rated)
             teams = model.club(p.teams)
-            if values['team'] != (teams[0] if teams else 'FA'):
+            team_changed = values['team'] != (teams[0] if teams else 'FA')
+            if team_changed:
                 e['team'] = values['team']
             if self.pending_photo:
                 e['photo'] = self.pending_photo
-            if not changes and not rated and 'team' not in e and not self.pending_photo and key not in self.edits:
-                self.set_status("Nothing changed.")
-                return
+            real = changes or rated or team_changed or self.pending_photo
+            if not real and (quiet or ('team' not in e and key not in self.edits)):
+                if not quiet:
+                    self.set_status("Nothing changed.")
+                return 'nothing'
             self.edits[key] = e
         self.session.add(key if p is not None else who)
         edits.save(self.edits)
         self._update_edits_button()
         self.app.refresh_state()
         self.refresh()
+        return 'applied'
 
     # --- pictures of the player's own ------------------------------------------------------------------
     def _pick_picture(self, title):
@@ -906,10 +921,18 @@ class EditorTab(ctk.CTkFrame):
         fill()
 
     # --- saving ---------------------------------------------------------------------------------------------
-    def save(self):
+    def save(self, applied=False):
         view = self.view
         if view is None or self.source is None:
             return
+        if self.player is not None and not applied:
+            # what is typed on the card but was not applied counts: it is applied first, then the saving goes on
+            state = self.apply(quiet=True)
+            if state == 'error':
+                return                          # the status line says what is wrong with the card
+            if state == 'applied':
+                self.after_busy = lambda: self.save(applied=True)       # when the roster is rebuilt with it
+                return
         built = view[0]
         if built.problems:
             self.set_status("This roster does not pass the safety checks, so it cannot be saved: "

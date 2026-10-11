@@ -22,8 +22,10 @@ import hashlib
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
+import tempfile
 
 from .sfo import FMT_INT, FMT_SPECIAL, FMT_STRING, Sfo
 from .tdb import ROSTER_MAGIC
@@ -193,8 +195,76 @@ def find_savedata(path):
         "dev_hdd0\\home\\00000001\\savedata inside it. A roster must have been saved in the game at least once.")
 
 
+def clean_environment():
+    """The environment for a program started from here. Inside the exe, PyInstaller puts its own unpacked folder
+    (_MEI...) first in the search path for DLLs, so RPCS3 loaded our copy of vcruntime140.dll and stopped with
+    "incorrectly installed". RPCS3 gets the environment the player's own PC has."""
+    env = dict(os.environ)
+    env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
+    base = getattr(sys, '_MEIPASS', None)
+    if base:
+        keep = lambda part: not os.path.normcase(part).startswith(os.path.normcase(base))   # noqa: E731
+        for var in ('PATH', 'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH'):
+            if env.get(var):
+                env[var] = os.pathsep.join(p for p in env[var].split(os.pathsep) if keep(p))
+        env.pop('LD_LIBRARY_PATH_ORIG', None)
+    return env
+
+
+def launch(args, **kw):
+    """Start another program free of this one's unpacked folder. On Windows the exe's launcher also sets the DLL
+    search folder (SetDllDirectory) to _MEI..., and a child inherits it: RPCS3 then loaded our vcruntime140.dll.
+    The setting is cleared while the child starts and put back after."""
+    kw.setdefault('env', clean_environment())
+    base = getattr(sys, '_MEIPASS', None)
+    if os.name != 'nt' or not base:
+        return subprocess.Popen(args, **kw)
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    k32.SetDllDirectoryW(None)
+    try:
+        return subprocess.Popen(args, **kw)
+    finally:
+        k32.SetDllDirectoryW(base)
+
+
 class Rpcs3Error(FileNotFoundError):
     """What the user pointed at is not a usable RPCS3 (the message says why, in plain words)."""
+
+
+class NoGameError(Rpcs3Error):
+    """RPCS3 is fine but has no roster of NHL Legacy and does not say where the game is. `rpcs3` is
+    the RPCS3 found: the window keeps it and asks for the game (an .iso or its folder)."""
+
+    def __init__(self, message, rpcs3):
+        super().__init__(message)
+        self.rpcs3 = rpcs3
+
+
+def game_title_id(path):
+    """The title id (BLES02153) of a game disc image or an extracted game folder, or None when it is
+    neither (read from PS3_GAME/PARAM.SFO)."""
+    from .art.disc import IsoImage
+    path = os.path.normpath((path or '').strip().strip('"'))
+    try:
+        if os.path.isfile(path):
+            iso = IsoImage(path)
+            try:
+                data = iso.read(iso.find('/PS3_GAME/PARAM.SFO'))
+            finally:
+                iso.f.close()
+        else:
+            data = None
+            for cand in (os.path.join(path, 'PS3_GAME', 'PARAM.SFO'), os.path.join(path, 'PARAM.SFO')):
+                if os.path.isfile(cand):
+                    with open(cand, 'rb') as f:
+                        data = f.read()
+                    break
+            if data is None:
+                return None
+        return Sfo(data).get('TITLE_ID')
+    except (OSError, ValueError, KeyError, NotImplementedError, struct.error):
+        return None
 
 
 class Rpcs3:
@@ -203,8 +273,9 @@ class Rpcs3:
     program's folder, as on Windows)."""
     plain = False                       # SaveFolder: roster saves without RPCS3
 
-    def __init__(self, exe, savedata, user, root=None):
+    def __init__(self, exe, savedata, user, root=None, games=None):
         self.exe = exe
+        self.picked = dict(games or {})     # title id -> the game the player pointed at (an .iso or a folder)
         self.folder = root or os.path.dirname(exe)
         self.where = exe or self.folder     # what the window shows and remembers
         self.savedata = savedata
@@ -214,12 +285,13 @@ class Rpcs3:
     def start(self):
         """Start RPCS3 (the program the player picked, else the one installed on this system)."""
         exe = self.exe or shutil.which('rpcs3')
+        flags = getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
         if exe and exe.lower().endswith('.app'):
-            subprocess.Popen(['open', '-a', exe])
+            launch(['open', '-a', exe])
         elif exe:
-            subprocess.Popen([exe], cwd=os.path.dirname(exe))
+            launch([exe], cwd=os.path.dirname(exe), close_fds=True, creationflags=flags)
         elif MAC:
-            subprocess.Popen(['open', '-a', 'RPCS3'])
+            launch(['open', '-a', 'RPCS3'])
 
     def game_folder(self, title_id):
         """The game's own folder on RPCS3's hard disk (its update and any loose files):
@@ -238,7 +310,9 @@ class Rpcs3:
         return [DiscSlot(t, self.game_disc(t)) for t in GAMES if self.game_disc(t)]
 
     def game_disc(self, title_id):
-        """Where RPCS3 has the game itself: a disc image or a folder (config/games.yml), or None."""
+        """Where the game itself is: a disc image or a folder. RPCS3's games list (config/games.yml)
+        first, then the game the player pointed at, then the folders RPCS3 itself keeps a game in
+        (dev_hdd0/disc/<title id>, games/<title id>), or None."""
         for cfg in (os.path.join(self.folder, 'config', 'games.yml'), os.path.join(self.folder, 'games.yml')):
             if not os.path.isfile(cfg):
                 continue
@@ -248,7 +322,15 @@ class Rpcs3:
                     if sep and key.strip().strip('"') == title_id:
                         path = value.strip().strip('"').replace('$(EmulatorDir)', self.folder + os.sep)
                         path = os.path.normpath(path if os.path.isabs(path) else os.path.join(self.folder, path))
-                        return path if os.path.exists(path) else None
+                        if os.path.exists(path):
+                            return path
+        picked = self.picked.get(title_id)
+        if picked and os.path.exists(picked):
+            return picked
+        for where in ((self.dev_hdd0 and os.path.join(self.dev_hdd0, 'disc', title_id)),
+                      os.path.join(self.folder, 'games', title_id)):
+            if where and os.path.isdir(os.path.join(where, 'PS3_GAME')):
+                return where
         return None
 
 
@@ -317,12 +399,15 @@ def _active_user(root):
     return None
 
 
-def find_rpcs3(path):
+def find_rpcs3(path, games=None):
     """Resolve RPCS3 to its NHL Legacy saves. `path`: the program (rpcs3.exe, rpcs3, an AppImage,
     RPCS3.app), the folder holding it or a folder inside that one (such as a save folder remembered
     by version 0.1), or RPCS3's data folder (~/.config/rpcs3 on Linux).
 
-    Raises Rpcs3Error with a message for the user when it is not RPCS3 or has no roster yet."""
+    `games`: {title id: the game's .iso or folder} the player pointed at (found when RPCS3 does not list it).
+
+    Raises Rpcs3Error with a message for the user when it is not RPCS3, and NoGameError (it holds the
+    RPCS3 found) when it has no roster yet and no game to start from."""
     path = os.path.abspath(os.path.expanduser((path or '').strip().strip('"')))
     exe = root = None
     if is_program(path):
@@ -354,13 +439,14 @@ def find_rpcs3(path):
     if not newest:
         # no roster yet: still usable when RPCS3 has the game, which carries its own roster
         user = active or (users[0] if users else '00000001')
-        found = Rpcs3(exe, os.path.join(home, user, 'savedata'), user, root)
+        found = Rpcs3(exe, os.path.join(home, user, 'savedata'), user, root, games)
         if found.disc_slots():
             return found
-        raise Rpcs3Error("RPCS3 was found, but it has no roster of NHL Legacy and does not list the game. Start the "
-                         "game once from RPCS3's game list (or save a roster in the game), then try again.")
+        raise NoGameError("RPCS3 was found, but it has no roster of NHL Legacy and does not know where your game "
+                          "is. Pick the game (the .iso file or its folder) and the program starts from the game's "
+                          "own roster.", found)
     user = active if active in newest else max(newest, key=newest.get)
-    return Rpcs3(exe, os.path.join(home, user, 'savedata'), user, root)
+    return Rpcs3(exe, os.path.join(home, user, 'savedata'), user, root, games)
 
 
 def running_rpcs3():
@@ -584,9 +670,9 @@ def next_free(savedata, title_id):
         m = SLOT_NAME.match(name)
         if m and m.group(1) == title_id:
             used.add(int(m.group(2)))
-    n = max(used, default=-1) + 1
+    n = max(used, default=0) + 1        # never ...00: the game keeps its own roster save there
     if n > 99:
-        free = [k for k in range(100) if k not in used]
+        free = [k for k in range(1, 100) if k not in used]
         if not free:
             raise RuntimeError("all 100 roster save slots are in use; delete an old roster in the game first")
         n = free[0]
@@ -648,15 +734,10 @@ def install(savedata, source, sys_data, name, title_id=None):
     icon, sfo = _model_for(savedata, source, title_id)
     folder = next_free(savedata, title_id)
     target = os.path.join(savedata, folder)
-    # built next to the savedata folder, then moved in: the game never sees a half-written save
-    tmp = os.path.join(os.path.dirname(os.path.abspath(savedata)), f".roster-updater-{folder}")
-    if os.path.exists(tmp):
-        shutil.rmtree(tmp)
-    try:
-        os.makedirs(tmp)
-    except OSError:
-        tmp = target + '.tmp'
-        os.makedirs(tmp)
+    # Build next to the savedata folder, then move in: the game never sees a half-written save.
+    # Reserve a unique path so cleanup can only touch a folder created by this operation.
+    tmp = tempfile.mkdtemp(prefix=f".roster-updater-{folder}-",
+                           dir=os.path.dirname(os.path.abspath(savedata)))
     try:
         if isinstance(icon, bytes):
             with open(os.path.join(tmp, 'ICON0.PNG'), 'wb') as f:

@@ -345,6 +345,18 @@ rebuilds every language file of the disc byte for byte.
   above, so Select Teams showed 'Black ALL-STARS' for Vegas, 'Green ALL-STARS' for Seattle and
   'Arizona COYOTES' for Utah, and the old names of every rebuilt club (owner's screenshots,
   2026-10-06). `loc.NAMES_VERSION` rewrites the installed files when the set of texts changes.
+- **Text limits (found 2026-10-11, Select Teams crashed on switching league).** The longest text, in bytes, that the
+  game's own English file keeps per kind of key: `TEAMLINE1_` 21, `TEAMLINE2_` 17, `NICKLINE2_` 14,
+  `TXT_NICKNAME(_ALT)_` 16, `NHLTEAMNAME_` 31, `NHLCITYNAME_` 21, `CITYLINE1_` 12, `NHLTeamName_Abbr3_` 4,
+  `X_XLA_TEAM_` 6. `loc.fit`/`loc.select_lines` keep every written text within them (each language's own file may
+  have longer ones: `LocFile.limits()` takes the larger), and `install_names` refuses to install a file with a text
+  over its limit. Not proven in the game that a longer text crashes.
+- **An empty text is "no text" (found 2026-10-11).** In the game's own files all 33 empty texts (English) are stored
+  with offset 0xFFFFFFFF (no string); none is a string of length 0. Writing one (the small `TEAMLINE1_` line of
+  `Timrå IK`, `FRI`, `BLU`...) is the most likely cause of the Select Teams crash on SHL/Extraliga teams, because
+  every changed team with an empty first line had one (`LocFile.set`/`set_existing` now mark an empty text absent).
+  The owner's log: access violation in the `EAAudioCore Dac` thread (corrupted memory), the main thread holding
+  the strings `LINE1_NAME`/`LINE2_NAME`, 190 ms after the team's logo was read. Waiting for the in-game check.
 
 ## 8. Schedules
 
@@ -386,3 +398,17 @@ docs/SEASON_PLAN.md uses these facts.
 RPCS3 keeps `log\RPCS3.log` open; read it with shared access. Useful searches:
 `ShowSaveDataList` (which roster was loaded), `Access violation` (crashes),
 `sys_fs_open(path=` (which screens and art files were opened).
+
+## 10. Looks: rasters of the 3D files (read 2026-10-11, EU disc)
+
+- `rendering/jersey/texlib_<style>_<art>_<v>.rpsgl`: `jersey_.._cm` (DXT1), `jersey_.._sm` (shine, DXT1, carries the crest), `jersey_.._0_nm`
+  (relief, DXT5), `font_.._cm/nm/sm` (numbers). `rendering/jersey/name_<style>_<art>_<v>_cm.rpsgl` is a small name plate (not touched).
+- `rendering/logo/texlib_<art>_<style>_<v>.rpsgl`: `logo_.._0` 256x128 DXT5, the logo on helmet and shoulder; `_1` (128x64) and `_2`
+  (128x128) are empty for Utah.
+- `rendering/enviro/helmet_<art>.rpsgl`: a cube map (6 DXT5 faces of 256x256 with 9 mipmaps, 87424 bytes each from byte 512): the
+  arena as the helmet reflects it. `Rpsgl` reads it as "not DXT1 or DXT5" (one raster of 524544 bytes).
+- `rendering/icesurface/`: `centerlogo_<art>_cm` 1024x1024, `icesurface_<art>_bm` 512x512 (rink from above, the logo baked in),
+  `ice_cline_`, `ice_hotspot_`. Arena art 30 / 31 (All-Star) have no `_bm`, no crowd, no `helmet_` and no environment movie.
+- `stockteamequipmenttable` (`vbHh`): rows per team, equipment 1-8, variant, era; 9 colour zones. Arizona's red (218,57,28) / (207,61,28)
+  sits in zone 3 of equipment 1-4 of team 22.
+

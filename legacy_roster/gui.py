@@ -25,6 +25,7 @@ from . import edits as my_edits
 from .progress import fraction
 from .roster import Roster
 from .stock import StockError
+from .gui_state import is_current_scan, sync_packed_order
 from .widgets import Banner, Card, Choice, GhostButton, PrimaryButton, RosterRow, SwitchRow, configure_if_changed, flag_image
 
 SETTINGS = 'settings.json'
@@ -128,6 +129,7 @@ class App:
         self.details_grown = self.banner_grown = 0      # how much those panels made the window grow
         self.scanning = False       # the rosters are being read (in the background)
         self.checked = {}           # (SYS-DATA path, size, time) -> None or why it cannot be used
+        self._scan_id = 0            # only the newest background roster scan may update the window
         self._status = None         # what the status line shows: (text, colour)
         self.export_mode = bool(self.settings.get(EXPORT_ONLY))     # no RPCS3: update a roster file, write a new SYS-DATA
         picked = self.settings.get(EXPORT_FILE)
@@ -227,6 +229,11 @@ class App:
                                             fg_color=T.ACCENT, hover_color=T.ACCENT_DEEP, border_color=T.BORDER_STRONG,
                                             checkbox_width=20, checkbox_height=20)
         self.export_check.pack(anchor='w', pady=(8, 0))
+        # RPCS3 has no roster yet and does not list the game: the player points at it (.iso or folder)
+        self.game_row = ctk.CTkFrame(card.body, fg_color='transparent')
+        PrimaryButton(self.game_row, "Pick the game (.iso)...", self.browse_game, width=200, height=38).pack(side='left')
+        GhostButton(self.game_row, "or its folder...", lambda: self.browse_game(folder=True), width=140,
+                    height=38).pack(side='left', padx=(8, 0))
         return card
 
     def _card_roster(self, master):
@@ -235,6 +242,8 @@ class App:
         self.roster_list = ctk.CTkScrollableFrame(card.body, fg_color='transparent', height=96,
                                                   scrollbar_button_color=T.BORDER_STRONG,
                                                   scrollbar_button_hover_color=T.FAINT)
+        self.fresh_row = ctk.CTkFrame(card.body, fg_color='transparent')
+        self.fresh_buttons = {}
         self.roster_list.pack(fill='both', expand=True)
         self.roster_empty = ctk.CTkLabel(card.body, text="Pick RPCS3 first. Your rosters will be listed here.",
                                          font=T.font(14), text_color=T.FAINT)
@@ -322,8 +331,11 @@ class App:
         self.go = PrimaryButton(row, "Update roster", self.start, width=190)
         configure_if_changed(self.go, text="Update roster")
         self.go.grid(row=0, column=3, padx=(12, 0))
-        self.name_note = ctk.CTkLabel(card.body, text="This is the name you will see in the game's Load Roster list.",
-                                      font=T.font(13), text_color=T.MUTED, anchor='w', justify='left', wraplength=900)
+        self.name_note = ctk.CTkLabel(
+            card.body,
+            text="Updating this roster makes a backup first. Saving as a new roster leaves existing saves untouched. "
+                 "RPCS3 must be closed for in-place updates.",
+            font=T.font(13), text_color=T.MUTED, anchor='w', justify='left', wraplength=900)
         self.name_note.pack(fill='x', pady=(8, 0))
         return card
 
@@ -515,6 +527,8 @@ class App:
         """Find the saves behind `path` (RPCS3 or its folder) and list the rosters. Reading the
         saves takes a moment each, so it happens in the background; the window stays as it is
         meanwhile, and saves already read (same file, size and time) are not read again."""
+        self._scan_id += 1
+        scan_id = self._scan_id
         self.scanning = True
         if path and not self.slots:
             configure_if_changed(self.rpcs3_note, text="Looking for your rosters...", text_color=T.MUTED)
@@ -525,7 +539,9 @@ class App:
             found, slots, usable, versions, problem, picked = None, [], {}, [], None, None
             if path:
                 try:
-                    found = savedata.find_rpcs3(path)
+                    found = savedata.find_rpcs3(path, games=self.settings.get('games'))
+                except savedata.NoGameError as err:         # RPCS3 itself is fine: it only needs the game
+                    found = err.rpcs3
                 except (savedata.Rpcs3Error, OSError) as err:
                     try:                    # not RPCS3: a folder with roster saves will do (savedata.SaveFolder)
                         found, picked = savedata.open_saves(path)
@@ -552,12 +568,14 @@ class App:
                 slots = slots + found.disc_slots()
             running = savedata.running_rpcs3() is not None if found else False
             self.queue.put(('ui', lambda: self._scanned(found, slots, usable, versions, problem, quiet, running,
-                                                        checked, picked)))
+                                                        checked, picked, scan_id)))
         threading.Thread(target=scan, daemon=True).start()
 
-    def _scanned(self, found, slots, usable, versions, problem, quiet, running, checked, picked=None):
+    def _scanned(self, found, slots, usable, versions, problem, quiet, running, checked, picked=None, scan_id=None):
         """The rosters read by set_rpcs3, shown (on the window's thread). `picked`: the roster save
         the player pointed at directly, selected."""
+        if scan_id is not None and not is_current_scan(scan_id, self._scan_id):
+            return
         self.scanning = False
         if picked:
             self.selected = picked
@@ -586,9 +604,39 @@ class App:
                 self.change.grid_remove()
             if not self.find.winfo_manager():
                 self.find.grid(row=0, column=1, padx=(10, 0))
+        needs_game = bool(self.rpcs3 and not self.rpcs3.plain and not self.rpcs3.disc_slots())
+        if needs_game and not self.game_row.winfo_manager():
+            self.game_row.pack(anchor='w', pady=(8, 0), before=self.export_check)
+        elif not needs_game and self.game_row.winfo_manager():
+            self.game_row.pack_forget()
         self.list_rosters()
+        self.update_disc_actions()
+        self.refresh_state()
         if self.export_mode:
             self._export_look()
+
+    def browse_game(self, folder=False):
+        """The player points at the game (RPCS3 does not list it): the program keeps the place and starts
+        again from there, with "The game's own roster" among the rosters."""
+        if not self.rpcs3:
+            return
+        start = os.path.expanduser('~')
+        if folder:
+            path = filedialog.askdirectory(parent=self.root, initialdir=start, mustexist=True,
+                                           title="Pick the folder of your NHL Legacy game (it holds PS3_GAME)")
+        else:
+            path = filedialog.askopenfilename(parent=self.root, initialdir=start, title="Pick your NHL Legacy game",
+                                              filetypes=[("Game disc image", "*.iso"), ("All files", "*.*")])
+        if not path:
+            return
+        title = savedata.game_title_id(os.path.normpath(path))
+        if title not in savedata.GAMES:
+            messagebox.showwarning("Not NHL Legacy", "That is not a copy of NHL Legacy Edition. Pick the game's .iso "
+                                   "file, or the folder that holds its PS3_GAME folder.")
+            return
+        self.settings.setdefault('games', {})[title] = os.path.normpath(path)
+        save_settings(self.settings)
+        self.set_rpcs3(self.rpcs3.where)
 
     def found_text(self):
         """'Found 9 rosters of NHL Legacy: 8 EU, 1 NA.' and a word on a version without rosters."""
@@ -597,6 +645,10 @@ class App:
             n = len(saves)
             return (f"Found {n} roster{'s' if n != 1 else ''} of NHL Legacy in this folder. Without RPCS3 the new roster "
                     "is saved next to them; photos and the game's own roster need RPCS3.")
+        if not saves and not self.slots:
+            return ("No roster is saved in RPCS3 yet, and RPCS3 does not say where your game is. Pick the game "
+                    "(its .iso file or its folder): the program then starts from the game's own roster, made from "
+                    "your game disc and brought up to today.")
         if not saves:
             return ("No roster is saved in RPCS3 yet. Start from the game's own roster (listed below): it is "
                     "made from your game disc and brought up to today.")
@@ -673,11 +725,39 @@ class App:
             after = next((self.rows[f] for f in order[k + 1:] if f in self.rows), None)
             row.pack(fill='x', pady=(0, 5), padx=(1, 10), **({'before': after} if after else {}))
             self.rows[folder] = row
+        sync_packed_order(self.roster_list, [self.rows[folder] for folder in order])
         keep = self.selected if self.selected in self.rows and self.usable.get(self.selected) is None else None
         first = next((s.folder for s in self.slots if self.usable[s.folder] is None and not getattr(s, 'disc', False)),
                      next((s.folder for s in self.slots if self.usable[s.folder] is None), None))
         self.select(keep or first)
         self.root.after(50, self.reveal_selected)
+
+    def update_disc_actions(self):
+        """Offer direct source buttons for a new save based on each detected game disc."""
+        discs = [s for s in self.slots if getattr(s, 'disc', False)]
+        wanted = {s.title_id: s.region for s in discs}
+        shown = {key: region for key, (region, _button) in self.fresh_buttons.items()}
+        if wanted == shown:
+            if self.export_mode or not discs:
+                self.fresh_row.pack_forget()
+            elif not self.fresh_row.winfo_manager():
+                self.fresh_row.pack(fill='x', pady=(0, 6), before=self.roster_list._parent_frame)
+            return
+        for child in self.fresh_row.winfo_children():
+            child.destroy()
+        self.fresh_buttons.clear()
+        if not discs or self.export_mode:
+            self.fresh_row.pack_forget()
+            return
+        if not self.fresh_row.winfo_manager():
+            self.fresh_row.pack(fill='x', pady=(0, 6), before=self.roster_list._parent_frame)
+        ctk.CTkLabel(self.fresh_row, text="Start fresh:", font=T.font(12, 'semibold'),
+                     text_color=T.MUTED).pack(side='left', padx=(0, 6))
+        for slot in discs:
+            button = GhostButton(self.fresh_row, f"New from {slot.region} disc",
+                                 lambda folder=slot.folder: self.select(folder), height=28)
+            button.pack(side='left', padx=(0, 6))
+            self.fresh_buttons[slot.title_id] = (slot.region, button)
 
     def slot_of(self, folder):
         return next((s for s in self.slots if s.folder == folder), None)
@@ -743,16 +823,25 @@ class App:
     def select(self, folder):
         if self.busy:
             return
+        previous = self.selected
         if folder != self.selected and self.save_pick != BOTH:
             self.save_pick = None           # a single version follows the roster picked
         if folder != self.selected and self.save_mode == IN_PLACE:
             self.name_edited = False        # the name box shows the roster picked
         self.selected = folder
-        for name, row in self.rows.items():
-            row.select(name == folder)
-        self.refresh_state()
+        slot = self.selected_slot()
+        if folder != previous and getattr(slot, 'disc', False) and not self.name_edited:
+            self.name.set(savedata.default_name())
+        if previous != folder:
+            if previous in self.rows:
+                self.rows[previous].select(False)
+            if folder in self.rows:
+                self.rows[folder].select(True)
+        elif folder in self.rows:
+            self.rows[folder].select(True)   # the selected row may have been rebuilt after its details changed
+        self.refresh_state(selection_only=True)
 
-    def refresh_state(self):
+    def refresh_state(self, selection_only=False):
         """Bring every control in line with the state. Runs on every click, so it only touches what
         actually changes (each change redraws a widget)."""
         if self.export_mode:
@@ -760,8 +849,11 @@ class App:
             return
         slot = self.selected_slot()
         ready = slot is not None and not self.busy and not self.scanning
-        for row in self.rows.values():
-            row.enable_delete(not self.busy and not self.scanning)
+        delete_enabled = not self.busy and not self.scanning
+        if getattr(self, '_delete_enabled', None) != delete_enabled:
+            self._delete_enabled = delete_enabled
+            for row in self.rows.values():
+                row.enable_delete(delete_enabled)
         in_place = self.in_place(slot)
         self.mode_choice.set(IN_PLACE if in_place else AS_NEW if slot is not None else self.save_mode)
         self.mode_choice.enable(not self.busy)
@@ -777,20 +869,6 @@ class App:
         if in_place:
             if not self.name_edited and self.name.get() != slot.name:
                 self.name.set(slot.name)
-            closed = " Make sure RPCS3 is closed." if self.rpcs3.plain else " RPCS3 must be closed."
-            configure_if_changed(self.name_note, text=(
-                f"\"{slot.name}\" ({slot.folder}, {slot.region}) gets the newest data; the name stays unless you change "
-                f"it. The old roster is first copied to the program's backups folder (the last {savedata.KEEP_BACKUPS} "
-                f"are kept).{closed}"))
-        elif slot is not None:
-            where = ", ".join(f"folder {savedata.next_free(self.rpcs3.savedata, t)} for the {savedata.region(t)} game"
-                              for t in self.save_targets(slot))
-            why = (" The game's own roster is always saved as a new roster." if getattr(slot, 'disc', False) and
-                   self.save_mode == IN_PLACE else "")
-            configure_if_changed(self.name_note, text=f"Saved as a new roster next to the others ({where}). "
-                                                      f"\"{slot.name}\" and your other rosters are not changed.{why}")
-        else:
-            configure_if_changed(self.name_note, text="This is the name you will see in the game's Load Roster list.")
         for row, (_part, var) in list(self.marks.items()):    # a switch turned on again cancels its "Restore"
             if var.get():
                 del self.marks[row]
@@ -809,6 +887,8 @@ class App:
                             "Start with step 1: find RPCS3." if self.rpcs3 is None else
                             "Switch on at least one thing to update." if slot is not None else
                             "None of the rosters found can be updated.")
+        if selection_only:
+            return
         plain = self.rpcs3 is not None and self.rpcs3.plain
         for row in self.switches:
             row.enable(not self.busy and not (plain and row is self.photos_row))
@@ -1007,6 +1087,7 @@ class App:
         save_settings(self.settings)
         self.hide_banner()
         if self.export_mode:
+            self.fresh_row.pack_forget()
             self.roster_list.pack_forget()
             self.roster_empty.pack_forget()
             self.export_box.pack(fill='both', expand=True)

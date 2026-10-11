@@ -50,7 +50,11 @@ the 2014-15 players, and brings it up to today:
 - The national teams are filled again with today's players.
 - Coachella Valley and Henderson are left out: the game's own roster has no team for them. Make a
   team of your own with that name and the update fills it (below).
-- The first roster of a game that has no save yet gets the game's own icon.
+- The first roster of a game that has no save yet gets the game's own icon. A new roster is saved as `...01` (never `...00`,
+  the game's own save slot).
+- **RPCS3 does not list your game?** (a fresh RPCS3, or a game that is not in its games list) The window then shows
+  **Pick the game (.iso)...** and **or its folder...**. Pick the game's `.iso` file, or the folder that holds `PS3_GAME`;
+  the program remembers it and starts from the game's own roster. Command line: `--game <iso or folder>`.
 
 This is new in 0.6.0 and has not been played in the game yet. Tell us how it works.
 
@@ -75,8 +79,8 @@ itself; if it does not, press **Find RPCS3** and pick it.
   *Open*) and `NHLLegacyRosterUpdater-<version>-linux.tar.gz` (Linux: unpack, run
   `./NHLLegacyRosterUpdater`), on the release page. They are built on GitHub's machines
   (`.github/workflows/build.yml`) and attached to the release a few minutes after it appears.
-- **Or run it from source** (below) with Python 3.10 or newer and `pip install customtkinter pillow`
-  (on Linux also the `python3-tk` package).
+- **Or run it from source** (below) with Python 3.10 or newer and `pip install pywebview pillow`
+  (on Linux also WebKitGTK, `gir1.2-webkit2-4.1`, and PyGObject).
 
 ## Without RPCS3 (a Mac, a Linux PC, CrossOver, Wine)
 
@@ -199,6 +203,8 @@ and player with position, number, age, nationality and overall, with the player'
 3. **Which roster should be updated?** Pick the roster to start from. Each one carries the flag of
    its version (EU or NA); rosters made by this program are marked *made here*; rosters it cannot
    use are greyed out with the reason. The game's own roster is at the end of the list.
+   To start a separate roster from the game's own players, choose **New from EU disc** or
+   **New from NA disc** when that game is listed in RPCS3. You do not need an existing roster save.
 4. **What should be updated?** Switch on what you want and press **Update roster**. It takes
    about a minute. With both versions of the game in RPCS3, choose first who gets the new roster
    (**Save for**: EU, NA or both).
@@ -256,11 +262,12 @@ CSV with readable column names, for roster editors.
 
 ## Running from source
 
-Python 3.10 or newer. The command line needs nothing else; the window needs one package:
+Python 3.10 or newer. The command line needs nothing else; the window needs pywebview and Pillow:
 
 ```
-pip install customtkinter
+pip install pywebview pillow
 python -m legacy_roster                      # the window
+python -m legacy_roster --classic            # the old window of 0.9 (needs: pip install customtkinter)
 python -m legacy_roster update --rpcs3 ...   # the command line
 ```
 
@@ -279,7 +286,10 @@ templates and its icon are read from your copy of the game). It is not affiliate
 NHL or the IIHF. Code is under the [MIT licence](LICENSE) (c) 2026 Matus Riedl.
 
 A [Puck Peak](https://www.puckpeak.com) project (NHL & hockey analytics like never before): the
-window wears Puck Peak's look and logo, and the logo links to www.puckpeak.com. It uses
-[CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) (CC0) and the font
+window wears Puck Peak's look and logo, and the logo links to www.puckpeak.com. The window is a page shown by
+[pywebview](https://pywebview.flowrl.com) (BSD), drawn with [React](https://react.dev) (MIT) and
+[htm](https://github.com/developit/htm) (Apache 2.0) (licences in `legacy_roster/web/vendor/LICENSES.txt`), in the font
+[Titillium Web](https://fonts.google.com/specimen/Titillium+Web) (SIL Open Font License, `legacy_roster/web/fonts`).
+The classic window of 0.9 uses [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) (CC0) and the font
 [Source Sans 3](https://github.com/adobe-fonts/source-sans) (SIL Open Font License, included in
 `legacy_roster/data/fonts`).

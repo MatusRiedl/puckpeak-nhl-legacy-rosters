@@ -9,7 +9,7 @@ for data refreshes and releases; [ROADMAP.md](ROADMAP.md) for what is done and w
 | Need | For | How |
 |---|---|---|
 | Python 3.10+ (developed on 3.13) | everything | python.org |
-| `.venv` with PyInstaller, CustomTkinter | the window, the exe | `powershell -ExecutionPolicy Bypass -File packaging\build.ps1` creates it (and builds) |
+| `.venv` with PyInstaller, pywebview (pinned 6.2.1), CustomTkinter | the window, the exe | `powershell -ExecutionPolicy Bypass -File packaging\build.ps1` creates it (and builds) |
 | Pillow in `.venv` | images, window screenshots | `.venv\Scripts\python -m pip install pillow` |
 | pytest | tests | `python -m pip install pytest` (any Python that can import the package) |
 | **A base roster save** | most tests, screenshots | see below |
@@ -29,7 +29,8 @@ read, never changed. Without it those tests skip. In PowerShell:
 Run from source:
 
 ```
-python -m legacy_roster                                   # the window (needs customtkinter)
+.venv\Scripts\python -m legacy_roster                     # the window (needs pywebview; --classic: the 0.9 window)
+$env:LEGACY_ROSTER_DEVTOOLS='1'                           # before it: the page's developer tools (F12) in the window
 python -m legacy_roster list   --rpcs3 <path to rpcs3.exe>
 python -m legacy_roster update --rpcs3 <path> --dry-run   # build and check, write nothing
 ```
@@ -46,7 +47,10 @@ legacy_roster/   the program (see ARCHITECTURE.md for what each module does)
   art/disc.py art/bigf.py art/refpack.py art/dds.py art/lab.py     menu art: the game's file format, the art test
   verify.py                                                        integrity checks
   datasource.py savedata.py pipeline.py                            data, saves, the job
-  gui.py widgets.py theme.py progress.py cli.py __main__.py        front ends
+  window/ (pywebview)  app/ (controllers)  web/ (the page)          the window (0.10)
+  editor/card.py                                                   the player card's checks (both windows)
+  progress.py cli.py __main__.py                                   progress bar, command line, start
+  gui.py widgets.py theme.py editor/view.py editor/uniforms.py     the classic window (fallback, frozen)
   data/             data pack, icon, header logos, fonts (Source Sans 3, OFL)
 tools/           maintainer scripts, not part of the exe
   build_datapack.py   the data pack            providers/   one module per data source (web.py: shared helpers)
@@ -77,6 +81,9 @@ python -m pytest -q                 # about a minute (every league is built twic
 | `test_datasource.py` | the newest readable pack wins; a pack for a newer program is skipped |
 | `test_art.py` | RefPack round trips; art files read and take a new image (parts, trailer kept); 32-bit logos exact; the art test installs into a fake RPCS3 and removes itself, restoring a file that was there before (synthetic art, no EA data); the logo styles incl. the favourite-team `r`, only for NHL teams; pictures downloaded once (cache) and originals always kept (another pack's file, a lost list of installed files) |
 | `test_savedata.py` | finding RPCS3 (relocated `dev_hdd0`, several users, folder inside RPCS3, plain-word errors), listing, installing without touching the source, folder numbering, names; an RPCS3 with no roster but the game listed (the game's own roster, PARAM.SFO from scratch byte-identical to a real one, the disc's icon) |
+| `test_app.py` | the window's controllers without a window (FakeHost, a pretend RPCS3): the Update tab's state, the editor's Apply / Undo, an unapplied card taken on Save, a bad card on switching player, search, team, My edits, a new player, Jerseys and ice |
+| `test_editor_card.py` | the player card's checks: ratings below 40 the game gives are kept, error texts, unchanged vs changed, rename, new player, change notes |
+| `test_window.py` | the pusher sends each slice once; every page file is local and every import resolves; every `call('x')` in the page exists on `Api` |
 | `test_progress.py` | progress mapping replays a real update's messages in order; every other message is a known remark (`progress.REMARKS`) |
 
 The build tests use the bundled data pack only (its NHL snapshot instead of live NHL.com), so
@@ -89,21 +96,21 @@ Before calling a change done:
 1. `python -m pytest -q` is green (and not because the base roster is missing: look for skips).
 2. For engine changes: the second-run tests still pass. A build on its own output must be
    byte-identical; if your step is not, it has hidden order or randomness.
-3. For window changes: look at it. `tools/window_shot.py` opens the window on a temporary fake
-   RPCS3 (never your real saves) in any state and saves a picture:
+3. For window changes: look at it. `tools/window_shot.py` drives the real controllers on a temporary fake
+   RPCS3 (never your real saves) into a state and has Microsoft Edge (headless, nothing shows) draw the page with
+   that state put into it. Same picture on every PC, at any scaling:
    ```
-   .venv\Scripts\python tools\window_shot.py ready  shot.png
+   .venv\Scripts\python tools\window_shot.py ready  shot.png --show-path C:\Games\RPCS3\rpcs3.exe
    .venv\Scripts\python tools\window_shot.py done   shot.png --all          # runs a real offline update
-   .venv\Scripts\python tools\window_shot.py ready  shot.png --scale 0.5 --screen-lines 768   # 100 % laptop, on a 200 % screen
+   .venv\Scripts\python tools\window_shot.py editor shot.png --scale 1.5 --screen-lines 768
+   .venv\Scripts\python tools\window_shot.py ready  x --browser            # the page in your browser, to try CSS live
    ```
-   Check 100 %, 150 % and 200 % scaling and a 768-line screen. The pretend RPCS3 has an EU and
+   Check 1, 1.5 and 2 `--scale` and `--screen-lines 768`. The pretend RPCS3 has an EU and
    an NA roster (flags, "Save for"); `--disc <your game image>` (read only) lets the Roster editor's
-   card show real portraits and adds the game's own roster to the list. The window reads the
-   rosters in the background; `window_shot.py` waits for `App.scanning` to end.
-   **Pitfall:** `--scale` below 1 (100 % on a 150 % screen: 0.667) leaves the list of switches in
-   card 3 blank in the picture: CustomTkinter places its rows outside the scrolled area at that
-   emulated scaling. Version 0.4.0 shows the same; at real scalings (1.0 and up) the list is fine.
-   Judge the rest of the 100 % picture, and the switches at 150 % / 200 %.
+   card show real portraits and adds the game's own roster to the list. `--show-path` also replaces the
+   temporary and home folders in the pictured texts (backup paths name the user). `--live` opens the real
+   window and paints it with PrintWindow; WebView2 draws on the GPU, so that picture can come out blank or
+   cut: trust the headless pictures.
 4. For anything shipped: build the exe and start it (MAINTAINING.md, "Smoke test").
 5. Anything that changes what is written into the save (new step, new rule, new league) also
    needs a test **in the game** by the project owner before it leaves `pipeline.EXPERIMENTAL`
@@ -187,12 +194,18 @@ that structure.
 
 ### Change the window
 
-- Components live in `widgets.py`, placement and behaviour in `gui.py`, colours and fonts in
-  `theme.py` (Puck Peak's tokens). Keep text for players short and plain.
-- After any change that affects what is possible (a selection, a running update), call
-  `App.refresh_state()`.
-- The engine runs in a worker thread; send results to the window through `self.queue` and
-  handle them in `App.poll()`. Never touch widgets from the worker.
+- What the window knows and may do is in the controllers (`app/update.py`, `app/editor.py`,
+  `app/uniforms.py`): add a field to `snapshot()`, a method for the action, and call
+  `self.changed()` after changing state (it is pushed to the page on the next tick). Take the
+  controller's `lock` in every method the page can call (each call comes on its own thread).
+- The page's call goes into `window/api.py` (one line per method; `tests/test_window.py` checks that
+  every `call('x')` in the page has one). The look is `web/js/*.js` (React through `htm` templates,
+  no build step: edit and reload) and `web/css/*.css`; shared pieces (Button, Toggle, Segmented,
+  TextField, Modal) are in `ui.js`. Animate only `transform` and `opacity`.
+- Try CSS in a normal browser: `tools/window_shot.py <state> x --browser`.
+- Text for players stays short and plain, kept in `app/texts.py` or the controller, not in the page.
+- The classic window (`gui.py`, `widgets.py`, `theme.py`, `editor/view.py`, `editor/uniforms.py`) is
+  frozen: fix only what breaks it; it goes in 0.11.
 - Images: `.venv\Scripts\python packaging\make_assets.py "<puck-peak>\assets"` rebuilds the
   header logos (`logo_100/125/150/200.png`, one per screen scaling) and `app.ico` from Puck
   Peak's `BB.png` and favicon. The results are committed.
@@ -216,11 +229,12 @@ builds the Mac and Linux programs (from the Actions tab, or on a tag `v*`).
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
-Creates `.venv` if needed, installs PyInstaller, CustomTkinter, Pillow and certifi there (certifi's
+Creates `.venv` if needed, installs PyInstaller, pywebview, CustomTkinter, Pillow and certifi there (certifi's
 `cacert.pem` goes into the exe as `legacy_roster\data\cacert.pem`, see "Things that are not
 obvious"), and writes
-`dist\NHLLegacyRosterUpdater.exe` (window, with `--collect-all customtkinter`) and
-`dist\NHLLegacyRosterUpdater-cli.exe` (without Tk). Both carry Pillow for "Photos and logos";
+`dist\NHLLegacyRosterUpdater.exe` (window: `legacy_roster\web` added as data, `--collect-all` webview, pythonnet,
+clr_loader and customtkinter; about 120 MB with the photo pack) and
+`dist\NHLLegacyRosterUpdater-cli.exe` (without Tk or pywebview). Both carry Pillow for "Photos and logos";
 its image readers are named with `--hidden-import` because Pillow loads them by name.
 Close a running copy first: Windows does not let a running exe be replaced (the script stops
 with a message). `build/` and `dist/` are git-ignored.

@@ -57,10 +57,13 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    git (`work/` is ignored); a bundling switch stays off until its author agrees.
 8. **Public pictures must not show the owner's user name, desktop or other programs.** Use
    `tools/window_shot.py --show-path`.
-9. The engine (`legacy_roster/` except `gui.py`, `widgets.py`, `theme.py` and `editor/`) uses the
+9. The engine (`legacy_roster/` except `window/`, `web/`, `gui.py`, `widgets.py`, `theme.py` and `editor/`) uses the
    standard library only; the exceptions are `art/images.py` and `art/looks.py` (Pillow, imported only when "Photos
-   and logos" is on). The window may use CustomTkinter, and Pillow for pictures
-   (`editor/pictures.py`). Leave `work/` (the original lab) untouched.
+   and logos" is on). `app/` (the window's logic) uses the standard library, and Pillow only inside functions.
+   pywebview is imported only in `window/`. `web/` is the page: plain files, offline (React and htm vendored in
+   `web/vendor/`, no Node, no build step, nothing loaded from the internet). The classic window (`gui.py`,
+   `widgets.py`, `theme.py`, `editor/view.py`, `editor/uniforms.py`) may use CustomTkinter; it is frozen in 0.10.x
+   and goes in 0.11. Leave `work/` (the original lab) untouched.
 10. **Photos and logos ship inside the exe; EA files never ship.** The owner decided (2026-10-03,
     and 2026-10-04 for a single program) that this community project carries the drawn photos and
     logos inside `NHLLegacyRosterUpdater.exe` (`legacy_roster/data/photopack.zip`, made by
@@ -77,13 +80,13 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
 
 ```
 python -m pytest -q                                            # tests (need a base roster, see DEVELOPING.md)
-python -m legacy_roster                                        # the window, from source (needs customtkinter)
+.venv\Scripts\python -m legacy_roster                          # the window, from source (needs pywebview; --classic: the old one)
 python -m legacy_roster list   --rpcs3 <rpcs3.exe>             # the command line
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --dry-run   # build and check, write nothing
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --for both  # save for the EU and the NA version
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --source disc   # start from the game's own roster (no community roster)
 python -m legacy_roster stock-test --rpcs3 <rpcs3.exe>         # the in-game check of the game's own roster (owner only)
-.venv\Scripts\python tools\window_shot.py <state> out.png      # picture of the window: none|ready|updating|done|details|failed|delete|editor
+.venv\Scripts\python tools\window_shot.py <state> out.png      # picture of the window (headless Edge): none|ready|updating|done|details|failed|delete|export|editor|uniforms; --scale, --screen-lines, --live, --browser
 python tools\build_datapack.py --refresh ratings,iihf,liiga,extraliga,shl,del,nl,norway,ahl,chl,nhl   # refresh the data pack
 python tools\capacity.py                                       # player records and pool room a full update needs
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --photos    # also install photos and logos (RPCS3 closed)
@@ -134,7 +137,8 @@ bash packaging/build.sh                                        # the same on a M
 | Data | `datasource.py` (NHL.com, data pack), `tools/build_datapack.py`, `tools/providers/` (`nhl_facts.py`: last season's players, drafts), `tools/club_slots.json` (club → slot for every league), `tools/capacity.py` |
 | RPCS3 and saves | `savedata.py` (also the game's own folder and disc: `Rpcs3.game_folder`, `game_disc`; the versions EU / NA: `GAMES`, `Rpcs3.games`, `install(title_id=)`) |
 | Menu art and names (portraits, logos, team names) | `art/` (`loc.py` the game's text file; `disc.py` the player's own disc, `bigf.py`, `refpack.py`, `dds.py`; photos and logos: `portraits.py` ids in the roster, `images.py` drawing, `install.py` download, write, undo; `lab.py` the one-off art test), `tools/providers/wiki_logo.py`, `tools/names_report.py` |
-| Front ends | `gui.py` (tabs Update and Roster editor), `widgets.py`, `theme.py`, `progress.py`, `cli.py` |
+| The window (0.10) | `window/` (`main.py` start and fallback, `host.py` pushes state to the page at most 25 times a second, `api.py` the page's calls, `webview2.py`), `app/` (controllers holding all state: `update.py`, `editor.py`, `uniforms.py`; `jobs.py`, `settings.py`, `texts.py`, `dataurl.py`), `web/` (`index.html`, `css/`, `js/`: `main.js`, `update.js`, `editor.js`, `ui.js`, `shell.js`, `bridge.js`, `store.js`, `demo.js`), `editor/card.py` (the player card's checks), `progress.py` |
+| Front ends | `cli.py`; the classic window (fallback, `--classic`): `gui.py`, `widgets.py`, `theme.py`, `editor/view.py`, `editor/uniforms.py` |
 | Jerseys and ice in the Roster editor | `editor/uniforms.py` (the "Jerseys and ice..." window per NHL team: colours + crest, one row per jersey version: the game's own / from the colours / the player's own picture, the centre-ice logo; templates to paint on), kept in edits.json (`uniforms`, `ice`), installed by `looks.looks_from` / `install_looks` with the photos; `tools/window_shot.py uniforms` |
 | 3D textures | `art/rpsgl.py` (jerseys, ice: read, replace a raster, repack), `art/rendering.py` (`cli rendering-test`, done), `art/looks.py` (the real Utah/Seattle/Vegas jerseys, pants, socks, numbers, menu pictures, centre-ice logo; `cli looks-test`; `tools/look_preview.py` makes PNG sheets) |
 | Calendar | `schedule.py` (the real schedule into `nhlschedule` / `favoriteteamschedule`, `check`), `calendartest.py` (`cli calendar-test`), data pack part `schedule` (`tools/providers/nhl_facts.py`) |
@@ -150,6 +154,60 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+Version 0.10.0 addendum (2026-10-11 evening, owner's testers): **Start RPCS3** really fixed: `savedata.launch()` also clears the
+exe launcher's `SetDllDirectory` (the child inherited it; 0.10.0's first fix only cleaned PATH): NOT tried by the owner yet; if
+the error stays, remove the buttons. **Equipment editor** (skaters): `equipment.py` (table `ajmx`, the choices), `app/equipment.py`
++ `web/js/editor.js` `EquipmentWindow` (the game's menu pictures from the disc, `cache.big` `createplayer/...`), edits.json
+`equipment` per player and per team (`edits._set_equipment`, `_team_equipment`; a player's own choice wins over his team's);
+research in docs/notes/equipment.md. Waiting for the owner: do the tuck / tape numbers match the labels (`equipment.OPTIONS`),
+does the game show the stick / helmet / gloves; own equipment pictures (`rendering/glove/feglove_*`) not built (owner dropped them).
+**Goalies** (same evening): `equipment.GOALIE_CHOICES` (table `lVMf`: mask, pads, blocker, trapper, stick, tape, tuck, neck) in the same window;
+`mask_picture` edit: the goalie gets a mask number nobody wears (`edits._mask_picture`, reuses his own when he is its only wearer, so a
+second run changes nothing) and `art/masks.py` writes the picture into `rendering/goaliehelmet/goaliehelmet_0_<n>_cm.rpsgl` (512x512 DXT1)
+as a loose file with the photos (`pipeline.install_masks`). **NOT played**: does the game read the loose mask texture and does maskid
+map to that file name (assumed; masktype 0 = 280 files, ids 234-245 have none). Goalie jersey = the team's jersey (Jerseys and ice).
+
+Version 0.10.0 (2026-10-11, built, NOT committed, waiting for the owner's check): **the new window.** The CustomTkinter
+window tore and redrew while it was moved or resized; it is replaced by a web page in a native window (pywebview: Edge
+WebView2 on Windows, WebKit on Mac / Linux) in the look of the game's menus (the owner's Claude Design proposal + the game's
+stadium blue, arcs and Help bar; Puck Peak logo kept). Plan: docs/plans/look-at-the-ux-ui-gleaming-noodle.md.
+- Python holds all state (`app/` controllers, tested without a window: tests/test_app.py); the page only shows the JSON it
+  is sent (`window/host.py`, at most 25 Hz) and calls `window/api.py`. Both tabs, Jerseys and ice, My edits, the Team
+  window, questions (Delete, Restore default, close while busy) are in-page windows; file pickers are the system's own.
+- The old window stays for 0.10.x: `--classic`, and used by itself when WebView2 / pywebview is missing or fails
+  (logged in error.log). Delete it in 0.11.
+- `tools/window_shot.py` now draws the page with headless Edge from the real controllers' state (`--live` for the
+  real window). `editor/card.py`: ratings below 40 that the game's own roster has (Faceoffs 35) no longer block Apply.
+- **Also in 0.10.0 (2026-10-11, from testers of 0.9.0; exe rebuilt with all of it, starts, tests 218 passed with the EU disc in
+  `LEGACY_ROSTER_DISC`; NOT played in the game yet).** Plan: docs/plans/please-check-and-propose-fizzy-snowglobe.md.
+  - *Fixed, waiting for the owner's check:* scoreboard short codes (`loc.apply_names` writes `X_XLA_TEAM_` / `Abbr3_` also when the
+    full name matches; `NAMES_VERSION` '#5'; needs "Photos, logos and team names"); top-left logos centred
+    (`images._crop_centred`, `LOGO_DRAWING` '#5'); Utah jersey shine map flattened (`looks.jersey_file`); helmet logo decals
+    (`looks.decal_file`); helmet / gear colours of Utah, Seattle, Vegas (`builder.nhl_gear`, table `vbHh`, runs with the NHL step);
+    Utah's rink picture `icesurface_22_bm` (`looks.ice_picture_file`); **Start RPCS3 from the tool** no longer fails with
+    "vcruntime140.dll incorrectly installed" (`savedata.clean_environment`: the exe's `_MEI` folder was in RPCS3's DLL path; the
+    fix is in the rebuilt exe, still to try by the owner).
+  - *Already fixed earlier (0.9.2):* "Russia dresses 5 D" safety failure (`builder.fill_empty_national`, `room_for`); testers
+    should use 0.9.2+.
+  - *Open, not built:* Seattle / Vegas home ice (they share Nashville's arena art 16; arena art 30 / 31 files are incomplete, see
+    docs/CALENDAR_AND_LOOK.md 2b); the helmet reflection cube map `enviro/helmet_<art>` still shows Arizona's ice; per-team ice size
+    NHL / European (no field known; `exhibitionarena.arenatype` / `bouncemap` are the only candidates; owner: research later);
+    Seattle / Vegas helmet colour mapping is a heuristic (`nhl_gear`).
+  - Tests that need the disc: `$env:LEGACY_ROSTER_DISC` = the EU iso (the owner has it in `D:\PS3\NHL Legacy Edition (Europe)...`;
+    read only). `.venv` has no pytest; run tests with `python`, pictures with `.venv\Scripts\python.exe`.
+- **To check (owner):** move / resize the window while an update runs (smooth?), every button of both tabs, the size of
+  the exe, and on a PC without WebView2 if possible. Nothing in the save changes.
+
+Version 0.9.3 (2026-10-11, built, NOT committed; owner will do a UX/UI and logic redesign first): fixes from testers. Read
+[docs/HANDOVER.md](docs/HANDOVER.md) and [docs/notes/select-teams-crash.md](docs/notes/select-teams-crash.md) first.
+- **Select Teams crash on switching league** (SHL, Extraliga, AHL): most likely the program wrote empty team-name lines as texts of
+  length 0 (the game's files never do; `loc.LocFile.set/set_existing` now mark an empty text absent) and over-long texts
+  (`loc.fit`, `limits`, `select_lines`, `install_names` check; `NAMES_VERSION '#4'`). **Not confirmed in the game yet.**
+- **Restore default** now starts from the game disc (`restore.default_slot`); before it took the updated roster as its own default.
+- **Roster editor ratings:** unapplied card is applied on Save / player switch; national-team copy gets the same edits.
+- **No roster / game not in RPCS3's list:** "Pick the game" buttons, `cli --game`, `savedata.NoGameError`, first save `...01`.
+- **Draft step** skips placeholder records with impossible birth years (tester error "273 does not fit in 8 bits").
 
 Version 0.9.1 (2026-10-07): **Restore.** `restore.py` (`default_slot`: the version's `...0200` save when `check_base` says it is the game's own
 roster, else the disc; `copy_calendar`), `pipeline.update(restore_parts=, default=)` (ROSTERS: start from the default, written as it is when no step
