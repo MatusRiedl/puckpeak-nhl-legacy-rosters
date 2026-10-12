@@ -286,3 +286,24 @@ def test_a_move_that_leaves_a_team_without_two_goalies_is_refused_in_plain_words
     card = ed.snapshot()['card']
     assert ed.apply(dict(card['values'], team=str(other))) == 'error'
     assert 'only 1 goalie' in ed.snapshot()['status']['text'] and ed.snapshot()['edits_count'] == 0
+
+
+def test_a_window_that_has_started_the_new_version_closes_even_though_it_was_busy(app, monkeypatch):
+    from legacy_roster.app import selfupdate
+    host, upd, ed, _uni, _sd = app
+    quit_called = []
+    host.quit = lambda: quit_called.append(upd.closing())
+    monkeypatch.setattr(selfupdate, 'install', lambda release, progress: None)
+    release = selfupdate.Release((9, 9, 9), 'v9.9.9', '', 'page', 'url', 1, 'abc')
+    upd.install_update(release)
+    wait(lambda: quit_called)
+    assert quit_called == [True] and ed.closing() and not upd.busy and upd.dialog is None
+
+
+def test_the_equipment_window_offers_the_games_own_words_for_tucks_and_tape():
+    from legacy_roster import equipment as E
+    assert [w for _, w in E.OPTIONS['jersey_tuck']] == ["None", "Left", "Right", "Full"]
+    assert [w for _, w in E.OPTIONS['sock_tuck']] == ["None", "Front", "Back", "Full"]
+    assert len(E.OPTIONS['tape']) == 10 and E.OPTIONS['tape'][:2] == [(0, "Black"), (1, "White")]
+    from legacy_roster.app.equipment import ORDER
+    assert all(c in E.CHOICES for c in ORDER) and {'visor_tint', 'shoulder_pads', 'pant_length'} <= set(ORDER)

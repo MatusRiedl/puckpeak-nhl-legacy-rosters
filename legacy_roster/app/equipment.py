@@ -22,7 +22,8 @@ THUMB = (192, 96)               # pixels of a small picture (shown at 96 x 48, s
 MODELS = ('stick', 'helmet', 'gloves', 'skates')       # the choices that are a list of pictures
 GOALIE_MODELS = ('stick', 'mask', 'pads', 'blocker', 'trapper')
 GOALIE_ORDER = ('mask', 'pads', 'blocker', 'trapper', 'stick', 'tape', 'jersey_tuck', 'neck')
-ORDER = ('stick', 'tape', 'helmet', 'visor', 'gloves', 'skates', 'jersey_tuck', 'sock_tuck')
+ORDER = ('stick', 'tape', 'helmet', 'visor', 'visor_tint', 'gloves', 'skates', 'shoulder_pads', 'pant_length',
+         'jersey_tuck', 'sock_tuck')
 
 
 class EquipmentController:

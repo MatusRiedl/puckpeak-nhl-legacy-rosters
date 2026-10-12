@@ -111,7 +111,7 @@ export function Modal({ title, wide, full, onClose, buttons, children }) {
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
   }, [onClose]);
-  return html`<div class="modal-back" onMouseDown=${(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}>
+  return html`<div class=${cls('modal-back', full && 'full')} onMouseDown=${(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}>
     <div class=${cls('modal', wide && 'wide', full && 'full')} role="dialog" aria-modal="true">
       <div class="m-head">${title}</div>
       <div class="m-body">${children}</div>

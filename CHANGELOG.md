@@ -3,6 +3,22 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.10.3 (2026-10-13)
+
+- **After "Update now" the old window closes by itself.** Before, the new version opened but the old window stayed
+  behind and said "A roster is being made right now" when you tried to close it; only Task Manager helped. This version
+  closes it, and when it starts it also closes an old window left behind by an earlier update.
+- **Equipment uses the game's own words.** Jersey tuck: None, Left, Right, Full. Sock tuck: None, Front, Back, Full.
+  Stick tape: ten colours (Black, White, Blue, Red, Yellow, Green, Orange, Light blue, Pink, Purple).
+- **New in the Equipment window (skaters):** Visor tint, Shoulder pads (Small / Large) and Pant length (Short / Long), like
+  the game's Customization menu. A player you create in the editor starts with the game's plain choices (no visor, no
+  tucks, white tape). A neck guard is only possible for goalies: skaters have no such setting in the game's roster.
+- **Equipment and "Jerseys and ice..." are bigger still**: they now cover the Puck Peak logo too, so more gear fits on
+  the screen.
+- **For testers: `equipment-test`** (command line) saves a roster in which each player wears one tuck, tape colour,
+  tint, pads or pants number, so the words can be checked in the game's Edit Players. We have not seen the new numbers in the game yet:
+  tell us if a word does not match what the game shows.
+
 ## 0.10.2 (2026-10-12)
 
 Fixes from testers of 0.10.1.

@@ -14,6 +14,7 @@
     draft-test --rpcs3 <rpcs3.exe> [--source <save>]  the in-game check of where the draft finds prospects
     rendering-test --rpcs3 <rpcs3.exe> [--version EU|NA]   Utah's jerseys and centre-ice logo as loud loose files (in-game test)
     looks-test --rpcs3 <rpcs3.exe> [--version EU|NA]   the new Utah, Seattle and Vegas jerseys and centre-ice logos as loose files (in-game test)
+    equipment-test --rpcs3 <rpcs3.exe> [--source <save>|file:<SYS-DATA>]   LAB roster: every tuck / tape colour on a player (in-game test)
     calendar-test --rpcs3 <rpcs3.exe> [--source <save>|file:<SYS-DATA>]   LAB rosters with the real 2026-27 calendar (in-game test)
     season-test --rpcs3 <rpcs3.exe> [--source <save>|disc]   LAB rosters with more and more update steps: which one crashes Season mode
     export  --rpcs3 <rpcs3.exe> [--source <save>] --out <folder>    every table as CSV, real names
@@ -263,6 +264,18 @@ def cmd_looks_test(args):
           "Afterwards: 'photos remove' (the window's \"Restore the game's own pictures\").")
 
 
+def cmd_equipment_test(args):
+    """The owner's in-game check of the equipment numbers (tucks, tape, visor tint, pads, pants): one LAB roster."""
+    from . import equipmenttest
+    try:
+        folder, slot = _lab_source(args, allow_disc=False)
+        equipmenttest.equipment_test(folder, slot, print)
+    except (RuntimeError, ValueError) as err:
+        sys.exit(str(err))
+    print("Saved the roster \"EQUIPMENT TEST\". In the game: Roster Management > Load Roster, then Edit Players > Anaheim or Winnipeg > "
+          "each player > Customization: do the game's words match the list above?")
+
+
 def cmd_calendar_test(args):
     """The owner's in-game check of the 2026-27 calendar: LAB rosters with the real schedule written in."""
     from . import calendartest
@@ -406,6 +419,11 @@ def main(argv=None):
     p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
     p.add_argument('--source', help="roster save to start from, or file:<a roster file such as a downloaded community "
                                     "SYS-DATA> (default: the newest roster this program did not make)")
+    p = sub.add_parser('equipment-test', help="save a LAB roster with every tuck, tape colour ... on a player (in-game test)")
+    p.set_defaults(fn=cmd_equipment_test)
+    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--source', help="roster save to start from, or file:<a roster file> (default: the newest roster this "
+                                    "program did not make)")
     p = sub.add_parser('season-test', help="save LAB rosters with more and more update steps (finds what crashes Season mode)")
     p.set_defaults(fn=cmd_season_test)
     p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")

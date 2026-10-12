@@ -91,6 +91,10 @@ class WebHost:
         """Close the window for good (after an update started the new program)."""
         if self.window is not None:
             self.window.destroy()
+        # safety net: the process must end even if the window library keeps it alive
+        timer = threading.Timer(3.0, lambda: os._exit(0))
+        timer.daemon = True
+        timer.start()
 
     def every(self, seconds, work):
         def loop():

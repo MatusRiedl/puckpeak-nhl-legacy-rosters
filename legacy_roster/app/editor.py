@@ -749,7 +749,7 @@ class EditorController:
     def closing(self):
         """May the window close now? Not while a roster is being saved."""
         with self.lock:
-            if not self.busy or self.status[0] != "Saving...":
+            if self.update.quitting or not self.busy or self.status[0] != "Saving...":
                 return True
             self.update.ask("Please wait", ["The Roster editor is saving a roster. Close the window when it is done."],
                             [("OK", 'ok', 'primary')], {})

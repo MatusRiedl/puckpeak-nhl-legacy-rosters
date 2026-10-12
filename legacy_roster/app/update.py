@@ -41,6 +41,7 @@ class UpdateController:
         self.problem = None         # why the path picked is not RPCS3 (shown in red)
         self.running = False        # RPCS3 runs (seen at the last scan)
         self.busy = False
+        self.quitting = False       # the new version runs: this window must close, whatever it was doing
         self.scanning = False
         self.checked = {}           # (SYS-DATA path, size, time) -> None or why it cannot be used
         self._scan_id = 0
@@ -152,6 +153,8 @@ class UpdateController:
                         [("Open the download page", 'update_page')])
                     self._update_page = release.page
                 return
+            with self.lock:
+                self.quitting, self.busy = True, False
             self.host.quit()
 
         threading.Thread(target=work, daemon=True).start()
@@ -686,7 +689,7 @@ class UpdateController:
     def closing(self):
         """May the window close now? Not while a roster is being written."""
         with self.lock:
-            if not self.busy:
+            if not self.busy or self.quitting:
                 return True
             self.ask("Please wait", ["A roster is being made right now. Close the window when it is done, so no "
                                      "half-written roster is left behind."], [("OK", 'ok', 'primary')], {})

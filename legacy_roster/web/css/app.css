@@ -285,7 +285,8 @@ input.field:disabled { color: var(--faint); }
   box-shadow: 0 30px 80px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.08); animation: pop-in .24s var(--ease) both; }
 .modal.wide { width: min(900px, calc(100% - 48px)); }
 /* the Equipment and Jerseys and ice windows use the whole window: they hold a lot to look at */
-.modal.full { width: calc(100% - 24px); height: calc(100% - 24px); max-height: none; }
+.modal-back.full { position: fixed; inset: 0 0 40px 0; z-index: 50; }     /* over the logo and the header too: more to choose from */
+.modal.full { width: calc(100% - 16px); height: calc(100% - 16px); max-height: none; }
 .modal.full .m-body { flex: 1; }
 .modal .m-head { flex: none; padding: 12px 22px; font-size: 21px; font-weight: 700; border-bottom: 1px solid #36506d;
   background: linear-gradient(rgba(255,255,255,.06), transparent); }

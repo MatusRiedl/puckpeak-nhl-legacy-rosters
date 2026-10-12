@@ -115,10 +115,15 @@ def can_replace(exe=None):
 
 
 def clean_leftovers(exe=None):
-    """Remove the old exe and a half-finished download left by an earlier update."""
+    """Remove the old exe and a half-finished download left by an earlier update. Versions 0.10.0-0.10.2 could not
+    close their window after an update; that copy (the `.old` exe, only ever downloading) is ended first."""
     exe = exe or running_exe()
     if not exe:
         return
+    try:
+        savedata.end_process_of(exe + '.old')
+    except Exception:
+        pass
     for suffix in ('.old', '.new'):
         try:
             os.remove(exe + suffix)

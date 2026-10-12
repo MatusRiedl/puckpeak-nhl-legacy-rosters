@@ -449,10 +449,9 @@ def find_rpcs3(path, games=None):
     return Rpcs3(exe, os.path.join(home, user, 'savedata'), user, root, games)
 
 
-def running_rpcs3():
-    """Full path of a running RPCS3, or None (never raises)."""
-    if not WINDOWS:
-        return _running_posix()
+def _windows_processes():
+    """[(pid, full path of the exe)] of the processes this user may look at (Windows; never raises)."""
+    found = []
     try:
         import ctypes
         from ctypes import wintypes
@@ -465,7 +464,7 @@ def running_rpcs3():
         pids = (wintypes.DWORD * 8192)()
         used = wintypes.DWORD()
         if not psapi.EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(used)):
-            return None
+            return found
         for pid in pids[:used.value // ctypes.sizeof(wintypes.DWORD)]:
             handle = k32.OpenProcess(0x1000, False, pid)       # PROCESS_QUERY_LIMITED_INFORMATION
             if not handle:
@@ -473,14 +472,45 @@ def running_rpcs3():
             try:
                 name = ctypes.create_unicode_buffer(1024)
                 size = wintypes.DWORD(len(name))
-                if (k32.QueryFullProcessImageNameW(handle, 0, name, ctypes.byref(size))
-                        and os.path.basename(name.value).lower() == 'rpcs3.exe'):
-                    return name.value
+                if k32.QueryFullProcessImageNameW(handle, 0, name, ctypes.byref(size)):
+                    found.append((int(pid), name.value))
             finally:
                 k32.CloseHandle(handle)
     except (OSError, AttributeError):
         pass
+    return found
+
+
+def running_rpcs3():
+    """Full path of a running RPCS3, or None (never raises)."""
+    if not WINDOWS:
+        return _running_posix()
+    for _pid, path in _windows_processes():
+        if os.path.basename(path).lower() == 'rpcs3.exe':
+            return path
     return None
+
+
+def end_process_of(path):
+    """End the running process(es) whose exe is exactly `path` (Windows only). Returns how many were ended."""
+    if not WINDOWS:
+        return 0
+    import ctypes
+    k32 = ctypes.WinDLL('kernel32')
+    k32.OpenProcess.restype = ctypes.c_void_p
+    k32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    k32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    want, ended = os.path.normcase(os.path.abspath(path)), 0
+    for pid, exe in _windows_processes():
+        if os.path.normcase(os.path.abspath(exe)) == want and pid != os.getpid():
+            handle = k32.OpenProcess(0x0001, False, pid)        # PROCESS_TERMINATE
+            if handle:
+                try:
+                    ended += bool(k32.TerminateProcess(handle, 0))
+                finally:
+                    k32.CloseHandle(handle)
+    return ended
 
 
 def _running_posix(proc='/proc'):

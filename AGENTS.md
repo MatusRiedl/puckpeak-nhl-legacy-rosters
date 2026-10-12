@@ -98,6 +98,7 @@ python -m legacy_roster draft-test --rpcs3 <rpcs3.exe>         # LAB roster: whe
 python -m legacy_roster season-test --rpcs3 <rpcs3.exe>        # LAB rosters with more and more update steps: which one crashes Season mode (owner)
 python -m legacy_roster rendering-test --rpcs3 <rpcs3.exe>     # loud Utah jerseys / centre-ice logo as loose files (owner; undo: photos remove)
 python -m legacy_roster looks-test --rpcs3 <rpcs3.exe>        # new Utah/Seattle/Vegas jerseys + centre-ice logos as loose files (owner; undo: photos remove)
+python -m legacy_roster equipment-test --rpcs3 <rpcs3.exe>        # LAB roster: every tuck / tape colour / tint / pads / pants number on a player (owner)
 python -m legacy_roster calendar-test --rpcs3 <rpcs3.exe> --source file:<community SYS-DATA>   # LAB rosters with the real 2026-27 calendar (owner)
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --in-place  # update the picked roster itself (backup first)
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1   # build dist\*.exe (close a running copy first)
@@ -154,6 +155,14 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+Version 0.10.3 (2026-10-13, from the owner's tests of 0.10.2; plan: docs/plans/we-are-fixing-bugs-tidy-treehouse.md): **old window stuck after
+"Update now"** fixed (`UpdateController.quitting`: `closing()` lets the window go once the new exe runs; `WebHost.quit` ends the process after
+3 s; the new exe ends a stuck `<exe>.old` copy at start, `savedata.end_process_of`). **Equipment uses the game's menu words** (`equipment.OPTIONS`:
+jersey tuck None/Left/Right/Full, sock tuck None/Front/Back/Full, tape 10 colours) and has visor tint, shoulder pads, pant length
+(`CHOICES`, `NEW_PLAYER` defaults for created players); skaters have no neck guard field. Equipment / Jerseys-and-ice windows cover the logo
+too (`.modal-back.full` fixed). `cli equipment-test` (`equipmenttest.py`) = the owner's in-game check of the numbers: NOT played yet.
+Open: why Front / Back showed nothing in the game (probably the owner looked at Edit Pro, see docs/notes/equipment.md).
 
 Version 0.10.2 (2026-10-12, from testers of 0.10.1; plan: docs/plans/i-got-some-bugs-polished-flamingo.md): **"Green / Red has 0 captain(s)"**
 fixed: `edits._move` refuses a move that leaves a team that could dress 20 without 2 goalies / 18 skaters (`_too_few_without`; the editor says so

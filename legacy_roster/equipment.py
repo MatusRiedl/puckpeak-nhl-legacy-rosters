@@ -4,8 +4,8 @@ exhibitionskaterequipment, one row per skater keyed by the player's game id).
     stick  tape  helmet  visor  gloves  skates  jersey_tuck  sock_tuck
 
 The numbers are the game's own model ids: the same ids name the game's menu pictures (`art/equipment.py`).
-Tape is 0 / 1 (black / white, to be confirmed in the game); the tucks' meaning is learned in the game
-(docs/notes/equipment.md).
+The words of the tape colours, the tucks, the pads and the pants are the game's own menu words; the numbers behind
+them are checked in the game (docs/notes/equipment.md).
 
 A goalie's equipment is table `lVMf` (exhibitiongoalieequipment): stick, tape, jersey tuck, mask, pads, blocker, trapper,
 neck guard. His mask can also wear the player's own picture: the goalie gets a mask number nobody uses and the picture
@@ -28,6 +28,9 @@ CHOICES = {
     'skates': ('skatebrand', 'Skates'),
     'jersey_tuck': ('jerseytuck', 'Jersey tuck'),
     'sock_tuck': ('skatesocktuck', 'Sock tuck'),
+    'visor_tint': ('visorcolor', 'Visor tint'),
+    'shoulder_pads': ('shoulderpads', 'Shoulder pads'),
+    'pant_length': ('pantstypecode', 'Pant length'),
 }
 GOALIE_TABLE = 'lVMf'
 GOALIE_CODE = {name: tag for tag, name in FIELDS[GOALIE_TABLE].items()}
@@ -44,7 +47,10 @@ GOALIE_CHOICES = {
 MASK_TYPE = 'masktype'
 KINDS = {'skater': (TABLE, CODE, CHOICES), 'goalie': (GOALIE_TABLE, GOALIE_CODE, GOALIE_CHOICES)}
 # the choices that are the same for a whole team's look (the editor offers "same for the whole team")
-TEAM_WIDE = ('tape', 'helmet', 'visor', 'jersey_tuck', 'sock_tuck')
+TEAM_WIDE = ('tape', 'helmet', 'visor', 'visor_tint', 'jersey_tuck', 'sock_tuck', 'shoulder_pads', 'pant_length')
+# what a new player gets, as in the game's Edit Pro > Customization (visor none, small shoulder pads, short pants, no tucks,
+# white tape); the numbers of the pads and pants are to be checked in the game
+NEW_PLAYER = {'visor': 0, 'visor_tint': 0, 'shoulder_pads': 0, 'pant_length': 0, 'jersey_tuck': 0, 'sock_tuck': 0, 'tape': 1}
 
 
 def tag(choice, kind='skater'):
@@ -115,14 +121,20 @@ def menu_path(choice, number, kind='skater'):
     return f"{MENU_ROOT}/{folder}/{prefix}{number + shift}.big"
 
 
-# The choices without a picture. The words are the game's own (Create a Player: Stick Tape black / white,
-# Jersey Tuck front / back, Sock Tuck none / short / long / full); which number is which is a guess from them
-# and from the roster (the owner confirms it in the game, docs/notes/equipment.md).
+# The choices without a picture. The words are the game's own, from its Edit Pro > Customization menu (the owner's
+# screenshots): Jersey Tuck None / Left / Right / Full, Sock Tuck None / Front / Back / Full, Stick Tape in ten colours
+# (the text file has all of those words). Which number is which is the order of the menu (the tape order is a guess
+# from the roster: 0 and 1 are what 6056 players have); the owner confirms them with `cli equipment-test`
+# (docs/notes/equipment.md).
+TAPE_COLOURS = ["Black", "White", "Blue", "Red", "Yellow", "Green", "Orange", "Light blue", "Pink", "Purple"]
 OPTIONS = {
-    'tape': [(0, "Black"), (1, "White")],
-    'jersey_tuck': [(0, "Front"), (1, "Back")],
-    'sock_tuck': [(0, "None"), (1, "Short"), (2, "Long"), (3, "Full")],
+    'tape': list(enumerate(TAPE_COLOURS)),
+    'jersey_tuck': [(0, "None"), (1, "Left"), (2, "Right"), (3, "Full")],
+    'sock_tuck': [(0, "None"), (1, "Front"), (2, "Back"), (3, "Full")],
     'visor': [(0, "No visor"), (1, "Clear visor"), (2, "Tinted visor")],
+    'visor_tint': [(0, "Clear")] + [(n, f"Tint {n}") for n in range(1, 8)],
+    'shoulder_pads': [(0, "Small"), (1, "Large")],
+    'pant_length': [(0, "Short"), (1, "Long")],
 }
 
 GOALIE_OPTIONS = {

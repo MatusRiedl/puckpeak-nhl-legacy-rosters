@@ -475,6 +475,11 @@ def _create(b, who, e):
     if not fields.get('birth'):
         fields = dict(fields, birth=[y, 1, 1])
     _set_fields(b, prow, fields, set())
+    if pos != 4:        # the record's last wearer's gear goes: a new player starts with Edit Pro's plain choices
+        row = b.equipment_row(prow)
+        if row is not None:
+            table = b.R.f[equipment.TABLE]
+            equipment.write(table, row, equipment.clean(equipment.NEW_PLAYER, table)[0])
     b.log.append(['edits', 'created', name, 'a new player of your own', fields.get('num') or ''])
     if e.get('team') in (None, 'FA'):
         b.fa_links.append(b.new_link(b.P.get(prow, 'zIBw')))

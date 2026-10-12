@@ -151,7 +151,8 @@ def test_equipment_edits_reach_the_player_and_his_team_and_change_nothing_twice(
     mcd, tkachuk = find(R, 'Connor McDavid'), find(R, 'Matthew Tkachuk')
     edm = L.API_TO_SLOT['EDM']
     mine = {key_of(R, mcd): {'label': 'Connor McDavid',
-                             'equipment': {'stick': 105, 'tape': 1, 'sock_tuck': 3, 'jersey_tuck': 1, 'bogus': 5}}}
+                             'equipment': {'stick': 105, 'tape': 9, 'sock_tuck': 3, 'jersey_tuck': 2, 'shoulder_pads': 1,
+                                  'pant_length': 1, 'visor_tint': 6, 'bogus': 5}}}
     teams = {str(edm): {'equipment': {'tape': 0, 'sock_tuck': 2, 'stick': 99}}}      # stick is not team-wide
     first = pipeline.build(base_bytes, data, my_edits=mine, team_edits=teams)
     assert first.ok, first.problems[:5]
@@ -159,7 +160,8 @@ def test_equipment_edits_reach_the_player_and_his_team_and_change_nothing_twice(
     table = R.f[equipment.TABLE]
     rows = equipment.row_of(table)
     got = equipment.read(table, rows[R.P.get(find(R, 'Connor McDavid'), 'zIBw')])
-    assert got['stick'] == 105 and got['tape'] == 1 and got['sock_tuck'] == 3 and got['jersey_tuck'] == 1
+    assert got['stick'] == 105 and got['tape'] == 9 and got['sock_tuck'] == 3 and got['jersey_tuck'] == 2
+    assert got['shoulder_pads'] == 1 and got['pant_length'] == 1 and got['visor_tint'] == 6
     tucks = {equipment.read(table, rows[R.P.get(p, 'zIBw')])['sock_tuck']
               for _, p, _, _, _ in R.team_roster(edm) if p is not None and R.P.get(p, 'aljv') != 4 and p != find(R, 'Connor McDavid')}
     assert tucks == {2}
