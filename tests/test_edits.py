@@ -189,3 +189,17 @@ def test_goalie_equipment_and_a_mask_picture_get_a_mask_number_nobody_wears(base
     assert any(r[1] == 'edit skipped' and 'bogus' in r[3] for r in first.log)
     again = pipeline.build(first.data, data, my_edits=mine)
     assert again.ok and again.data == first.data
+
+
+def test_a_team_left_short_of_players_keeps_its_letters(base_bytes, data, built):
+    """Moving a goalie off a team that then cannot dress 20 must not strip its captain and alternates
+    (the safety check refused to save such a roster: 'has 0 captain(s) and 0 alternate(s)')."""
+    R = Roster(built.data)
+    team = L.API_TO_SLOT['SEA']
+    goalies = [p for _, p, *_ in R.team_roster(team) if R.P.get(p, 'aljv') == 4]
+    mine = {key_of(R, goalies[0]): {'label': 'goalie', 'team': L.API_TO_SLOT['EDM']}}
+    res = pipeline.build(built.data, data, my_edits=mine)
+    assert res.ok, res.problems[:5]
+    skipped = [r for r in res.log if r[1] == 'edit skipped']
+    assert skipped and 'would have only 1 goalie' in skipped[0][3]
+    assert club_teams(Roster(res.data), goalies[0]) == [team]

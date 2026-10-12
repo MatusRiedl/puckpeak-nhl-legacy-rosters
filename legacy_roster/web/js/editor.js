@@ -223,7 +223,7 @@ function Colour({ part, label, c }) {
 
 function UniformsWindow({ u }) {
   const thumbs = useSlice('thumbs') || {};
-  return html`<${Modal} wide title=${u.title} onClose=${() => call('uniforms_close')} buttons=${html`
+  return html`<${Modal} full title=${u.title} onClose=${() => call('uniforms_close')} buttons=${html`
       <${Button} kind="pick" onClick=${() => call('uniforms_apply')}>Apply<//>
       <${Button} onClick=${() => call('uniforms_undo')}>Undo all for this team<//>
       <${Button} onClick=${() => call('uniforms_close')}>Close<//>`}>
@@ -280,7 +280,7 @@ function EqGrid({ r, pics, loaded }) {
 
 function EquipmentWindow({ q }) {
   const pics = useSlice('equip_pics') || {};
-  return html`<${Modal} wide title=${q.title} onClose=${() => call('equipment_close')} buttons=${html`
+  return html`<${Modal} full title=${q.title} onClose=${() => call('equipment_close')} buttons=${html`
       <${Button} kind="pick" onClick=${() => call('equipment_apply', false)} disabled=${!q.can_player}>Apply to this player<//>
       <${Button} onClick=${() => call('equipment_apply', true)} disabled=${!q.can_team}
         title="Tape, helmet, visor and the tucks, for every skater of the team without a choice of his own">

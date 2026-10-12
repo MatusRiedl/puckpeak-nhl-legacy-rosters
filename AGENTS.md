@@ -155,6 +155,16 @@ wording (`progress.py`).
 
 ## Current state
 
+Version 0.10.2 (2026-10-12, from testers of 0.10.1; plan: docs/plans/i-got-some-bugs-polished-flamingo.md): **"Green / Red has 0 captain(s)"**
+fixed: `edits._move` refuses a move that leaves a team that could dress 20 without 2 goalies / 18 skaters (`_too_few_without`; the editor says so
+at Apply: `EditorController.too_few_without`), `_relines` keeps the letters when a team cannot dress, `verify` names slots 30 / 31 Seattle /
+Vegas. **Equipment lists only models with a 3D picture on the disc** (`equipment.available`, `app/equipment._usable`: cacherender.big
+file names; ids the roster already holds stay; NHL 10-14 models drew blue). **Equipment and Jerseys-and-ice windows fill the window**
+(`Modal full`). **`stock.disc_icon`** takes any `ICON0.PNG` of the game folder, else the program's own picture. **Editor shows the player
+type** (`ratings.STYLES`; 5 GRN, 6 PLY, 7 SNP, 8 PWF, 9 TWF, defence 1-4 unnamed); **the game's own OVR is NOT reproduced** (formula is in the
+game program, `FUWe` is not it): research and next steps in docs/notes/overall.md. Not played in the game yet: helmet ids read from the
+file names (`rendering/helmet/...`), goalie pads 85-88 have no file on the EU disc but are worn by 44 goalies (kept: worn ids stay).
+
 Version 0.10.1 (2026-10-11, hotfix): European clubs' short codes are three plain letters (Frölunda FRO, Färjestad FAR, Davos DAV ...): `abbr` in `tools/club_slots.json` for SHL, Liiga, Extraliga, DEL, National League, Norway (AHL / CHL unchanged), data pack rebuilt (only `abbr` fields differ), `build_datapack.short_code` for left-out clubs. Reaches a roster on the next update with "Photos, logos and team names" on (the names hash includes the code). Not checked in the game yet.
 
 Version 0.10.0 addendum (2026-10-11 evening, owner's testers): **Start RPCS3** really fixed: `savedata.launch()` also clears the

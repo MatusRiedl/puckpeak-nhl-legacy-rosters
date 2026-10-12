@@ -90,19 +90,36 @@ class EquipmentController:
 
         def job():
             try:
-                found = pictures.disc_work(lambda disc: self._menu_pictures(disc, kind))
+                found, usable = pictures.disc_work(lambda disc: (self._menu_pictures(disc, kind), self._usable(disc, kind)))
             except Exception:
-                found = {}
+                found, usable = {}, {}
             with self.lock:
                 if token != self._token or self.who is None:
                     return
                 for choice, items in found.items():
+                    # the game's table also holds the models of older NHL games: NHL Legacy has no 3D picture
+                    # for them and draws them blue, so only the models it can draw are offered (the numbers the
+                    # roster already holds stay, they work)
+                    ok = usable.get(choice)
+                    if ok:
+                        items = {n: url for n, url in items.items() if n in ok or n in self.numbers.get(choice, ())}
                     self.numbers[choice] = sorted(set(self.numbers.get(choice, ())) | set(items))
                     self.pics[choice] = {str(n): url for n, url in items.items()}
                 self.loaded = True
                 self.host.changed(PICS)
                 self.changed()
         threading.Thread(target=job, daemon=True).start()
+
+    @staticmethod
+    def _usable(disc, kind='skater'):
+        """{choice: model numbers with a 3D picture on the disc} (equipment.available)."""
+        from ..art.disc import EbArchive
+        names = []
+        for name in ('nocacherender.big', 'cacherender.big'):
+            if name not in disc.archives:
+                disc.archives[name] = EbArchive.open(disc.source, name)
+            names += disc.archives[name].entries
+        return E.available(names, kind)
 
     @staticmethod
     def _menu_pictures(disc, kind='skater'):

@@ -269,3 +269,20 @@ def test_a_goalies_equipment_window_has_the_mask_and_keeps_his_own_mask_picture(
     eq.undo()
     idle(ed)
     assert not ed.edits
+
+
+def test_a_move_that_leaves_a_team_without_two_goalies_is_refused_in_plain_words(app):
+    _host, _upd, ed, _uni, _sd = app
+    ed.opened()
+    wait(lambda: ed.snap is not None)
+    idle(ed)
+    team = next(t for t in ed.snap.teams_in('NHL') if sum(1 for q in ed.snap.roster(t) if q.pos == 'G') == 2)
+    goalie = next(q for q in ed.snap.roster(team) if q.pos == 'G')
+    other = next(t for t in ed.snap.teams_in('NHL') if t != team)
+    ed.pick_team(team)
+    idle(ed)
+    row = next(r for r in ed.snapshot()['rows'] if r['who'] == goalie.who)
+    ed.pick_player(row['id'])
+    card = ed.snapshot()['card']
+    assert ed.apply(dict(card['values'], team=str(other))) == 'error'
+    assert 'only 1 goalie' in ed.snapshot()['status']['text'] and ed.snapshot()['edits_count'] == 0

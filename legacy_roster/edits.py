@@ -391,12 +391,39 @@ def _team_equipment(b, slot, values):
     b.log.append(['edits', 'team equipment', b.R.team_name(slot), f"{n} skaters", ''])
 
 
+def _too_few_without(b, team, leaving):
+    """A plain sentence when `team` can dress 20 now but not without the entry `leaving`, else None. (A team
+    that cannot dress its 20 loses its lines and its captain and alternates, and the save is refused.)"""
+    def count(skip):
+        n = {'G': 0, 'D': 0, 'F': 0}
+        for e in b.entries_on(team):
+            if e != skip:
+                pos = b.P.get(b.prow_of_entry(e), 'aljv')
+                n['G' if pos == 4 else 'D' if pos == 3 else 'F'] += 1
+        return n
+    now, after = count(None), count(leaving)
+    if now['G'] < 2 or now['D'] + now['F'] < 18:
+        return None
+    name = b.R.team_name(team)
+    if after['G'] < 2:
+        return f"{name} would have only {after['G']} goalie. A team needs 2 goalies and 18 skaters"
+    if after['D'] + after['F'] < 18:
+        return f"{name} would have only {after['D'] + after['F']} skaters. A team needs 2 goalies and 18 skaters"
+    return None
+
+
 def _move(b, prow, target, changed):
     """Put a player on team `target` (a slot), or release him to the free agents ('FA')."""
     R, U, P = b.R, b.U, b.P
     pid = P.get(prow, 'zIBw')
     live = b.live_entries()
     clubs = [e for e in live.get(pid, []) if U.get(e, 'BSXd') not in L.NATIONAL and U.get(e, 'BSXd') not in L.MIRROR_OF]
+    if target != 'FA' and any(U.get(e, 'BSXd') == int(target) for e in clubs):
+        return []
+    for e in clubs:
+        problem = _too_few_without(b, U.get(e, 'BSXd'), e)
+        if problem:
+            return [problem]
     if target == 'FA':
         for e in clubs:
             changed.add(U.get(e, 'BSXd'))
@@ -470,7 +497,9 @@ def _relines(b, changed, say):
             _letters(b, team, letters)
         except lines.NotEnoughPlayers as err:
             say(f"My edits: {err}")
-            for e in b.entries_on(team):
+            for e in b.entries_on(team):          # no lines, but the captain and alternates keep their letters
+                letter = b.U.get(e, 'lcCm')
                 b.clear_lines(e)
+                b.U.set(e, 'lcCm', letter)
     if any(t in L.NHL_PRIMARY for t in changed):
         b.sync_mirrors()

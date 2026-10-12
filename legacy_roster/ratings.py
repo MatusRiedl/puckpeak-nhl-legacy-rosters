@@ -81,3 +81,14 @@ def write_attributes(table, row, p, ovr_offset):
         for f in fields:
             table.set(row, f, clamp(table.get(row, f) + delta))
     return len(fields)
+
+
+# The player type the game shows next to a skater's rating (Edit Lines: PLY 90, SNP 88 ...); table field `sFgQ`.
+# The five forward types were matched to players in the game (docs/notes/overall.md); the defence types (1-4) are not
+# known yet, so none is named for them.
+STYLES = {5: 'GRN', 6: 'PLY', 7: 'SNP', 8: 'PWF', 9: 'TWF'}
+
+
+def style_name(number, goalie=False):
+    """The type's letters (GRN, PLY, SNP, PWF, TWF) or None when they are not known."""
+    return None if goalie else STYLES.get(number)

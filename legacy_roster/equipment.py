@@ -11,6 +11,8 @@ A goalie's equipment is table `lVMf` (exhibitiongoalieequipment): stick, tape, j
 neck guard. His mask can also wear the player's own picture: the goalie gets a mask number nobody uses and the picture
 goes into that number's 3D texture (art/masks.py).
 """
+import re
+
 from .schema_names import FIELDS
 
 TABLE = 'ajmx'
@@ -139,3 +141,36 @@ def free_mask_ids(table, taken=()):
     used = {table.get(i, GOALIE_CODE['maskid']) for i in range(table.cur_rec)
             if table.get(i, GOALIE_CODE[MASK_TYPE]) == 0} | set(taken)
     return [n for n in range(MASK_LARGEST, 0, -1) if n not in used and n not in MASK_FILES_MISSING]
+
+
+# --- which models the game can draw -------------------------------------------------------------------------------
+# The game's table holds model numbers of older NHL games too (skates up to 109, sticks, gloves ...). NHL Legacy has
+# the 3D picture (texture) of only some of them; a model without one is drawn plain blue. The textures sit in the
+# disc's cacherender.big: choice -> (folder, the file name's pattern with the model number as group 1).
+RENDERING = {
+    'skater': {
+        'stick': ('playerstick', r'texlib_(\d+)\.'),
+        'gloves': ('glove', r'feglove_(\d+)_'),
+        'skates': ('skate', r'texlib_(\d+)\.'),
+        'helmet': ('helmet', r'(?:helmet|chinstrap|jawprotector|padding|texlib)_(?:0_)?(\d+)[_.]'),
+    },
+    'goalie': {
+        'stick': ('goaliestick', r'goaliestick_(\d+)_'),
+        'pads': ('goaliepad', r'fegoaliepad_(\d+)_'),
+        'blocker': ('blocker', r'blocker_0_(\d+)_'),
+        'trapper': ('trapper', r'fetrapper_0_(\d+)_'),
+        'mask': ('goaliehelmet', r'goaliehelmet_0_(\d+)_cm\.'),
+    },
+}
+
+
+def available(names, kind='skater'):
+    """{choice: set of model numbers the game can draw} from the file names inside cacherender.big. Choices
+    that are not models (tape, tucks, visor ...) are not in it: every number of theirs works."""
+    out = {}
+    for choice, (folder, pattern) in RENDERING[kind].items():
+        rx = re.compile(pattern)
+        prefix = f"rendering/{folder}/"
+        out[choice] = {int(m.group(1)) for n in names if n.startswith(prefix)
+                       for m in [rx.match(n[len(prefix):])] if m}
+    return out

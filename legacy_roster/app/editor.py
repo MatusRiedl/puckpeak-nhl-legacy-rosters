@@ -355,7 +355,8 @@ class EditorController:
         teams = model.club(p.teams)
         return {'key': self.card_key, 'new': False, 'title': p.name, 'who': p.who,
                 'note': (", ".join(snap.team_name(t) for t in teams) or "Free agent")
-                        + (f"   ·   OVR {p.ovr}" if p.ovr else "")
+                        + (f"   ·   OVR {p.ovr} (the game works out its own from the ratings and the type)" if p.ovr else "")
+                        + (f"   ·   type {p.style}" if p.style else "")
                         + ("   ·   you edited this player (not saved yet)" if key in self.session else ""),
                 'values': {'first': p.first, 'last': p.last, 'num': str(p.num), 'pos': p.pos, 'shoots': p.shoots,
                            'birth': "%04d-%02d-%02d" % p.birth, 'country': p.country,
@@ -391,6 +392,11 @@ class EditorController:
             else:
                 key = self.edit_key(p)
                 edit, real = C.player_edit(p, values, self.edits.get(key), self.pending_photo)
+                if 'team' in edit and self.edits.get(key, {}).get('team') != edit['team']:
+                    short = self.too_few_without(p, edit['team'])
+                    if short:
+                        self.set_status(short, 'bad')
+                        return 'error'
                 if not real and (quiet or ('team' not in edit and key not in self.edits)):
                     if not quiet:
                         self.set_status("Nothing changed.")
@@ -402,6 +408,25 @@ class EditorController:
             self.refresh()
             self.changed()
             return 'applied'
+
+    def too_few_without(self, p, target):
+        """A plain sentence when moving `p` to `target` leaves the team he is on without 2 goalies or 18 skaters
+        (a team that cannot dress 20 loses its lines and letters, and the roster could not be saved)."""
+        for team in model.club(p.teams):
+            if team == target:
+                continue
+            others = [q for q in self.snap.roster(team) if q is not p]
+            goalies = sum(1 for q in others if q.pos == 'G')
+            skaters = len(others) - goalies
+            now = self.snap.roster(team)
+            if sum(1 for q in now if q.pos == 'G') < 2 or len(now) - sum(1 for q in now if q.pos == 'G') < 18:
+                continue                      # it could not dress 20 before either
+            name = self.snap.team_name(team)
+            if goalies < 2:
+                return f"{name} would have only {goalies} goalie. A team needs 2 goalies and 18 skaters."
+            if skaters < 18:
+                return f"{name} would have only {skaters} skaters. A team needs 2 goalies and 18 skaters."
+        return None
 
     def undo(self):
         with self.lock:

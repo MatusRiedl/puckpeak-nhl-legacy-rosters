@@ -95,19 +95,32 @@ def save_from_database(db):
 
 
 def disc_icon(disc):
-    """The game's icon (PS3_GAME/ICON0.PNG) from the player's disc: the icon of a roster save made for a
-    version of the game that has no save to copy one from."""
+    """The game's icon (ICON0.PNG) from the player's disc: the icon of a roster save made for a version of
+    the game that has no save to copy one from. Any ICON0.PNG next to the game's PARAM.SFO does (the folder
+    need not be called PS3_GAME); a game folder without one gets the program's own picture, so the icon
+    never stops an update."""
     try:
         if os.path.isfile(disc):
             iso = IsoImage(disc)
             return iso.read(iso.find('/PS3_GAME/ICON0.PNG'))
+        found = []
         for root, _dirs, files in os.walk(disc):
-            if 'ICON0.PNG' in files and os.path.basename(root).upper() == 'PS3_GAME':
-                with open(os.path.join(root, 'ICON0.PNG'), 'rb') as f:
-                    return f.read()
+            names = {n.upper(): n for n in files}
+            if 'ICON0.PNG' in names:
+                found.append((0 if os.path.basename(root).upper() == 'PS3_GAME' else 1 if 'PARAM.SFO' in names else 2,
+                              os.path.join(root, names['ICON0.PNG'])))
+        if found:
+            with open(min(found)[1], 'rb') as f:
+                return f.read()
     except (OSError, ValueError, FileNotFoundError) as err:
         raise StockError(f"the game's icon could not be read from {disc}: {err}") from err
-    raise StockError(f"the game's icon was not found in {disc}")
+    return own_icon()
+
+
+def own_icon():
+    """The program's own picture, used when the game's icon is not to be found."""
+    with open(os.path.join(os.path.dirname(__file__), 'data', 'app_256.png'), 'rb') as f:
+        return f.read()
 
 
 def from_disc(disc):

@@ -105,14 +105,14 @@ export function TextField({ value, disabled, onChange, delay = 250, className, p
       timer.current = setTimeout(() => onChange(t), delay); }}/>`;
 }
 
-export function Modal({ title, wide, onClose, buttons, children }) {
+export function Modal({ title, wide, full, onClose, buttons, children }) {
   useEffect(() => {
     const key = (e) => { if (e.key === 'Escape' && onClose) { e.stopPropagation(); onClose(); } };
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
   }, [onClose]);
   return html`<div class="modal-back" onMouseDown=${(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}>
-    <div class=${cls('modal', wide && 'wide')} role="dialog" aria-modal="true">
+    <div class=${cls('modal', wide && 'wide', full && 'full')} role="dialog" aria-modal="true">
       <div class="m-head">${title}</div>
       <div class="m-body">${children}</div>
       ${buttons && html`<div class="m-buttons">${buttons}</div>`}

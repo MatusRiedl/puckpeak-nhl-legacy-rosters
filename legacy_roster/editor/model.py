@@ -34,7 +34,7 @@ GOALIE_ATTRIBUTES = _labels(EA_GOALIE)
 
 class Player:
     __slots__ = ('who', 'prow', 'pid', 'first', 'last', 'pos', 'num', 'birth', 'country', 'shoots', 'height_in',
-                 'weight_lb', 'teams', 'ovr', 'ratings', 'artid', 'hasportrait', 'equipment')
+                 'weight_lb', 'teams', 'ovr', 'ratings', 'artid', 'hasportrait', 'equipment', 'style')
 
     @property
     def name(self):
@@ -101,7 +101,7 @@ class Snapshot:
             p.weight_lb = P.get(prow, 'WZNs') + 120
             p.teams = sorted(teams_of.get(pid, []))
             p.artid, p.hasportrait = P.get(prow, 'artid'), P.get(prow, 'hasportrait')     # his menu photo
-            p.ratings, p.ovr = {}, None
+            p.ratings, p.ovr, p.style = {}, None, None
             p.equipment = (equipment.read(pads, pads_row[pid], 'goalie') if p.pos == 'G' and pid in pads_row else
                            equipment.read(gear, gear_row[pid]) if p.pos != 'G' and pid in gear_row else None)
             where = ai.get(pid)
@@ -112,6 +112,7 @@ class Snapshot:
                 labels = GOALIE_ATTRIBUTES if goalie else SKATER_ATTRIBUTES
                 p.ratings = {a: table.get(where[1], amap[a]) + RATING_BASE for a in labels}
                 p.ovr = round(ratings.level(table, where[1]) + self.offset[goalie])
+                p.style = ratings.style_name(table.get(where[1], 'sFgQ'), goalie)
             self.players[pid] = p
         self.by_who = {}
         for p in sorted(self.players.values(), key=lambda p: (not [t for t in p.teams if t not in L.NATIONAL], p.prow)):

@@ -18,6 +18,16 @@ FULL_LINEUP = list(range(32)) + list(range(133, 154))     # teams that must dres
 TEAM_FLAWS = ('slot twice', 'dressed', 'lineup', 'slots', 'too many', 'entry ids')   # keyed by team id
 
 
+_ALL_STAR_SLOTS = {30: 'Seattle Kraken', 31: 'Vegas Golden Knights'}
+
+
+def _team(R, t):
+    """The team's name as a player knows it: slots 30 and 31 are Seattle and Vegas, whatever the table still calls them
+    ('Green / Red', 'Black / Blue' in a roster that was never given the new names)."""
+    name = R.team_name(t)
+    return _ALL_STAR_SLOTS.get(t, name) if ' / ' in name else name
+
+
 def contract_violations(R):
     """pid -> (name, team) for players whose contract team is a team they are not on."""
     U, P = R.U, R.P
@@ -67,10 +77,10 @@ def structure(R, full_lineup=FULL_LINEUP):
         ents = by_team.get(t, [])
         held = Counter(f for i in ents for f in flags if U.get(i, f))
         if any(v > 1 for v in held.values()):
-            out[('slot twice', t)] = f"{R.team_name(t)}: a line slot is held by two players"
+            out[('slot twice', t)] = f"{_team(R, t)}: a line slot is held by two players"
         for i in ents:
             if bool(U.get(i, 'jZSh')) != any(U.get(i, f) for f in flags):
-                out[('dressed', t, pid(i))] = f"{R.team_name(t)}: {R.name(R.p_by_id[pid(i)])} dressed flag and line slots disagree"
+                out[('dressed', t, pid(i))] = f"{_team(R, t)}: {R.name(R.p_by_id[pid(i)])} dressed flag and line slots disagree"
         dressed = [i for i in ents if U.get(i, 'jZSh')]
         pos = Counter('CLRDG'[P.get(R.p_by_id[pid(i)], 'aljv')] for i in dressed)
         teams[t] = {'players': len(ents), 'dressed': len(dressed), 'slots': len(held), 'positions': dict(pos)}
@@ -78,10 +88,10 @@ def structure(R, full_lineup=FULL_LINEUP):
             if len(dressed) != 20 or pos['G'] != 2 or pos['D'] < 6:
                 mix = ", ".join(f"{pos[k]} {name}" for k, name in
                                 (('C', 'C'), ('L', 'LW'), ('R', 'RW'), ('D', 'D'), ('G', 'G')) if pos[k])
-                out[('lineup', t)] = (f"{R.team_name(t)} dresses {len(dressed)} players ({mix or 'none'}); "
+                out[('lineup', t)] = (f"{_team(R, t)} dresses {len(dressed)} players ({mix or 'none'}); "
                                       "the game needs 20 with 2 G and at least 6 D")
             elif len(held) != len(flags):
-                out[('slots', t)] = f"{R.team_name(t)} has {len(held)} of {len(flags)} line slots filled"
+                out[('slots', t)] = f"{_team(R, t)} has {len(held)} of {len(flags)} line slots filled"
 
     # mirrors identical to their primary team
     def sig(t):
@@ -89,7 +99,7 @@ def structure(R, full_lineup=FULL_LINEUP):
     for prim, ms in L.MIRRORS.items():
         for m in ms:
             if sig(prim) != sig(m):
-                out[('mirror', m)] = f"{R.team_name(m)} (team {m}) is not an exact copy of {R.team_name(prim)}"
+                out[('mirror', m)] = f"{_team(R, m)} (team {m}) is not an exact copy of {_team(R, prim)}"
 
     # free agents are listed once, are not on NHL teams and carry no contract
     nhl_pids = {pid(i) for t in range(32) for i in by_team.get(t, [])}
@@ -118,19 +128,19 @@ def structure(R, full_lineup=FULL_LINEUP):
     for t in range(32):
         letters = Counter(U.get(i, 'lcCm') for i in by_team.get(t, []))
         if letters[1] + letters[2] != 3 or letters[1] > 1:
-            out[('letters', t)] = f"{R.team_name(t)} has {letters[1]} captain(s) and {letters[2]} alternate(s)"
+            out[('letters', t)] = f"{_team(R, t)} has {letters[1]} captain(s) and {letters[2]} alternate(s)"
         for i in by_team.get(t, []):
             prow = R.p_by_id[pid(i)]
             if not P.get(prow, 'GDhI') or not P.get(prow, 'dhKk'):
-                out[('no contract', pid(i))] = f"{R.name(prow)} ({R.team_name(t)}) has no contract"
+                out[('no contract', pid(i))] = f"{R.name(prow)} ({_team(R, t)}) has no contract"
 
     # roster entry ids: team * 40 + slot, slots 0..n-1 per team, at most 40 players per team
     for t, ents in by_team.items():
         ids = sorted(U.get(i, 'XWot') for i in ents)
         if len(ents) > L.MAX_PER_TEAM:
-            out[('too many', t)] = f"{R.team_name(t)} has {len(ents)} players (the game allows {L.MAX_PER_TEAM})"
+            out[('too many', t)] = f"{_team(R, t)} has {len(ents)} players (the game allows {L.MAX_PER_TEAM})"
         elif ids != [t * L.MAX_PER_TEAM + k for k in range(len(ents))]:
-            out[('entry ids', t)] = f"{R.team_name(t)}: roster entry ids are not consecutive"
+            out[('entry ids', t)] = f"{_team(R, t)}: roster entry ids are not consecutive"
     return out, teams
 
 
@@ -163,7 +173,7 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     else:
         for t in range(T.cur_rec):
             if T.get(t, 'jjMx') != source.T.get(t, 'jjMx') and t not in league_moves:
-                problems.append(f"{R.team_name(t)} changed league")
+                problems.append(f"{_team(R, t)} changed league")
 
     # no table keeps the "last removed row" marker the community roster has in the entry and link tables
     # (Season mode crashed on the player it names, owner 2026-10-06)
@@ -224,10 +234,10 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
 
     # not fatal, but worth telling the user: AHL teams that lost players and cannot ice a full line-up
     # (when the AHL step did not rebuild them)
-    thinner = [f"{R.team_name(t)} ({teams[t]['players']} players, was {teams_before[t]['players']})"
+    thinner = [f"{_team(R, t)} ({teams[t]['players']} players, was {teams_before[t]['players']})"
                for t in sorted(L.AHL) if t not in rebuilt and teams[t]['players'] < min(teams_before[t]['players'], 20)]
     info = {'entries': U.cur_rec, 'players': P.cur_rec, 'free_agents': R.Q.cur_rec,
             'known_flaws_in_source': len(before), 'thinner_ahl_teams': thinner, 'rebuilt_teams': sorted(rebuilt),
-            'empty_national_teams': [R.team_name(t) for t in range(133, 154) if not teams[t]['players']],
+            'empty_national_teams': [_team(R, t) for t in range(133, 154) if not teams[t]['players']],
             'teams': teams}
     return problems, info

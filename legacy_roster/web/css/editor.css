@@ -139,6 +139,11 @@ select.field option { background: #0a1a2e; color: var(--text); }
 .eq-row.touched { box-shadow: inset 3px 0 0 var(--accent); }
 .eq-buttons, .eq-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .eq-grid { position: relative; max-height: 150px; overflow: auto; padding-right: 4px; }
+.modal.full .eq-rows { max-height: none; overflow: visible; }
+.modal.full .eq-grid { max-height: none; overflow: visible; }
+.modal.full .eq-opt { min-width: 112px; }
+.modal.full .eq-opt img { width: 128px; height: 64px; }
+.modal.full .uw-colours { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .eq-opt { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 64px; padding: 4px 8px; color: var(--text);
   background: #0a1828; border: 1px solid var(--line); font-size: 12px; cursor: pointer; }
 .eq-opt img { width: 96px; height: 48px; object-fit: contain; animation: fade-in .25s both; }

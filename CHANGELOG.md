@@ -3,6 +3,27 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.10.2 (2026-10-12)
+
+Fixes from testers of 0.10.1.
+
+- **Saving a roster no longer fails with "Green / Red has 0 captain(s) and 0 alternate(s)".** It happened after a goalie or
+  skater was moved off a team that then could not dress 2 goalies and 18 skaters: the team lost its captain and alternates and the
+  safety check refused to save. The Roster editor now says so when you press Apply ("Seattle Kraken would have only 1 goalie. A team
+  needs 2 goalies and 18 skaters.") and the player stays where he is. The safety messages also call those two teams Seattle
+  Kraken and Vegas Golden Knights instead of "Green / Red" and "Black / Blue".
+- **The game's own roster works with more kinds of game folders.** "The game's icon was not found" came up when the game
+  folder had a different layout; the program now takes the icon from wherever it lies, and uses its own picture when there is none,
+  so the roster is still made. (If the game still says "no disc": make sure you start from the version listed in RPCS3, and use
+  this version; older ones had other problems with it.)
+- **Equipment: only gear the game can draw.** The game's table holds the sticks, gloves, skates and helmets of NHL 10 to 14 too,
+  and NHL Legacy draws those plain blue. The Equipment window now lists only the models Legacy has pictures for (what a player
+  wears now always stays listed). Goalie pads, blockers, trappers, sticks and masks too.
+- **Equipment and "Jerseys and ice..." fill the whole window**, with bigger pictures.
+- **The editor shows the player type** (GRN, PLY, SNP, PWF, TWF) next to the overall. The game works out its own overall from the
+  ratings and that type, so the number can differ from the one the editor shows (your edited ratings are in the game as you set
+  them). Making the editor's overall match the game's exactly is planned.
+
 ## 0.10.1 (2026-10-11)
 
 - **Easier short names for European clubs** on the scoreboard and in Select Teams: three letters, the way each club is best
