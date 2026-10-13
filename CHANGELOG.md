@@ -3,6 +3,11 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.10.4 (2026-10-13)
+
+- **Equipment and "Jerseys and ice..." now really fill the whole window**, over the Puck Peak logo. In 0.10.3 they still
+  started below the logo.
+
 ## 0.10.3 (2026-10-13)
 
 - **After "Update now" the old window closes by itself.** Before, the new version opened but the old window stayed

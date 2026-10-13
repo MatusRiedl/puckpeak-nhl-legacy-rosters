@@ -111,11 +111,13 @@ export function Modal({ title, wide, full, onClose, buttons, children }) {
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
   }, [onClose]);
-  return html`<div class=${cls('modal-back', full && 'full')} onMouseDown=${(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}>
+  const page = html`<div class=${cls('modal-back', full && 'full')} onMouseDown=${(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}>
     <div class=${cls('modal', wide && 'wide', full && 'full')} role="dialog" aria-modal="true">
       <div class="m-head">${title}</div>
       <div class="m-body">${children}</div>
       ${buttons && html`<div class="m-buttons">${buttons}</div>`}
     </div>
   </div>`;
+  // the big windows go straight into <body>: a parent that moves (the tab's slide-in) would keep them under the logo
+  return full && window.ReactDOM ? window.ReactDOM.createPortal(page, document.body) : page;
 }
