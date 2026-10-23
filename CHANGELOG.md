@@ -3,6 +3,16 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.50.2 (2026-10-23)
+
+- **Season mode no longer crashes when it starts** (game without the game patch). The update gave some players the
+  rights of the Seattle Kraken, a team the unpatched game's Season does not have, and the game crashed on them while
+  setting up a new Season. Seattle and Vegas now hold no player rights on a roster for the unpatched game, as the
+  community's roster has it. If your Season crashed, update your roster again with 0.50.2 (the Roster editor's Save
+  fixes it too), then start a new Season. Rosters for the patched game (32 teams) are not affected.
+- **The Join our Discord button is now at the top of the Setup tab**, above "Where is RPCS3?", where it is easier to
+  see.
+
 ## 0.50.1 (2026-10-23)
 
 - **Join our Discord.** A button at the top of the window, and one at the top of the GitHub page, open the Puck Peak

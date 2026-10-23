@@ -411,6 +411,8 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     if money is not None:
         problems += contracts.problems(R, source, money)
     problems += contract_edit_problems(R, contract_edits, money)
+    # NHL rights only of teams the game's Season knows: Seattle's on a roster for the unpatched game crashed it
+    problems += contracts.rights_problems(R)
     # contract status: the game shows a contract (Team Rosters' CONT / SAL) only for status 1 (contracts.status_fit)
     problems += contracts.status_problems(R, source)
     # the UFA year: birth year + 27 (contracts.ufa_fit), so that Be a GM shows UFA / RFA after a deal's last season

@@ -54,7 +54,7 @@ def test_every_call_of_the_page_is_offered_by_the_api():
     assert called and called <= offered, called - offered
 
 
-def test_the_headers_discord_button_opens_the_puck_peak_discord():
+def test_the_setup_tabs_discord_button_opens_the_puck_peak_discord():
     from legacy_roster.window.api import Api
 
     class Host:
@@ -68,6 +68,8 @@ def test_the_headers_discord_button_opens_the_puck_peak_discord():
     assert host.opened == ['https://gg.puckpeak.com']
     with open(os.path.join(WEB, 'js', 'shell.js'), encoding='utf-8') as f:
         assert "call('open_discord')" in f.read()
+    with open(os.path.join(WEB, 'js', 'update.js'), encoding='utf-8') as f:
+        assert '<${DiscordButton}/>\n      <${RpcsCard}' in f.read()       # above "Where is RPCS3?" (owner, 0.50.2)
 
 
 def test_the_pages_server_takes_many_connections_at_once():

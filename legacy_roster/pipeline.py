@@ -523,7 +523,13 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     # touch only the contracts edited and the players it moved or made
     moved = bool(steps - {RATINGS, SCHEDULE})
     touched = {R.p_by_id[pid] for pid in touched if pid in R.p_by_id}
-    statused = contracts.status_fit(R, None if moved else set(contract_edits) | touched)
+    # Seattle's rights on a roster for the unpatched game (0.50.0 / 0.50.1 wrote them): its Season crashed on them
+    dropped = contracts.drop_rights(R)
+    if dropped:
+        log.section = SECTION_CONTRACTS
+        log.append(['ALL', 'summary', "NHL rights the unpatched game's Season does not know taken off (Seattle's)",
+                    len(dropped), ''])
+    statused = contracts.status_fit(R, None if moved else set(contract_edits) | touched | set(dropped))
     if statused:
         log.section = SECTION_CONTRACTS
         log.append(['ALL', 'summary', "contract status set to fit the contract (Team Rosters shows it)", statused, ''])

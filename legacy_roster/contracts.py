@@ -129,6 +129,40 @@ def starter_terms(slot, overall, age, scale):
 STATUS = 'QwoG'                 # contractstatus: 1 = under contract or an NHL team's rights, 0 = none (lab round 41)
 
 
+def rights_teams(P):
+    """How many NHL slots (0 .. n - 1) may hold a player's rights (proteam `WBbd`, slot + 1) on a roster with the player
+    table `P`: all 32 on a roster for the game patch (six bits, gamepatch.rights_wide), 30 on one for the unpatched game.
+    Its Season knows 30 NHL teams: five bits can store Seattle's (31), and a club player holding them crashed the start
+    of a Season (its setup reads a 30-team table at 0x285628; a tester's NA game, 0.50.1). The community's roster gives
+    Seattle and Vegas nobody's rights either."""
+    return 32 if P.field('WBbd').bits > 5 else 30
+
+
+def holds_rights(P, slot):
+    """Can NHL slot `slot` hold a player's rights on this roster (rights_teams)?"""
+    return 0 <= slot < rights_teams(P)
+
+
+def drop_rights(R):
+    """Players holding rights that no NHL slot of roster `R` may hold (rights_teams: Seattle's on a roster for the
+    unpatched game, as 0.50.0 and 0.50.1 wrote them) hold nobody's, in place. Returns their player rows."""
+    P, n = R.P, rights_teams(R.P)
+    rows = [prow for prow in range(P.cur_rec) if P.get(prow, 'WBbd') > n]
+    for prow in rows:
+        P.set(prow, 'WBbd', 0)
+    return rows
+
+
+def rights_problems(R):
+    """Texts naming players who hold rights no NHL slot of roster `R` may hold (rights_teams), empty when right."""
+    P, n = R.P, rights_teams(R.P)
+    rows = [prow for prow in range(P.cur_rec) if P.get(prow, 'WBbd') > n]
+    if not rows:
+        return []
+    return [f"{len(rows)} players hold the NHL rights of slot {n} or later, which the unpatched game's Season does not "
+            f"know (it crashes when a Season starts): " + ", ".join(R.name(prow) for prow in rows[:5])]
+
+
 def status_of(P, prow):
     """The contract status a player on a club calls for. The game's own roster and the source hold 1 for every player
     whose rights an NHL team holds (proteam `WBbd`), deal or not, and 0 for everyone else; Team Rosters shows CONT / SAL

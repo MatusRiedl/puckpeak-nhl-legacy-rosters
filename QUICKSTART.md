@@ -63,6 +63,6 @@ from [Puck Peak](https://www.puckpeak.com).
   experience he has to spend, and press **Save this career** with RPCS3 closed (a backup copy is made first).
 
 The full manual is in [README.md](README.md). Questions, news and help: our Discord,
-[gg.puckpeak.com](https://gg.puckpeak.com) (the **Join our Discord** button at the top of the window). Found a problem? Open an
+[gg.puckpeak.com](https://gg.puckpeak.com) (the **Join our Discord** button at the top of the Setup tab). Found a problem? Open an
 [issue](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/issues) and include the list of
 changes or the error message.

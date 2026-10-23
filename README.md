@@ -43,7 +43,7 @@ Questions, news and help: **[gg.puckpeak.com](https://gg.puckpeak.com)**
 3. Start the game. That is all.
 
 No roster yet? It can start from the game's own. Built for the NHL Legacy community, by [Puck Peak](https://www.puckpeak.com).
-Questions or ideas? Come to our [Discord](https://gg.puckpeak.com) (the **Join our Discord** button at the top of the window).
+Questions or ideas? Come to our [Discord](https://gg.puckpeak.com) (the **Join our Discord** button at the top of the Setup tab).
 
 <details>
 <summary><b>Everything it does, in detail</b></summary>

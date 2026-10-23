@@ -1030,11 +1030,10 @@ class Builder:
         return True
 
     def set_pro_team(self, prow, team):
-        """cPbu.proteam (the NHL organisation that holds a player's rights) is team + 1: five bits on a roster for the
-        unpatched game, so the team in slot 31 cannot be recorded there; six on one for the game patch
-        (gamepatch.rights_wide)."""
-        if team + 1 <= self.P.field('WBbd').mask:
-            self.P.set(prow, 'WBbd', team + 1)
+        """cPbu.proteam (the NHL organisation that holds a player's rights) is team + 1. On a roster for the unpatched
+        game Seattle and Vegas (slots 30 / 31) hold no rights: its Season knows 30 NHL teams (contracts.rights_teams),
+        so their players hold nobody's; a roster for the game patch holds them all (gamepatch.rights_wide)."""
+        self.P.set(prow, 'WBbd', team + 1 if pay.holds_rights(self.P, team) else 0)
 
     def nhl_lines(self):
         """Departed players' slots/letters go to newcomers, then NHL lines are re-dealt by rating
@@ -2377,7 +2376,7 @@ class Builder:
             pay.write(P, prow, d, self.money)
             org = L.API_TO_SLOT.get(d.get('org'))
             if (org is not None and not P.get(prow, 'WBbd') and not on[pid] & L.NHL_PRIMARY
-                    and org + 1 <= P.field('WBbd').mask):       # his NHL team's deal: its rights (Vegas's: patch rosters)
+                    and pay.holds_rights(P, org)):      # his NHL team's deal: its rights (Seattle's / Vegas's: patch rosters)
                 P.set(prow, 'WBbd', org + 1)
                 stats['rights given to the team he signed with'] += 1
             if tuple(P.get(prow, f) for f in pay.FIELDS) != self.orig_deals.get(pid):

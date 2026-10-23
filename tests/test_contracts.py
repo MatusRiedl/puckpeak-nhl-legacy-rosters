@@ -167,9 +167,28 @@ def test_prospects_under_contract_on_no_club_join_their_organisations_farm_club(
     for pid, team in farm.items():
         prow = R.p_by_id[pid]
         assert team in {t for _, t in R.teams_of(prow)} and R.name(prow) in logged
-        assert R.P.get(prow, 'WBbd') == parents[team] + 1 and R.P.get(prow, 'BSXd') == team + 1   # his rights, his club
+        rights = parents[team] + 1 if pay.holds_rights(R.P, parents[team]) else 0   # Seattle's: nobody's (unpatched)
+        assert R.P.get(prow, 'WBbd') == rights and R.P.get(prow, 'BSXd') == team + 1         # his rights, his club
         assert R.P.get(prow, 'DVoL') == 1 and R.P.get(prow, 'dhKk')                             # his two-way deal
     assert ' to their farm club (under contract)' in dict(built.lines())[pipeline.SECTION_NHL]
+
+
+def test_seattle_and_vegas_hold_no_rights_on_a_roster_for_the_unpatched_game(built, data):
+    """A tester's NA game crashed when a Season started (0.50.1): Coachella Valley's and other clubs' players held
+    Seattle's rights (proteam 31), and the unpatched game's Season looks them up in a table of 30 NHL teams. The
+    community's roster gives Seattle and Vegas nobody's rights; so does the update now (contracts.rights_teams), a roster
+    0.50.1 made loses them on its next update, even the Roster editor's Save, and verify refuses them."""
+    R = Roster(built.data)
+    assert R.P.field('WBbd').bits == 5 and pay.rights_teams(R.P) == 30
+    assert not any(R.P.get(prow, 'WBbd') > 30 for prow in range(R.P.cur_rec)) and pay.rights_problems(R) == []
+    rows = [prow for _, prow, *_ in R.team_roster(234) if prow is not None][:3]
+    for prow in rows:                   # as 0.50.1 left them: Seattle's prospects on Coachella Valley
+        R.P.set(prow, 'WBbd', 31)
+    assert pay.rights_problems(R)[0].startswith("3 players hold the NHL rights of slot 30 or later")
+    saved = pipeline.build(R.f.build(), data, steps=[])
+    out = Roster(saved.data)
+    assert saved.problems == [] and all(out.P.get(find(out, R.name(prow)), 'WBbd') == 0 for prow in rows)
+    assert any(row[3] == 3 and 'Seattle' in row[2] for row in saved.log if row[1] == 'summary')
 
 
 def test_a_team_full_up_takes_no_more_players_under_contract(base_bytes, data, built, monkeypatch):

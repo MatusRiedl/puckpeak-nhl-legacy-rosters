@@ -629,10 +629,11 @@ def _nhl_contract(b, row, parent):
 
 def _rights(b, row, org):
     """The organisation the league's list names (`org`, an NHL.com code) holds the player's rights, with a two-way deal
-    (the real one comes later, Builder.real_contracts); none (an AHL-only deal), or one proteam cannot hold (Vegas on a
-    roster for the unpatched game, five bits): nobody's, so rights an earlier roster left stay no more."""
+    (the real one comes later, Builder.real_contracts); none (an AHL-only deal), or one that cannot hold rights (Seattle
+    or Vegas on a roster for the unpatched game: contracts.rights_teams): nobody's, so rights an earlier roster left stay
+    no more."""
     slot = L.API_TO_SLOT.get(org) if org else None
-    if slot is None or slot + 1 > b.P.field('WBbd').mask:
+    if slot is None or not pay.holds_rights(b.P, slot):
         b.P.set(row, 'WBbd', 0)
     else:
         _nhl_contract(b, row, slot)

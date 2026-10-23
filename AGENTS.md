@@ -62,7 +62,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    copy of the savedata folder, or `tools/window_shot.py` (it makes a fake RPCS3).
 6. **No git commit or push, and nothing published, without the owner's explicit go-ahead.**
    The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters (0.6.0
-   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 and 0.50.1 on 2026-10-23, each with the owner's go-ahead). Every further commit,
+   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0, 0.50.1 and 0.50.2 on 2026-10-23, each with the owner's go-ahead). Every further commit,
    push or release needs the go-ahead again. Before pushing, check that no base roster (`work/`),
    picture pack (`private/packs/`, a zip in `legacy_roster/data/`), anything from `private/`, personal path or user name
    goes in, and that `python tools/clean_check.py` finds nothing.
@@ -186,6 +186,19 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+**Version 0.50.2 (2026-10-23, hotfix, released with the owner's go-ahead):** (1) **Season start crash on the unpatched
+game** (a tester's NA 1.00 log, RPCS3 on Linux, no patch): the Season setup `0x2850c8` walks the club teams' players and
+looks each one's NHL rights up in a 30-team table (`0x285628`: `lwz r11, 0x208(r6 + team * 4)`); Seattle's rights
+(proteam 31, which five bits can store) read past it (`0x01dbdbdb` - 30 as an index, crash at `0x2710e4`). The
+community's roster gives Seattle / Vegas nobody's rights; ours gave 48 players Seattle's (21 on Coachella Valley, CHL /
+national copies). `contracts.rights_teams` (30 on five bits, 32 on six) / `holds_rights` in `Builder.set_pro_team`
+(now sets 0 for a team that cannot hold rights), `real_contracts`, `clubs._rights`, `frontoffice` `rights_room`;
+`contracts.drop_rights` in `pipeline.build` before `status_fit` (cleans rosters of 0.50.0 / 0.50.1, also on the
+editor's Save), `verify` runs `contracts.rights_problems`. Test `test_contracts.py::
+test_seattle_and_vegas_hold_no_rights_on_a_roster_for_the_unpatched_game`. Not played in the game (only targeted tests,
+owner's wish for a fast release). (2) The **Join our Discord** button moved from the header to the top of the Setup
+tab's left column (`shell.js` `DiscordButton`, `update.js` `SetupTab`, `.discord` in `css/app.css`).
 
 **Version 0.50.1 (2026-10-23, released with the owner's go-ahead):** a **Join our Discord** button at the top right of
 the window's header (`web/js/shell.js` `Header`, `.header .discord` in `css/app.css`, api `open_discord`,

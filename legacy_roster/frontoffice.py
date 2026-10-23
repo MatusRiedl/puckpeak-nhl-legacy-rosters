@@ -7,9 +7,9 @@ NHL). Every club holds contracts (owner, 2026-10-22: contracts.contract_clubs, c
 Amounts are real dollars on either money scale (contracts.real: a roster for the unpatched game holds them times
 contracts.GAME). Cap and lowest payroll are each season's real ones (gamepatch.CAP_TABLE): the game patch puts them into
 the game; the unpatched game shows its own $71.4M cap with the deals scaled to it. The cap counts the NHL roster, as the
-game's payroll does. On a roster for the unpatched game Vegas holds no rights (proteam has five bits, room up to slot
-30: gamepatch.RIGHTS), so its prospect group is empty and its farm club's two-way deals count as Vegas's; patch rosters
-give proteam six bits (gamepatch.rights_wide) and Vegas holds rights as every team.
+game's payroll does. On a roster for the unpatched game Seattle and Vegas hold no rights (its Season knows 30 NHL
+teams: contracts.rights_teams), so their prospect groups are empty and their farm clubs' two-way deals count as theirs;
+patch rosters give proteam six bits (gamepatch.rights_wide) and Seattle and Vegas hold rights as every team.
 """
 from . import contracts, gamepatch
 from . import layout as L
@@ -53,7 +53,7 @@ class Index:
         self.farm = {n: T.get(n, gamepatch.AFFILIATE) - 1 for n in sorted(L.NHL_PRIMARY) if T.get(n, gamepatch.AFFILIATE)}
         self.farm.update({parent: farm for farm, parent in L.AHL_PARENT_EXTRA.items()})
         self.parent = {farm: n for n, farm in self.farm.items()}
-        self.rights_room = P.field(gamepatch.RIGHTS).mask - 1      # the highest slot whose rights a record can hold
+        self.rights_room = contracts.rights_teams(P) - 1      # the highest slot whose rights a record can hold
         self.clubs = contracts.contract_clubs(R)
         self._who = None
 
