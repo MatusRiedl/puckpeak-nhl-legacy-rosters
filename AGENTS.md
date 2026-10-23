@@ -62,7 +62,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    copy of the savedata folder, or `tools/window_shot.py` (it makes a fake RPCS3).
 6. **No git commit or push, and nothing published, without the owner's explicit go-ahead.**
    The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters (0.6.0
-   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0, 0.50.1 and 0.50.2 on 2026-10-23, each with the owner's go-ahead). Every further commit,
+   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, each with the owner's go-ahead). Every further commit,
    push or release needs the go-ahead again. Before pushing, check that no base roster (`work/`),
    picture pack (`private/packs/`, a zip in `legacy_roster/data/`), anything from `private/`, personal path or user name
    goes in, and that `python tools/clean_check.py` finds nothing.
@@ -186,6 +186,13 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+**Version 0.50.3 (2026-10-23, released with the owner's go-ahead):** the update check looks at GitHub at every start (owner: "if there is new
+update it should show up pop up"); `selfupdate.due` only reads the switch (before: at most every 12 hours, `CHECK_EVERY`
+and the `update_checked` setting are gone), and `UpdateController._look_for_update` waits until no update runs and no
+question shows before it offers (before, the offer was dropped). Copies of 0.50.2 and older still wait their 12 hours.
+Tests `test_selfupdate.py::test_due_at_every_start_and_not_when_switched_off`,
+`test_app.py::test_a_newer_version_is_offered_once_the_question_on_screen_is_answered`.
 
 **Version 0.50.2 (2026-10-23, hotfix, released with the owner's go-ahead):** (1) **Season start crash on the unpatched
 game** (a tester's NA 1.00 log, RPCS3 on Linux, no patch): the Season setup `0x2850c8` walks the club teams' players and

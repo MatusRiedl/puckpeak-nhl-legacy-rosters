@@ -9,7 +9,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 import urllib.request
 
 from .. import __version__, datasource, savedata
@@ -19,7 +18,6 @@ REPO = "MatusRiedl/puckpeak-nhl-legacy-rosters"
 RELEASE_URL = os.environ.get('LEGACY_ROSTER_RELEASE_URL') or f"https://api.github.com/repos/{REPO}/releases/latest"
 EXE_ASSET = 'NHLLegacyRosterUpdater.exe'
 SUMS_ASSET = 'SHA256SUMS.txt'
-CHECK_EVERY = 12 * 3600         # seconds between two looks at GitHub
 CHUNK = 256 * 1024
 
 
@@ -86,11 +84,10 @@ def latest(current=__version__, fetch_json=None, fetch_text=None):
     return release if release and have and release.version > have else None
 
 
-def due(settings, now=None):
-    """Time to look again? (Not if the player switched it off; at most every 12 hours.)"""
-    if settings.get('check_updates', True) is False:
-        return False
-    return (now if now is not None else time.time()) - float(settings.get('update_checked') or 0) >= CHECK_EVERY
+def due(settings):
+    """Look at this start? At every start unless the player switched it off (owner, 0.50.3: before, at most every 12
+    hours, so a version released the same day was not offered)."""
+    return settings.get('check_updates', True) is not False
 
 
 # --- replacing the exe ------------------------------------------------------------------------------

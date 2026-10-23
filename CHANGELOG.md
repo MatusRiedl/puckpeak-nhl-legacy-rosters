@@ -3,6 +3,13 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.50.3 (2026-10-23)
+
+- **The program looks for a newer version every time it starts.** Before, it looked at most every 12 hours, so a
+  version released the same day was not offered. The question also waits until another question on screen is
+  answered, instead of being dropped. "Look for a newer version when this program starts" in the Setup tab switches
+  it off.
+
 ## 0.50.2 (2026-10-23)
 
 - **Season mode no longer crashes when it starts** (game without the game patch). The update gave some players the

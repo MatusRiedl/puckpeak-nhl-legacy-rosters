@@ -53,11 +53,10 @@ def test_digest_from_the_asset_or_the_sums_file():
     assert U.from_json(plain, lambda url: "nonsense").digest is None
 
 
-def test_due_every_twelve_hours_and_not_when_switched_off():
-    assert U.due({}, now=10 ** 6)
-    assert not U.due({'update_checked': 1000}, now=1000 + U.CHECK_EVERY - 1)
-    assert U.due({'update_checked': 1000}, now=1000 + U.CHECK_EVERY)
-    assert not U.due({'check_updates': False}, now=10 ** 9)
+def test_due_at_every_start_and_not_when_switched_off():
+    assert U.due({}) and U.due({'check_updates': True})
+    assert U.due({'update_checked': 10 ** 12})          # a look a moment ago (0.50.2 and older waited 12 hours)
+    assert not U.due({'check_updates': False})
 
 
 @pytest.fixture

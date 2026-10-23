@@ -109,18 +109,16 @@ class UpdateController:
 
     # --- a newer version of the program -----------------------------------------------------------------
     def check_for_update(self, force=False):
-        """Look at GitHub in the background (at most every 12 hours, unless the player switched it off or
-        `force`); a newer version is offered in a question. Never in the way: offline means silence."""
+        """Look at GitHub in the background (at every start, unless the player switched it off; `force`: the button);
+        a newer version is offered in a question. Never in the way: offline means silence."""
         with self.lock:
             if not force and not selfupdate.due(self.settings):
                 return
         threading.Thread(target=self._look_for_update, args=(force,), daemon=True).start()
 
-    def _look_for_update(self, force):
+    def _look_for_update(self, force, wait=2.0):
         release = selfupdate.latest()
         with self.lock:
-            self.settings['update_checked'] = time.time()
-            S.save(self.settings)
             if release is None and force:
                 self.ask("You have the newest version", [f"Version {__version__} is the latest one."
                          " If you are offline, or GitHub did not answer, try again in a moment."],
@@ -128,9 +126,14 @@ class UpdateController:
                 return
             if release is None or (not force and self.settings.get('update_skipped') == release.text):
                 return
-            if self.busy or self.dialog:
-                return                      # not in the middle of work; the next start asks again
-            self._offer_update(release)
+        while True:                 # an update or another question first, then the offer (before, it was dropped)
+            with self.lock:
+                if self.quitting:
+                    return
+                if not (self.busy or self.dialog):
+                    self._offer_update(release)
+                    return
+            time.sleep(wait)
 
     def _offer_update(self, release):
         notes = [line.strip(' #*-') for line in release.notes.splitlines() if line.strip(' #*-')][:4]

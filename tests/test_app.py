@@ -822,6 +822,25 @@ def test_a_window_that_has_started_the_new_version_closes_even_though_it_was_bus
     assert quit_called == [True] and ed.closing() and not upd.busy and upd.dialog is None
 
 
+def test_a_newer_version_is_offered_once_the_question_on_screen_is_answered(app, monkeypatch):
+    """The start's look at GitHub found a question showing: the offer waits for it (0.50.2 dropped it)."""
+    import threading
+    from legacy_roster.app import selfupdate
+    host, upd, _ed, _uni, _sd = app
+    release = selfupdate.Release((9, 9, 9), 'v9.9.9', 'New things', 'page', 'url', 1, 'abc')
+    monkeypatch.setattr(selfupdate, 'latest', lambda: release)
+    upd.ask("Something else", ["first"], [("OK", 'ok', 'primary')], {})
+    first = upd.dialog['id']
+    looking = threading.Thread(target=upd._look_for_update, args=(False, 0.01), daemon=True)
+    looking.start()
+    looking.join(0.2)
+    assert looking.is_alive() and upd.dialog['title'] == "Something else"
+    upd.answer(first, 'ok')
+    wait(lambda: upd.dialog)
+    looking.join(5)
+    assert upd.dialog['title'] == "Version 9.9.9 is out" and not looking.is_alive()
+
+
 def test_the_equipment_window_offers_the_games_own_words_for_tucks_and_tape():
     from legacy_roster import equipment as E
     assert [w for _, w in E.OPTIONS['jersey_tuck']] == ["None", "Left", "Right", "Full"]
