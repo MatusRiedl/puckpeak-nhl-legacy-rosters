@@ -55,12 +55,45 @@ def dark_title_bar(window):
         pass
 
 
-def window_height(webview):
+LARGEST, SHARE = (1760, 1100), (0.9, 0.94)
+
+
+def fit(area):
+    """(x, y, width, height) of the screen's free area (no taskbar) -> the window's (width, height, x, y): most of
+    it, centred, at least the old 1080 x 780 where that fits."""
+    ax, ay, aw, ah = area
+    w = min(LARGEST[0], max(min(WIDTH, aw), int(aw * SHARE[0])))
+    h = min(LARGEST[1], max(min(HEIGHT, ah), int(ah * SHARE[1])))
+    w, h = max(w, MIN_SIZE[0]), max(h, MIN_SIZE[1])
+    return w, h, ax + max(0, (aw - w) // 2), ay + max(0, (ah - h) // 2)
+
+
+def work_area(webview):
+    """The main screen's free area in the window's units (Windows: its WorkingArea; elsewhere the screen less 80)."""
+    screens = list(webview.screens)
+    screen = next((s for s in screens if s.x == 0 and s.y == 0), screens[0])
+    frame = getattr(screen, 'frame', None)
     try:
-        screen = webview.screens[0]
-        return max(MIN_SIZE[1], min(HEIGHT, int(screen.height) - 80))
+        return int(frame.X), int(frame.Y), int(frame.Width), int(frame.Height)
+    except AttributeError:
+        return int(screen.x), int(screen.y), int(screen.width), int(screen.height) - 80
+
+
+def window_box(webview):
+    try:
+        return fit(work_area(webview))
     except Exception:
-        return HEIGHT
+        return WIDTH, HEIGHT, None, None
+
+
+QUEUE = 64
+
+
+def roomy_server():
+    """pywebview's local server listens with Python's default queue of 5 connections; the page asks for more files at
+    once, Windows refuses what does not fit and the window stayed blank (lab round 47c)."""
+    from wsgiref.simple_server import WSGIServer
+    WSGIServer.request_queue_size = QUEUE
 
 
 def main(argv=None, after=None):
@@ -96,6 +129,13 @@ def main(argv=None, after=None):
     from ..app.editor import EditorController
     from ..app.uniforms import UniformsController
     from ..app.equipment import EquipmentController
+    from ..app.lines import LinesController
+    from ..app.strategy import StrategyController
+    from ..app.calendar import CalendarController
+    from ..app.office import OfficeController
+    from ..app.prospects import ProspectsController
+    from ..app.career import CareerController
+    from ..app.season import SeasonSource
     from .api import Api
     from .host import WebHost
 
@@ -104,26 +144,47 @@ def main(argv=None, after=None):
     editor = EditorController(host, update)
     uniforms = UniformsController(host, editor)
     equipment = EquipmentController(host, editor)
+    lines = LinesController(host, editor)
+    strategy = StrategyController(host, editor)
+    season = SeasonSource(editor)                    # the player's own Season / Be a GM save, read only
+    calendar = CalendarController(host, editor, season)
+    office = OfficeController(host, editor, season)
+    career = CareerController(host, editor)          # running Be a Pro careers (saved only on the player's Save)
+    prospects = ProspectsController(host, editor, career)
     host.register('update', update.snapshot)
     host.register('editor', editor.snapshot)
     host.register('picture', editor.picture_view)
+    host.register('face_pics', editor.face_pics_view)
+    host.register('look_pics', editor.look_pics_view)
     host.register('uniforms', uniforms.snapshot)
     host.register('thumbs', uniforms.thumbs_view)
     host.register('equipment', equipment.snapshot)
     host.register('equip_pics', equipment.pics_view)
-    api = Api(host, update, editor, uniforms, equipment)
+    host.register('lines', lines.snapshot)
+    host.register('strategy', strategy.snapshot)
+    host.register('rail', editor.rail_view)
+    host.register('calendar', calendar.snapshot)
+    host.register('office', office.snapshot)
+    host.register('contract', office.contract_snapshot)
+    host.register('prospects', prospects.snapshot)
+    host.register('career', career.snapshot)
+    api = Api(host, update, editor, uniforms, equipment, lines, strategy, calendar, office, prospects, career)
+    width, height, x, y = window_box(webview)
     window = webview.create_window(f"Puck Peak  -  Legacy Roster Updater {__version__}",
-                                   url=os.path.join(WEB, 'index.html'), js_api=api, width=WIDTH,
-                                   height=window_height(webview), min_size=MIN_SIZE, background_color=BACKGROUND,
-                                   text_select=False)
+                                   url=os.path.join(WEB, 'index.html'), js_api=api, width=width, height=height,
+                                   x=x, y=y, min_size=MIN_SIZE, background_color=BACKGROUND, text_select=False)
     host.attach(window)
-    window.events.closing += lambda: update.closing() and editor.closing()
+    window.events.closing += lambda: update.closing() and editor.closing() and career.closing()
     window.events.shown += lambda: dark_title_bar(window)
     update.start_up()
     host.every(15, update.tick)
     selfupdate.clean_leftovers()
     update.check_for_update()
-    controllers = {'host': host, 'update': update, 'editor': editor, 'uniforms': uniforms, 'equipment': equipment}
+    update.download_pictures()
+    controllers = {'host': host, 'update': update, 'editor': editor, 'uniforms': uniforms, 'equipment': equipment,
+                   'lines': lines, 'strategy': strategy, 'calendar': calendar, 'office': office,
+                   'prospects': prospects, 'career': career}
+    roomy_server()
     try:
         webview.start(func=(lambda: after(window, controllers)) if after else None,
                       http_server=True, private_mode=True, storage_path=datasource.app_dir('webview'),

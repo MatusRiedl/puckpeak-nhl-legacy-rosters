@@ -13,6 +13,7 @@ import re
 import unicodedata
 from collections import Counter
 
+from .. import contracts as pay
 from .. import layout as L
 from .. import lines, ratings
 from ..donors import UNDRAFTED
@@ -23,7 +24,7 @@ from . import pools
 CORE = {'G': 2, 'D': 6, 'F': 12}    # a dressed line-up: created before any club's depth players
 STAY_AGE = 20                       # a player this young whom his league's list leaves out stays with his club
 PROSPECT_ROOM = 36                  # an undrafted prospect joins a club only while it keeps fewer players than this
-# where an undrafted prospect of the next drafts plays, by nationality (EA's own roster keeps its draft
+# where an undrafted prospect of the next drafts plays, by nationality (the game's own roster keeps its draft
 # classes on junior and European clubs); everyone else goes to the CHL
 HOME_LEAGUE = {'SWE': 'shl', 'FIN': 'liiga', 'CZE': 'extraliga', 'SVK': 'extraliga', 'DEU': 'del', 'AUT': 'del',
                'CHE': 'nl', 'NOR': 'norway'}
@@ -127,6 +128,26 @@ def creation_order(b, key, league, people, live, est):
             + [p for k, p in fresh if k not in core])
 
 
+def own_kit(R, slot):
+    """Coachella Valley's / Henderson's designs (layout.OWN_DESIGN), team colours (layout.OWN_COLOURS) and jersey colours
+    (layout.OWN_KIT, table NDEo: its rows for slot + 1)."""
+    E, kit = R.f['NDEo'], L.OWN_KIT.get(slot)
+    if not kit:
+        return
+    for field, v in L.OWN_DESIGN[slot].items():
+        R.T.set(slot, field, v)
+    for kind, rgb in zip(('primary', 'secondary'), L.OWN_COLOURS[slot]):
+        for c, v in zip('rgb', rgb):
+            R.T.set(slot, f'{kind}color_{c}', v)
+    for i in range(E.cur_rec):
+        if E.get(i, 'team') != slot + 1:
+            continue
+        zones = kit.get((E.get(i, 'equipment'), E.get(i, 'variant')))
+        for z, rgb in enumerate(zones or (), start=1):
+            for c, v in zip('rgb', rgb):
+                E.set(i, f'zone{z}_{c}', v)
+
+
 def update_league(b, key, league, say):
     """Rebuild the slots of one league. Returns the set of team ids that were rebuilt."""
     R, U, P, T = b.R, b.U, b.P, b.R.T
@@ -149,6 +170,9 @@ def update_league(b, key, league, say):
         L.set_city(T, t['slot'], t['short'])        # custom slots (Coachella, Henderson): a key, see layout
         T.set(t['slot'], 'nnsx', t['abbr'])
         T.set(t['slot'], 'RPbr', t['art'])
+        if t['slot'] in L.OWN_ART:                  # Coachella Valley, Henderson: art ids and jersey colours of their own
+            T.set(t['slot'], 'artid', L.OWN_ART[t['slot']])
+            own_kit(R, t['slot'])
         if t.get('logo'):
             b.logos[t['slot']] = t['logo']
 
@@ -207,21 +231,24 @@ def update_league(b, key, league, say):
             live[pid] = [x for x in live.get(pid, []) if x not in b.deleted]
             leftovers.pop(e, None)
             b.drop_fa(pid)
-            _feed_position(b, row, p, live, name)
+            if _feed_position(b, row, p, live, name):
+                changed.add(target)                  # kept lines would count him at his old position
             if key != 'ahl':
-                b.unrate_name_only(pid)     # EA's rating will not reach him here next time
-            if key == 'ahl' and pid not in b.ea_rated and b.data.ea_ratings:
-                # EA rates NHL and AHL players; one who just came down from the NHL was on neither
+                b.unrate_name_only(pid)     # the list's rating will not reach him here next time
+            if key == 'ahl' and pid not in b.list_rated and pid not in b.full_rated and b.data.ratings_list:
+                # The ratings list rates NHL and AHL players; one who just came down from the NHL was on neither
                 # when the ratings were written
-                ea = b.ea_rating_for(P.get(row, 'PedH'), P.get(row, 'RMbQ'), p['birth'], by_name=True)
-                if ea and ratings.is_goalie(ea) == (P.get(row, 'aljv') == 4):
-                    b.write_ea_rating(row, ea)
-            if p.get('stale'):                       # an EA-era record: fix the birth year, re-rate
+                on_list = b.list_rating_for(P.get(row, 'PedH'), P.get(row, 'RMbQ'), p['birth'], by_name=True)
+                if on_list and ratings.is_goalie(on_list) == (P.get(row, 'aljv') == 4):
+                    b.write_list_rating(row, on_list)
+            if p.get('stale'):                       # a record from the game's own database: fix the birth year, re-rate
                 P.set(row, 'dnFq', p['birth'][0] - 1910)
-                if pid not in b.ea_rated:            # EA's own ratings always win over an estimate
-                    est.shift(row, est.target(key, P.get(row, 'aljv'), age, name, p.get('letter'), p.get('rookie'),
-                                              _is_import(p, league)))
-                    stats['re-rated'] += 1
+                if not b.rate_full(row, live):      # the full ratings first, as the next run finds him by the year put right
+                    b.unrate_full(pid)
+                    if pid not in b.list_rated:        # The list's ratings always win over an estimate
+                        est.shift(row, est.target(key, P.get(row, 'aljv'), age, name, p.get('letter'),
+                                                  p.get('rookie'), _is_import(p, league)))
+                        stats['re-rated'] += 1
         else:
             if p['pos'] == 'F':                      # feeds that do not split forwards: C, LW, RW in turn
                 pos = forward_cycle % 3
@@ -248,42 +275,69 @@ def update_league(b, key, league, say):
             P.set(row, 'iwsK', d - 1)
             P.set(row, 'pLKJ', m - 1)
             P.set(row, 'dnFq', y - 1910)
-            ea = b.ea_rating_for(p['first'], p['last'], p['birth'], by_name=key == 'ahl') if b.data.ea_ratings else None
-            if not (ea and ratings.is_goalie(ea) == (pos == 4) and b.write_ea_rating(row, ea)):
+            # the full ratings first, then the ratings list, then the estimate (as the next run's ratings step finds him)
+            dates = b.full_dates
+            rated = b.rate_full(row, live)
+            on_list = (b.list_rating_for(p['first'], p['last'], p['birth'], by_name=key == 'ahl')
+                   if b.data.ratings_list and not rated else None)
+            if not (rated or on_list and ratings.is_goalie(on_list) == (pos == 4) and b.write_list_rating(row, on_list)):
                 est.write(row, est.target(key, pos, age, name, p.get('letter'), p.get('rookie'),
                                           _is_import(p, league)), name, age)
             e = b.new_entry(target, b.new_link(pid), row)
             b.arrivals.setdefault(target, []).append(e)
             live.setdefault(pid, []).append(e)
-            changed.add(target)
             note = "; birthdate approximate (the league gives the age only)" if p.get('birth_approx') else ''
+            if b.full_dates > dates:
+                note = "; real birthdate (the league gives the age only)"
             b.log.append([p['team'], 'created', name, f"reused record of {old}{note}", p.get('num') or ''])
             stats['created'] += 1
+            changed.add(target)
         _bio(b, row, p)
         if p.get('photo'):
             b.photos[row] = p['photo']
-        # a club player's contract team is his club; only NHL property keeps contract terms
+        # a club player's contract team is his club. Without NHL rights his deal is the club's own (a starter deal,
+        # Builder.starter_contracts, or the player's edit): it stays while he stays; one from another team, or an NHL
+        # deal whose rights the list no longer names, goes (the starter deals give him one with this club)
+        stays = P.get(row, 'BSXd') == target + 1
+        had_rights = P.get(row, 'WBbd')
         P.set(row, 'BSXd', target + 1)
-        if p.get('nhl_contract') and parents.get(target) is not None:
+        if league.get('orgs'):                       # the list names his organisation (AHL, owner 2026-10-22)
+            _rights(b, row, p.get('org'))
+        elif p.get('nhl_contract') and parents.get(target) is not None:
             _nhl_contract(b, row, parents[target])
-        if not P.get(row, 'WBbd'):
+        if not P.get(row, 'WBbd') and (had_rights or not stays):
             for f in ('GDhI', 'dhKk', 'IrlK', 'IzRv'):
                 P.set(row, f, 0)
         numbers[e] = p.get('num')
         letters[e] = p.get('letter')
+    for slot in slots:              # the league's own captains: Builder.contract_strays deals the other letters again
+        b.feed_letters[slot] = {e: v for e, v in letters.items() if v and U.get(e, 'BSXd') == slot}
 
     # undrafted prospects of this league's country who are in prospect pools, on the free-agent list or on
     # no team join its clubs, as if they had been there: a second run finds them as former players who stay
     joined = _place_prospects(b, key, slots, leftovers, was_pool, live, stats)
 
+    # players under contract with the parent club (2026-27) whom no list names stay (below); they neither count for
+    # the line-up nor fill it, as on a first run, where Builder.contract_strays only puts them here at the end
+    under_contract = {e for e, slot in leftovers.items() if was_pool[slot] is None and b.farm_contract(e, slot, parents)}
+
     # a club the feed leaves short at a position (its listed defencemen are with the NHL club, its
     # goalies could not get a record): a former player of that position stays, else a free agent signs
     for slot in slots:
-        _fill_lineup(b, slot, leftovers, live, T.get(slot, 'nnsx'), stats, JUNIOR_AGE.get(key))
+        _fill_lineup(b, slot, leftovers, live, T.get(slot, 'nnsx'), stats, JUNIOR_AGE.get(key), under_contract)
 
     # whoever is still on these slots is not on the new rosters
     displaced = {}
     for e, slot in sorted(leftovers.items()):
+        if e in under_contract:
+            # under contract with the parent club (2026-27) and on no list: he stays, as Builder.contract_strays would
+            # put him here at the end; the club is not dealt again for him (a second run must find nothing to do)
+            P.set(b.prow_of_entry(e), 'BSXd', slot + 1)
+            b.log.append([T.get(slot, 'nnsx'), 'stays under contract', R.name(b.prow_of_entry(e)),
+                          f"under contract with {L.SLOT_TO_API[parents[slot]]} (2026-27), not on the league's list",
+                          U.get(e, 'tRVs')])
+            stats['kept under contract'] += 1
+            continue
         changed.add(slot)
         if e in joined:                 # a prospect who just joined (on a slot that may have been a pool): he stays
             continue
@@ -327,10 +381,12 @@ def update_league(b, key, league, say):
                 U.set(e, 'tRVs', n)
             taken[n] += 1
         complete = len({f for e in ents for f in b.held(e)}) == len(b.flags)
-        if slot in changed or not complete:
-            short = Counter(group('CLRDG'[P.get(b.prow_of_entry(e), 'aljv')]) for e in ents)
+        short = Counter(group('CLRDG'[P.get(b.prow_of_entry(e), 'aljv')]) for e in ents)
+        enough = all(short[g] >= n for g, n in CORE.items())
+        # kept lines that break the line-up rule by real positions (lines.lineup_flaws) are dealt again when they can be
+        if slot in changed or not complete or (enough and lines.lineup_flaws(b, slot, ents)):
             try:
-                if short['G'] < CORE['G'] or short['D'] < CORE['D'] or short['F'] < CORE['F']:
+                if not enough:
                     raise lines.NotEnoughPlayers(f"{R.team_name(slot)}: {short['G']} goalies, {short['D']} "
                                                  f"defencemen, {short['F']} forwards -- cannot dress 20")
                 lines.build_lines(b, slot)
@@ -358,6 +414,7 @@ def update_league(b, key, league, say):
     for k, v in sorted(stats.items()):
         b.log.append([league['label'], 'summary', k, v, ''])
     b.league_stats[key] = dict(stats)
+    b.rebuilt_clubs.update({slot: key for slot in rebuilt})     # Builder.repair_lineups looks at them again at the end
     return rebuilt
 
 
@@ -445,22 +502,31 @@ def _place_prospects(b, key, slots, leftovers, was_pool, live, stats):
     return joined
 
 
-def _fill_lineup(b, slot, leftovers, live, abbr, stats, max_age=None):
+def _fill_lineup(b, slot, leftovers, live, abbr, stats, max_age=None, staying=()):
     """Top a club up to a dressable 20 (2 G, 6 D, 12 F): first with former players of the slot at the
     missing position (so a second run keeps the same ones), best first, then with prospect-pool
-    players and free agents (for a junior club only those of junior age)."""
+    players and free agents (for a junior club only those of junior age), the ones nearest the club's own level first and
+    one better than its best player only when no other is left (an AHL club short of a forward signed Jonathan Toews, the
+    best free agent, on the game's own roster: 2026-10-22). Never with a player another
+    league lists (`b.league_rows`): its step would take him away again and leave the club short; nor with one under an
+    NHL contract whom no list names (`b.contract_org`: Builder.contract_strays places him at the end, and a second run
+    would not count him here but fill his place again: Dower-Nilsson at Grand Rapids, 2026-10-22). The former players
+    in `staying` (under contract with the parent club) stay anyway and are left out."""
     P, U, T = b.P, b.U, b.R.T
     young_enough = lambda prow: max_age is None or b.data.season_year - (P.get(prow, 'dnFq') + 1910) <= max_age
+    usable = lambda prow: young_enough(prow) and prow not in b.league_rows and P.get(prow, 'zIBw') not in b.contract_org
     cls = lambda prow: group('CLRDG'[P.get(prow, 'aljv')])
     have = Counter(cls(b.prow_of_entry(e)) for e in b.entries_on(slot) if e not in leftovers)
     for g, need in CORE.items():
         missing = need - have[g]
         if missing <= 0:
             continue
-        former = sorted((e for e, s in leftovers.items() if s == slot and cls(b.prow_of_entry(e)) == g),
+        former = sorted((e for e, s in leftovers.items() if s == slot and cls(b.prow_of_entry(e)) == g
+                         and b.prow_of_entry(e) not in b.league_rows and e not in staying),
                         key=lambda e: (-b.q(e), e))
         for e in former[:missing]:
             leftovers.pop(e)
+            P.set(b.prow_of_entry(e), 'BSXd', slot + 1)     # his contract team is the club he stays with
             b.log.append([abbr, 'stays to fill the line-up', b.R.name(b.prow_of_entry(e)), f"needed at {g}",
                           U.get(e, 'tRVs')])
             stats['kept to fill the line-up'] += 1
@@ -471,7 +537,7 @@ def _fill_lineup(b, slot, leftovers, live, abbr, stats, max_age=None):
         for link in b.fa_links:
             pid = b.R.link_to_pid.get(link)
             prow = b.R.p_by_id.get(pid)
-            if prow is not None and cls(prow) == g and young_enough(prow) and not any(
+            if prow is not None and cls(prow) == g and usable(prow) and not any(
                     U.get(x, 'BSXd') not in L.NATIONAL for x in live.get(pid, [])):
                 free.append((-b.quality.get(pid, 0), pid, ('fa', link), prow))
         for t in pools.SPARE_SLOTS:
@@ -479,9 +545,12 @@ def _fill_lineup(b, slot, leftovers, live, abbr, stats, max_age=None):
                 for e in b.entries_on(t):
                     prow = b.prow_of_entry(e)
                     pid = b.pid_of_entry(e)
-                    if cls(prow) == g and young_enough(prow) and pid not in b.placed:
+                    if cls(prow) == g and usable(prow) and pid not in b.placed:
                         free.append((-b.quality.get(pid, 0), pid, ('pool', e), prow))
-        for _, pid, (where, x), prow in sorted(free)[:missing]:
+        own = sorted(b.q(e) for e in b.entries_on(slot) if e not in leftovers)
+        top, level = (own[-1], own[len(own) // 2]) if own else (None, None)
+        fit = lambda q: (top is not None and q > top, abs(q - level) if level is not None else -q, -q)
+        for _, pid, (where, x), prow in sorted(free, key=lambda f: (fit(-f[0]), f[1]))[:missing]:
             if where == 'fa':
                 e = b.new_entry(slot, x, prow)
                 b.arrivals.setdefault(slot, []).append(e)
@@ -494,6 +563,12 @@ def _fill_lineup(b, slot, leftovers, live, abbr, stats, max_age=None):
                 b.move_entry(e, slot)
             b.placed.add(pid)
             P.set(prow, 'BSXd', slot + 1)
+            if slot in L.AHL and pid not in b.list_rated and pid not in b.full_rated and b.data.ratings_list:
+                # the ratings step finds AHL players by name (Builder.apply_list_ratings): as a second run would
+                birth = (P.get(prow, 'dnFq') + 1910, P.get(prow, 'pLKJ') + 1, P.get(prow, 'iwsK') + 1)
+                on_list = b.list_rating_for(P.get(prow, 'PedH'), P.get(prow, 'RMbQ'), birth, by_name=True)
+                if on_list and ratings.is_goalie(on_list) == (P.get(prow, 'aljv') == 4):
+                    b.write_list_rating(prow, on_list)
             b.log.append([abbr, 'signed to fill the line-up', b.R.name(prow), detail, U.get(e, 'tRVs')])
             stats['signed to fill the line-up'] += 1
 
@@ -501,15 +576,17 @@ def _fill_lineup(b, slot, leftovers, live, abbr, stats, max_age=None):
 def _feed_position(b, row, p, live, name):
     """The league's current position for a player it lists (a feed that only says 'forward' moves a
     defenceman up front, and leaves a forward's position alone). Goalies never change, and neither
-    do players on a national team: their squad's lines were dealt by position."""
+    do players on a national team: their squad's lines were dealt by position. True when it changed
+    (his club's lines are dealt again)."""
     cur = b.P.get(row, 'aljv')
     want = (0 if cur == 3 else cur) if p['pos'] == 'F' else L.POS_CODE.get(p['pos'])
     if want is None or want == cur or 4 in (cur, want):
-        return
+        return False
     if any(b.U.get(e, 'BSXd') in L.NATIONAL for e in live.get(b.P.get(row, 'zIBw'), [])):
-        return
+        return False
     b.set_position(row, want)
     b.log.append([p['team'], 'position changed', name, f"{L.POS_NAME[cur]} to {L.POS_NAME[want]}", ''])
+    return True
 
 
 def affiliates(R):
@@ -521,15 +598,53 @@ def affiliates(R):
     return out
 
 
+def pair_farms(R, teams):
+    """Every NHL team 0-29 names as its farm team (ttOk.ahlaffiliate) the AHL club of slots 32-61 whose list (`teams`, with
+    each player's `org`) holds most of its players: the game's own roster still pairs them as in 2014 (Colorado with the
+    club in Lake Erie's slot, now Chicago's, Carolina's farm). Only a pairing of one club per team is written; returns the
+    NHL slots whose farm team changed."""
+    T = R.T
+    parent = {}
+    for t in teams:
+        orgs = Counter(L.API_TO_SLOT.get(p.get('org')) for p in t['players'] if p.get('org'))
+        top = orgs.most_common(1)
+        if 32 <= t['slot'] < 62 and top and top[0][0] is not None and top[0][0] < 30:
+            parent[t['slot']] = top[0][0]
+    if sorted(parent.values()) != list(range(30)):
+        return []
+    changed = []
+    for club, nhl in sorted(parent.items(), key=lambda cn: cn[1]):
+        if T.get(nhl, 'TxsC') != club + 1:
+            T.set(nhl, 'TxsC', club + 1)
+            changed.append(nhl)
+    return changed
+
+
 def _nhl_contract(b, row, parent):
     """An AHL player on an NHL contract: his NHL organisation holds his rights, and he has a
     two-way deal (a default one if the save had none)."""
-    P = b.P
     b.set_pro_team(row, parent)
+    two_way(b.P, row, b.data.season_year, b.money)
+
+
+def _rights(b, row, org):
+    """The organisation the league's list names (`org`, an NHL.com code) holds the player's rights, with a two-way deal
+    (the real one comes later, Builder.real_contracts); none (an AHL-only deal), or one proteam cannot hold (Vegas on a
+    roster for the unpatched game, five bits): nobody's, so rights an earlier roster left stay no more."""
+    slot = L.API_TO_SLOT.get(org) if org else None
+    if slot is None or slot + 1 > b.P.field('WBbd').mask:
+        b.P.set(row, 'WBbd', 0)
+    else:
+        _nhl_contract(b, row, slot)
+
+
+def two_way(P, row, season_year, scale=pay.GAME):
+    """Player row `row` gets a two-way deal: his own terms if he has some, else a default one on the roster's money
+    `scale` (contracts.default_terms; gamepatch.rights_fit too)."""
     if not P.get(row, 'GDhI') or not P.get(row, 'dhKk'):
-        entry_level = P.get(row, 'dnFq') + 1910 >= b.data.season_year - 22
-        P.set(row, 'GDhI', 3 if entry_level else 1)
-        P.set(row, 'dhKk', 146 if entry_level else 116)      # ~$975k entry-level / ~$775k minimum
+        years, cap = pay.default_terms(P.get(row, 'dnFq') + 1910 >= season_year - 22, scale)
+        P.set(row, 'GDhI', years)
+        P.set(row, 'dhKk', cap)
         P.set(row, 'IrlK', 0)
         P.set(row, 'IzRv', 0)
     P.set(row, 'contractis2way', 1)
@@ -544,9 +659,13 @@ def _is_import(p, league):
 def _bio(b, row, p):
     """Facts the league publishes about a player overwrite what the save had."""
     P = b.P
-    if p.get('height_cm'):
+    if p.get('height_in'):                          # the game's own inches and pounds (the AHL's list)
+        P.set(row, 'QBpy', max(0, min(31, p['height_in'] - 54)))
+    elif p.get('height_cm'):
         P.set(row, 'QBpy', max(0, min(31, round(p['height_cm'] / 2.54) - 54)))
-    if p.get('weight_kg'):
+    if p.get('weight_lb'):
+        P.set(row, 'WZNs', max(0, min(255, p['weight_lb'] - 120)))
+    elif p.get('weight_kg'):
         P.set(row, 'WZNs', max(0, min(255, round(p['weight_kg'] * 2.20462) - 120)))
     if p.get('shoots') in ('L', 'R'):
         P.set(row, 'pkRG', 0 if p['shoots'] == 'L' else 1)

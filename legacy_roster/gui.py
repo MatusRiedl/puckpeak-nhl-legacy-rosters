@@ -16,15 +16,15 @@ except ImportError:      # only when run from source without the window's one ex
     sys.exit("The window needs the 'customtkinter' package:  pip install customtkinter\n"
              "(the command line works without it:  python -m legacy_roster list --rpcs3 <rpcs3.exe>)")
 
-from . import __version__, datasource, layout, pipeline, restore, savedata
+from . import __version__, datasource, layout, packs, pipeline, restore, savedata
 from . import theme as T
 from .art.install import ArtError, installed as art_installed, remove as remove_art
-from .art.photopack import PhotoPack
 from .editor.view import EditorTab
 from . import edits as my_edits
 from .progress import fraction
 from .roster import Roster
 from .stock import StockError
+from .app.texts import photos_will
 from .gui_state import is_current_scan, sync_packed_order
 from .widgets import Banner, Card, Choice, GhostButton, PrimaryButton, RosterRow, SwitchRow, configure_if_changed, flag_image
 
@@ -46,11 +46,11 @@ ROSTER_MIN = 150            # the roster list (step 2) never gets less than this
 SITE = "https://www.puckpeak.com"
 SITE_LABEL = "www.puckpeak.com"
 TAGLINE = "NHL & hockey analytics like never before"
-HOW_TO_LOAD ="In the game: Roster Management > Load Roster, pick it, then save the roster once so it stays active."
+HOW_TO_LOAD ="In the game: Customize > Save/Load/Delete > Load > Rosters, pick it, then save the roster once so it stays active."
 NO_NAME = "(a roster file has no name)"
 HOW_TO_USE_EXPORT = ("Copy SYS-DATA into one of your roster save folders in place of the file with that name (keep a copy of "
-                     "the old one), then in the game: Roster Management > Load Roster, pick it, and save the roster once.")
-HOW_TO_LOAD_IN_PLACE = ("In the game: start it. If this is not the roster in use, Roster Management > Load Roster, pick it, "
+                     "the old one), then in the game: Customize > Save/Load/Delete > Load > Rosters, pick it, and save the roster once.")
+HOW_TO_LOAD_IN_PLACE = ("In the game: start it. If this is not the roster in use, Customize > Save/Load/Delete > Load > Rosters, pick it, "
                         "then save the roster once.")
 
 
@@ -177,8 +177,10 @@ class App:
             self.export_box.pack(fill='both', expand=True)
             self._export_look()
         root.bind('<Return>', lambda _e: self.start())
-        self.set_rpcs3(self.settings.get('rpcs3') or self.settings.get('folder') or savedata.running_rpcs3()
-                       or savedata.default_rpcs3(), quiet=True)
+        from .app.update import temporary
+        last = self.settings.get('rpcs3') or self.settings.get('folder')
+        self.set_rpcs3((None if temporary(last) else last) or savedata.running_rpcs3() or savedata.default_rpcs3(),
+                       quiet=True)
         self.tick()
         self.poll()
 
@@ -260,7 +262,7 @@ class App:
         card = Card(master, 3, "What should be updated?")
         sources = self.pack.get('sources', {})
         notes = {pipeline.NHL: "Today's rosters from NHL.com",
-                 pipeline.RATINGS: self._dated(sources.get('ea_ratings')),
+                 pipeline.RATINGS: self._dated(sources.get('ratings_list')),
                  pipeline.NATIONAL: self._dated(sources.get('iihf')),
                  pipeline.SCHEDULE: "The real games and dates for Season mode (30 teams; the game still calls "
                                     "the year 2015)"}
@@ -293,11 +295,8 @@ class App:
             row.pack(fill='x', pady=(0, 5), padx=(1, 10))
             self.switches.append(row)
             self.step_rows[step] = row
-        bundled = PhotoPack.open()
-        self.photos = tk.BooleanVar(value=remembered.get(PHOTOS, bundled is not None))
-        note = (f"{len(bundled):,} photos and logos inside this program ({bundled.built}); new players' "
-                "are downloaded" if bundled else "Current photos and club logos (downloaded), and the clubs' real names")
-        row = SwitchRow(rows, "Photos, logos and team names", note, self.photos, self.refresh_state,
+        self.photos = tk.BooleanVar(value=remembered.get(PHOTOS, True))
+        row = SwitchRow(rows, "Photos, logos and team names", photos_will(), self.photos, self.refresh_state,
                         extra="RPCS3 must be closed. The game's own pictures are kept and can be put back.",
                         restore=lambda: self.toggle_restore(self.photos_row, restore.PICTURES, self.photos))
         row.pack(fill='x', pady=(0, 5), padx=(1, 10))
@@ -582,9 +581,11 @@ class App:
         self.checked = checked
         self.rpcs3, self.slots, self.usable, self.versions = found, slots, usable, versions
         if self.rpcs3:
-            self.settings['rpcs3'] = self.rpcs3.where
-            self.settings.pop('folder', None)
-            save_settings(self.settings)
+            from .app.update import temporary
+            if not temporary(self.rpcs3.where):
+                self.settings['rpcs3'] = self.rpcs3.where
+                self.settings.pop('folder', None)
+                save_settings(self.settings)
             if self.path_full != self.rpcs3.where:
                 self.show_path(self.rpcs3.where, T.TEXT)
             configure_if_changed(self.rpcs3_note, text=self.found_text() + (" RPCS3 is running." if running else ""),
@@ -970,6 +971,8 @@ class App:
 
     def work(self, folder, slot, steps, name, art=None, mine=(None, None), targets=None, in_place=False, parts=()):
         try:
+            if art is not None:         # the pictures first (packs.py); without them photos come one by one
+                packs.sync()
             default = restore.default_slot(self.rpcs3, slot.title_id) if parts else None
             result = pipeline.update(folder, slot.folder, steps, name, lambda msg: self.queue.put(('say', msg)),
                                      art_rpcs3=art, my_edits=mine[0] or None, team_edits=mine[1] or None,

@@ -22,19 +22,22 @@ STAGES = (
     (r'^National teams', 0.88, None),
     (r'^My edits', 0.90, None),
     (r'^Photos and logos: choosing', 0.91, None),
+    (r'^Photos and logos: checking', 0.91, None),        # install.prefetch: new photos drawn before the ids are given
     (r'^Packing', 0.92, None),
     (r'^Checking', 0.95, None),
     (r'^(Saved as|Updated ".*" in place|Already up to date)', 1.0, None),
     (r'^The new roster did not pass', 1.0, None),
 )
 _STAGES = tuple((re.compile(p), a, b) for p, a, b in STAGES)
-# with "Photos and logos" on, making the pictures comes after the save and takes most of the time
+# with "Photos and logos" on, making the pictures comes after the save and takes most of the time: first the jerseys and
+# ice of every team the look pack has (a few seconds a team), then the photos and logos
 PHOTO_SHARE = 0.6
 PHOTO_STAGES = (
+    (r'^Jerseys and ice: \D*(\d+) of (\d+)', 0.0, 0.5),
     (r'^Jerseys and ice: ', 0.02, None),
-    (r'^Photos and logos: reading', 0.01, None),
-    (r'^Photos and logos: making', 0.03, None),
-    (r'^Photos and logos: (\d+) of (\d+) pictures made', 0.03, 1.0),
+    (r'^Photos and logos: reading', 0.5, None),
+    (r'^Photos and logos: making', 0.52, None),
+    (r'^Photos and logos: (\d+) of (\d+) pictures made', 0.52, 1.0),
     (r'^Photos and logos: (all )?\d+ pictures (are )?installed', 1.0, None),
 )
 _PHOTO_STAGES = tuple((re.compile(p), a, b) for p, a, b in PHOTO_STAGES)
@@ -45,6 +48,7 @@ REMARKS = (
     r'^Prospect pools: no room left',
     r"^The game's own roster: ",          # stock.py: before the steps
     r'^Retiring the old players',         # stock.retire_leftovers: before the leagues
+    r'^Photos and logos: \d+ picture numbers given back',     # install.give_back: before the pictures are made
 )
 _REMARKS = tuple(re.compile(p) for p in REMARKS)
 

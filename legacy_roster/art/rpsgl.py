@@ -19,6 +19,7 @@ import struct
 import zlib
 
 CHUNK = 0x20000
+OPAQUE_SLACK = None     # DXT1: a block Pillow got more than this far off is encoded again (None: Pillow's as they are)
 
 
 class RpsglError(ValueError):
@@ -111,28 +112,30 @@ class Rpsgl:
         img.load()
         return img.convert('RGBA')
 
-    def replace(self, name, img):
+    def replace(self, name, img, coverage=None, flat=None):
         """Put the picture `img` (Pillow; resized to the raster's size when it differs) into the raster `name`, with all
-        its mipmaps. The file keeps its size and layout."""
+        its mipmaps (dds.mipmaps). `coverage`: alpha says how much of a pixel shows, as on the centre-ice logos, the
+        number sheets and the helmet decals (the default); not for the normal maps (`*_nm`), whose alpha is data.
+        `flat`: a colour every level is flattened onto (dds.flatten: the centre ice). The file keeps its size and
+        layout."""
         from PIL import Image
+        from . import dds
         r = self.rasters[name]
         if r['format'] is None:
             raise RpsglError(f"{name} is not DXT1 or DXT5")
+        if coverage is None:
+            coverage = not name.endswith('_nm')
         w, h = r['width'], r['height']
         img = img.convert('RGBA')
         if img.size != (w, h):
-            img = img.resize((w, h), Image.LANCZOS)
-        encoded = bytearray()
-        for k in range(r['mips']):
-            lw, lh = max(1, w >> k), max(1, h >> k)
-            level = img if k == 0 else img.resize((lw, lh), Image.BOX)
-            if lw < 4 or lh < 4:                       # the last levels are one block
-                canvas = Image.new('RGBA', (4, 4))
-                canvas.paste(level, (0, 0))
-                level = canvas
-            buf = io.BytesIO()
-            level.save(buf, 'DDS', pixel_format=r['format'])
-            encoded += buf.getvalue()[128:]
+            img = img.resize((w, h), Image.LANCZOS) if coverage else \
+                Image.merge('RGBA', [c.resize((w, h), Image.LANCZOS) for c in img.split()])
+        if coverage and r['format'] == 'DXT5':
+            encoded = dds.mipmaps(img, r['format'], r['mips'], True, flat=flat)
+        elif coverage:              # DXT1: opaque (jerseys, pants, socks, masks); only the blocks Pillow got far off
+            encoded = dds.mipmaps(img, r['format'], r['mips'], True, colour_slack=OPAQUE_SLACK, alpha_slack=None)
+        else:                       # normal maps: Pillow's blocks (smooth data, small errors), every channel on its own
+            encoded = dds.mipmaps(img, r['format'], r['mips'], False, colour_slack=None, alpha_slack=None)
         if len(encoded) != r['size']:
             raise RpsglError(f"{name}: the new picture came out {len(encoded)} bytes, the raster has {r['size']}")
         self.data[r['at']:r['at'] + r['size']] = encoded

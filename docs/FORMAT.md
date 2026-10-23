@@ -23,7 +23,9 @@ roster file for both, dropped into `BLES021530200` or `BLUS315400200`. Both disc
 
 ## 2. SYS-DATA wrapper
 
-Big-endian unless noted. File length = `0x2C` + section size (2,456,120 bytes for rosters).
+Big-endian unless noted. File length = `0x2C` + section size (2,456,120 bytes for rosters). The section size is the
+length of the game's roster database in memory, and the game reads a roster of that length only: a roster for the
+game patch's stage S is 864 bytes longer (docs/GAME_PATCH.md, `gamepatch.SECTION_SIZE`).
 
 | Offset | Content |
 |---|---|
@@ -37,7 +39,7 @@ Big-endian unless noted. File length = `0x2C` + section size (2,456,120 bytes fo
 zlib level 6, memLevel 9, wbits 15 reproduces the game's own output byte for byte. Saves written
 by other tools may be compressed differently; only the content has to match.
 
-## 3. The database inside (EA "TDB")
+## 3. The database inside ("TDB")
 
 - `DB` header (0x18 bytes): `44 42 00 08`, `01000000`, db size, 0, table count, CRC-32/MPEG-2
   (init FFFFFFFF, xorout 0) of bytes 0..0x14.
@@ -89,22 +91,24 @@ Classic, 15 EASHL.
 North Americans and the country code for everyone else. `headid` is the 3D head model (60000
 and up are generic heads), `artid` + `hasportrait` the menu photo, `audioid` the commentary
 name. `team` is the contract team + 1 (0 = none), `contractlength`, `contractdollars`.
-`proteam` and `draftteam` are NHL team + 1 in five bits (Vegas, slot 31, cannot be stored).
+`proteam` and `draftteam` are NHL team + 1 in five bits (Vegas, slot 31, cannot be stored). A roster for the game patch
+gives `proteam` six bits (`gamepatch.rights_wide`, patch 0.23: the patch's `db/nhlng-meta.xml` describes the same six bits,
+and the game reads a roster whose fields differ from that description as damaged); `draftteam` stays five.
 `draftyear` is the year - 1900, 255 for undrafted; `draftround` (4 bits) and `draftposition` (9
 bits) are the round and the **overall** pick (the disc: Gaudreau round 4, pick 104; Saad round 2,
-pick 43). EA gives a junior who is not drafted yet his draft year with round 0 (2014-2017 on the
+pick 43). The game gives a junior who is not drafted yet his draft year with round 0 (2014-2017 on the
 disc), and the disc's Legacy Edition already holds the 2015 draft. `draft.py` writes NHL.com's
 picks (0.8.0).
 
-**Goalie equipment.** EA painted every goalie's gear in his 2014 team's colours on white
+**Goalie equipment.** The game painted every goalie's gear in his 2014 team's colours on white
 (`showcustomcolors` 1 for all 62 NHL goalies on the disc; Hiller's pads Calgary red and gold).
 The colours are free RGB values; `Builder.goalie_gear` repaints the coloured zones of a goalie who
 changed club (0.8.0, waiting for the in-game check).
 
 **Attributes.** Stored value = rating - 36 (six bits, ratings 36 to 99). The field for each
-attribute is in `legacy_roster/schema.py` (`EA_SKATER`, `EA_GOALIE`); for example `c_speed` =
+attribute is in `legacy_roster/schema.py` (`LIST_SKATER`, `LIST_GOALIE`); for example `c_speed` =
 `bEdA`, `c_faceoffs` = `KrwV`, `c_gsh` = `DTrq`. `c_potential`, the growth fields and the
-traits are not published by EA and are left alone.
+traits are not in the ratings list and are left alone.
 
 **Roster entries.** `key` = team x 40 + slot. `playerindex` is the link id. `rosterstatus` = 1
 when dressed. `captain` 1 = C, 2 = A. `playerstyle` equals the player's style in his attribute
@@ -129,7 +133,7 @@ record. The line slots are named: `l1lw l1c l1rw l1ld l1rd` ... `l4rw`, `pp1*`, 
 ## 6. The community rosters
 
 The updater works on this roster family (the 2025-26 roster "ROSTER2526" and its successors); its
-conventions differ from the stock EA roster.
+conventions differ from the game's own roster.
 
 - 32 NHL teams: slot 22 (the old Arizona slot) holds Utah, the two All-Star slots 30 and 31
   hold Seattle and Vegas. Custom teams 222-233 are copies of twelve NHL teams with current
@@ -137,7 +141,7 @@ conventions differ from the stock EA roster.
 - Birth years are stored as year - 1910 (stock: year - 1900), so ages are right in a game whose
   calendar starts in 2015.
 - About 1,250 blanked player records (last name starting `ZZ`) are spare records for new players.
-  About 1,250 more teamless records still carry EA's − 1900 birth year (their draft year shows it).
+  About 1,250 more teamless records still carry the game's − 1900 birth year (their draft year shows it).
 - The European league slots hold draft-class pools and NHL prospect pools; 27 club slots are
   empty. Pool slots got pool names and pool art abbreviations (`P261` …); their original art
   (for example `BIF`, `VF`, `HCAP`, `STAV`) is in the stock database on the disc.
@@ -200,7 +204,7 @@ disc (the EU one has the same archives):
 
 ## 7. Game files and overrides
 
-The disc holds a few large EA "EB" v3 archives (`cache.big`, `nocache.big`, ...; layout in
+The disc holds a few large "EB" v3 archives (`cache.big`, `nocache.big`, ...; layout in
 `tools/isotools.py`). Before reading an archive the game looks for a loose file under
 `dev_hdd0\game\<TITLEID>\USRDIR\`, so single files can be replaced without repacking:
 
@@ -209,20 +213,31 @@ The disc holds a few large EA "EB" v3 archives (`cache.big`, `nocache.big`, ...;
 | Menu portrait | `fe/ion/artassets/playerheads/p8001_12000/p<artid>.big` (folders `p0_4000`, `p4001_8000`, `p8001_12000` for every id above 8,000, `silhouettes`; + `playerheadssmall`) |
 | Team logo (menus) | `fe/ion/artassets/teamlogos/t<artid>.big`; variants `teamlogossmall/s`, `teamlogoswide/w`, `teamlogoscalendar/c`, `teamlogosdynasty/d`, `teamlogosreflection/r` (NHL only) |
 | Text | `fe/loc/nhl_<lang>.db` (same TDB format) |
+| Main-menu lists | `fe/ion/game/menus/mainmenuitems.big` (in `boot.big`; a BIGF with an Apt movie; `art/menus.py`, docs/notes/menus.md). A loose copy in USRDIR is read first (lab, 2026-10-18) |
 | Default database | `db/nhlng.db`, `db/nhlng-meta.xml` (in `cacheboot.big`, stored uncompressed) |
 | 3D heads, jerseys, ice | `rendering/**/*.rpsgl` (`\x89RW4ps3`) |
 
 **3D textures** (read 2026-10-06; `art/rpsgl.py`; archives `nocacherender.big` 1.7 GB and `cacherender.big` 1.4 GB, EU
 and NA identical). A `.rpsgl` is a "chunkzip" (128 KB chunks of raw deflate) around a RenderWare PS3 file with
 named DXT1/DXT5 rasters and a full mipmap chain; repacked with zlib level 9 it is byte-identical to the disc's.
+The game's makers made each mip by hand (not a box filter); under alpha 0 the centre-ice files hold the ice's own colour (231, 233,
+231), and the game's logos are an opaque disc with thin edges. Partial alpha on the ice showed as a hatch in the lab (round 32),
+so the centre ice is flattened onto that colour: every mip opaque or clear (`dds.flatten`, `Rpsgl.replace(flat=)`).
+`Rpsgl.replace(coverage=)` makes the mips from
+alpha-weighted colour with a 3-pixel colour bleed (`dds.mipmaps`, `bleed`) and encodes them with `dds.encode_level`
+(Pillow's blocks, the poor ones encoded again: Pillow's DXT5 alpha never reaches a block's end values). Normal maps
+(`*_nm`) get mips per channel; opaque DXT1 keeps Pillow's blocks (`OPAQUE_SLACK`). docs/notes/centre-ice-quality.md.
 Named by the team's numeric art id (22 Utah, 30 Seattle, 31 Vegas; the Arizona files are still the ones for 22):
 `rendering/jersey/texlib_<style>_<art>_<variant>` (rasters `jersey_.._cm`, `_sm`, `_0_nm`, `font_..`; the same UV
 layout for every team; Utah has variants 0, 1, 3, 4 in styles 0 and 1, 3 and 4 the home and away), `name_<style>_<art>_<variant>_cm`,
 `pant/texlib_..`, `sock/sock_.._cm`, `icesurface/centerlogo_<art>_cm` (1024x1024 DXT5, the centre-ice logo;
-`exhibitionarena.centericelogo` can name another team's), `icesurface_<arena art>_bm` (rink picture), `banner_`,
-`crowd/prop_team_`. The menu previews of jerseys are `fe/ion/artassets/jerseys/jersey_<style>_<art>_<variant>.big` (BIGF,
-readable as above). The game asks for `<game folder>/rendering/...` first (RPCS3 log), but **no loose rendering file
-has been tried in the game yet** (`cli rendering-test`, ROADMAP "Jerseys and the ice"). The community roster already
+`exhibitionarena.centericelogo` is 0 in every row of the rosters seen and does not pick the file), `icesurface_<arena art>_bm` (rink picture), `banner_`,
+`crowd/prop_team_`. **Which centre-ice file a home game shows depends on the league** (lab round 31, RPCS3's log): the
+NHL and the DEL take the arena's art (`OEtS.arenaartid` of the team's `arenaid`: Seattle and Vegas show Nashville's 16,
+all DEL clubs the DEL's 197), the national teams always 501, every other league the home team's own art
+(`looks.shown_centre`; lab round 31). The menu previews of jerseys are
+`fe/ion/artassets/jerseys/jersey_<style>_<art>_<variant>.big` (BIGF, readable as above). The game asks for
+`<game folder>/rendering/...` first (RPCS3 log) and loose files there are used (`cli rendering-test`, 0.9.0). The community roster already
 has Utah, Seattle and Vegas arenas (`exhibitionarena` rows 181, 186, 162) and colours; the game's own roster has
 Arizona's and the All-Star slots' (`builder.nhl_identity` sets them for that source).
 
@@ -234,7 +249,7 @@ teams 20000+).
 - header: big-endian file count at +8, header size at +12;
 - entries: u32 offset, u32 size, NUL-terminated name.
 
-It holds an EA "Apt" UI movie:
+It holds an "Apt" UI movie:
 - part `0` "Apt Data:1:5:4";
 - part `1` "Apt constant file";
 - a 288-byte part, and empty `sg1`/`sg2` markers;
@@ -285,7 +300,12 @@ More details:
     its own must exist; the owner's RPCS3 has none.
   - **Folder rule** (from the RPCS3 log): ids up to 4,000 are in `p0_4000`, up to 8,000 in
     `p4001_8000`, every higher id in `p8001_12000` (the game asked for `p8001_12000/p12402.big`).
-  - `artid` is 16 bits; the updater gives new portraits ids from 20,000 (`art/portraits.py`).
+  - `artid` is 16 bits; the updater gives new portraits ids from 20,000 (`art/portraits.py`), since 2026-10-20 from
+    40,000 (`FRESH_IDS`).
+  - **A portrait file is shared by every roster of that game version** (and every RPCS3 user). The community's
+    2026-27 roster uses ids up to 30,007 (165 inside 20,082-30,007). A number is good for one person on the whole PC:
+    `install.scan_claims` reads every roster save and portrait file; the updater never gives out a number someone else
+    uses and takes its own file off one that turns out to be someone else's (docs/notes/player-pictures.md).
 - **Proven in the game (art test, 2026-10-03):** a loose portrait replaces the disc's (McDavid); a
   new id below 4,000 and one above the disc's range both show; a loose logo replaces the disc's (the
   Team Rosters screen shows the dynasty variant `d`). A missing loose file falls back to the
@@ -321,13 +341,14 @@ rebuilds every language file of the disc byte for byte.
   bits // 8 + 1 bytes. Offset 0xFFFFFFFF means no string.
 - **After the strings.** Zero bytes to a multiple of 8, then the CRC-32/MPEG-2 of the table from
   0x28 on (the same chain rule as the saves). Table header +0x10 = where the strings end.
-- **Key hash.** `hashid` = `zlib.crc32(key.upper(), 0xFFFFFFFF) ^ 0xFFFFFFFF` for every key the game
-  builds at run time (team and city keys). About 45 % of the fixed keys (11,717 in English) have
-  other hashes that no rule tried explains (CRC-32 variants, FNV, djb2, sdbm, any case); those are
-  looked up by their stored hash. The meta file declares `hashid` a signed 32-bit key with an index
-  sorted on it; the records are sorted unsigned and the game copes. Stored keys keep their own case
-  (`NHLTeamName_MOD`, `NHLTEAMNAME_CHOM`, `ChangeDay`); the Kings copy's shortname
-  `NhlCityName_13` has no findable text (the disc's `NHLCityName_13` entry is one of the odd hashes).
+- **Key hash (found 2026-10-19, lab round 35).** `hashid` = `zlib.crc32(bytes(b & 0xdf for b in key), 0xFFFFFFFF) ^
+  0xFFFFFFFF` (the game's `0xdbae20`): every byte loses bit 5, so letters lose their case and digits, `_` and spaces
+  change too (`1` 0x31 -> 0x11). All 25,783 records of all 7 language files of the EU disc match. Until then this
+  program took `key.upper()`, which is the same rule only for keys of letters alone; the "odd hashes" (about 45 % of the
+  fixed keys) were the keys with a digit or a space, and every text the program added under such a key was never found
+  (`TEAMLINE1_X`, `NICKLINE2_X`: the blank Select Teams names of 7 AHL and 3 CHL clubs). The meta file declares
+  `hashid` a signed 32-bit key with an index sorted on it; the records are sorted unsigned and the game copes. Stored
+  keys keep their own case (`NHLTeamName_MOD`, `NHLTEAMNAME_CHOM`, `ChangeDay`).
 - **Team keys.** For a team with art code X the game asks for `NHLTeamName_X` (full name),
   `NHLCityName_X` (city: the Team Rosters header), `TXT_NICKNAME_X`, `TXT_NICKNAME_ALT_X` and
   `X_XLA_TEAM_X` (abbreviation). NHL slot 22 has art `PHX`, slots 30/31 `EAS`/`WES`. The disc
@@ -339,12 +360,14 @@ rebuilds every language file of the disc byte for byte.
   `NHLTeamName_Abbr3_X` (the short code). The NHL slots also have texts under their number:
   `NHLTeamName_22`, `NHLCityName_22`, `CITYLINE1_22`, `NICKLINE2_22`, `NHLTeamName_Abbr3_22` (22, 30,
   31 held Arizona, Eastern and Western All-Stars; `Logo46` still reads Arizona, not found on a screen).
-  Their hashes are not the CRC of their key (0 of 174 `TEAMLINE1_` match), so `LocFile.set` would add a
-  text nobody asks for: `LocFile.set_existing` finds them by their stored key (`set_select_lines`,
-  `loc.select_lines` splits a name the game's way). Until 0.8.0 the update wrote only the five keys
+  `set_select_lines` changes them, and adds the lines a club has none of (an empty line 1 only empties an existing
+  text); `loc.select_lines` splits a name the game's way. Until 0.8.0 the update wrote only the five keys
   above, so Select Teams showed 'Black ALL-STARS' for Vegas, 'Green ALL-STARS' for Seattle and
   'Arizona COYOTES' for Utah, and the old names of every rebuilt club (owner's screenshots,
-  2026-10-06). `loc.NAMES_VERSION` rewrites the installed files when the set of texts changes.
+  2026-10-06). `loc.NAMES_VERSION` rewrites the installed files when the set of texts changes ('#6': the game's hash).
+- **Created teams in a real league (stage Y, 2026-10-19).** The game names a created team (slots 222-251) "Custom Team
+  N" or by its city key (`COACHELLA_VALLEY`). With the patch's stage Y and a league other than Custom it asks for the
+  club texts of its art code instead (`NHLTeamName_CVF`, `TEAMLINE1_CVF` ..., `HSK`): `portraits.names` writes both.
 - **Text limits (found 2026-10-11, Select Teams crashed on switching league).** The longest text, in bytes, that the
   game's own English file keeps per kind of key: `TEAMLINE1_` 21, `TEAMLINE2_` 17, `NICKLINE2_` 14,
   `TXT_NICKNAME(_ALT)_` 16, `NHLTEAMNAME_` 31, `NHLCITYNAME_` 21, `CITYLINE1_` 12, `NHLTeamName_Abbr3_` 4,
@@ -357,6 +380,11 @@ rebuilds every language file of the disc byte for byte.
   every changed team with an empty first line had one (`LocFile.set`/`set_existing` now mark an empty text absent).
   The owner's log: access violation in the `EAAudioCore Dac` thread (corrupted memory), the main thread holding
   the strings `LINE1_NAME`/`LINE2_NAME`, 190 ms after the team's logo was read. Waiting for the in-game check.
+- **Promo texts (0.21.0).** The main menu's offline news panel (`TXT_OFFLINE_DYNAMIC_MSG_TITLE_<n>` / `_BODY_<n>`, 0-4;
+  3 is the fighting tip, `_CLASSIC_` NHL 94) and the tuner-set notices (`TXT_TUNER_SET(S)_..._AVAIL(ABLE)`) are fixed
+  keys (the HUT banner `FUT_NEWS_AND_EVENTS(_DESC)` stays: Zamboni serves HUT): `loc.PROMO` writes them with `set_existing`, the
+  same text in every language, each within the longest text any language keeps for that key (`promo_limits`).
+  docs/notes/promo-texts.md.
 
 ## 8. Schedules
 
@@ -387,9 +415,36 @@ Each league has a schedule table in the roster save except Norway:
   for the NHL. 32 teams × 82 games = 1,312 do not fit; 80 games (1,280) would.
 - **Divisions.** These live in `ttOk.conferencegroup` / `divisiongroup` (6 bits):
   - NHL: conferences 1 West, 2 East; divisions 3 Pacific, 4 Central, 5 Atlantic, 6 Metropolitan;
-  - slots 30/31: 2/2 and 1/1.
+  - slots 30/31: 2/2 and 1/1 (the conferences' own groups). A roster for the 32-team patch files them in the Pacific (1/3)
+    and Utah (slot 22) in the Central (1/4): `gamepatch.divisions_fit`, checked by `verify(farm_patch=True)`.
 - **Be a GM / season tables** (`league…`, `dynasty`) are not in the roster save. The game builds them
-  when a mode starts; `leaguegmdata` has 30 rows.
+  when a mode starts; `leaguegmdata` has 30 rows. It takes their row counts from `db/nhlng-meta.xml` (`maxinsert`) and
+  their field bits from the empty template tables in `db/nhlng.db`; a loose copy of either in the game folder wins over the
+  disc's (the game patch writes both: 32 rows, 6-bit team fields).
+- **The All-Star game in the calendar.** The game's calendar loader (30 teams) reads a row whose home team is 30 or more as
+  the All-Star game and plays it between the two All-Star teams (slots 30 / 31, made by the Season). The game's own row is
+  31 Jan, 30 v 31. With the 32-team game patch 30 / 31 are Seattle and Vegas, so that rule is off (stage E); stage J
+  makes a row of a team against itself the All-Star game, between EASHL 1 / 2 (slots 220 / 221, named Eastern / Western
+  All-Stars). The patched roster has exactly one such row, on `schedule.all_star_date` in the break (`schedule.ALL_PATCH`,
+  `gamepatch.check_all_star`). No calendar of the game's own has a row with home == away.
+- **A roster for the game patch** (`gamepatch.py`) differs from a normal one: birth years as year - 1911 (not - 1910: the
+  league's own clock, which the patch leaves at 2015 = 2026), pick years 11 later (`year_shift`); `ahlschedule` holds the AHL's 2026-27 calendar by farm place (slot - 32 for
+  slots 32-61, Coachella Valley 234 = 30, Henderson 235 = 31; `farm_fit`, `FARM_PLACE`); the AHL clubs in their 2026-27
+  divisions (`FARM_DIVISIONS`); every NHL slot's `ahlaffiliate` names its own club in slots 32-61, Seattle / Vegas none (the
+  patch gives them 234 / 235: `ttOk.ahlaffiliate` has 6 bits); Seattle / Vegas in the Pacific, Utah in the Central (`divisions_fit`). `verify(farm_patch=True)` checks it. It plays right only with the
+  patch on, and the patch only with such a roster.
+- **Later seasons' calendars** (Season / Be a GM, season 2 on) are not stored anywhere: the game makes them from the loaded
+  roster's `nhlfutureschedule` (`byED`) and `ahlschedule`, rotating each division's teams by one place a year and shifting
+  the weekdays (`0x283800`; docs/notes/autoplay.md, run 16). The game's own `byED` names 30 teams, so in season 2 two NHL
+  clubs had no games. A roster for the game patch holds the 2026-27 calendar of 32 in `byED` too (`gamepatch.future_fit`,
+  `check_future`), and stage R widens the game's map to 32 teams.
+- **The club leagues' tables** (lab round 46, docs/notes/league-calendars.md): Season mode's League Type offers all ten
+  leagues with a table (NHL, AHL, SHL, Liiga, DEL, Extraliga, National League, OHL, QMJHL, WHL; not Norway) and plays
+  the roster's own table (a swapped DEL row showed in a new DEL season). A team id is the club's place in its league:
+  slot - the league's first slot (`schedule.LEAGUES`: AHL `AJKN` 32-61, SHL `LmeT` 62-75, Liiga `RBQQ` 76-90, DEL
+  `Njxh` 91-104, Extraliga `RzQW` 105-118, National League `inlv` 119-130, OHL `uiEj` 154-173, QMJHL `ySfc` 174-191,
+  WHL `kTZD` 192-213). Room = stock rows + 60. The update writes the real 2026-27 games between clubs with a slot
+  (`schedule.apply_league`, checked by `check_league`); Be a GM is NHL only, Be a Pro starts in the NHL or the CHL.
 
 docs/SEASON_PLAN.md uses these facts.
 
@@ -409,6 +464,39 @@ RPCS3 keeps `log\RPCS3.log` open; read it with shared access. Useful searches:
   arena as the helmet reflects it. `Rpsgl` reads it as "not DXT1 or DXT5" (one raster of 524544 bytes).
 - `rendering/icesurface/`: `centerlogo_<art>_cm` 1024x1024, `icesurface_<art>_bm` 512x512 (rink from above, the logo baked in),
   `ice_cline_`, `ice_hotspot_`. Arena art 30 / 31 (All-Star) have no `_bm`, no crowd, no `helmet_` and no environment movie.
-- `stockteamequipmenttable` (`vbHh`): rows per team, equipment 1-8, variant, era; 9 colour zones. Arizona's red (218,57,28) / (207,61,28)
-  sits in zone 3 of equipment 1-4 of team 22.
+- `stockteamequipmenttable` (`vbHh`): rows per team, equipment 1-8, variant, brand, era; 9 colour zones (`zone<n>_r/g/b`).
+  **`team` is the slot + 1** (found 2026-10-18): team 22 is slot 21, Philadelphia, so the orange (218,57,28) / (207,61,28)
+  in zone 3 of its equipment 1-4 is Philadelphia's, not Arizona's. `stockgoalieequipment` (`nAUy`, blocker / pads / trapper
+  zones) and `customteamequipmenttable` (`NDEo`) count the same way; `sozv` (throwbacks) is keyed by the slot itself. Until
+  0.21.0 `Builder.nhl_gear` took `team` for the slot: it painted Philadelphia, Washington and Seattle and left Utah and Vegas
+  as they were (`GEAR_SLIPS`, docs/notes/equipment.md). Equipment 8 is taken for the helmet (zone 1 shell, 2 / 3 trim) and 5
+  for the gloves; not proven in the game yet.
+- **Sticks** (`ajmx.stick`): the colours are baked into `rendering/playerstick/texlib_<id>.rpsgl` (`playerstick_<id>_cm`,
+  1024x128 DXT1, no tint mask), so a stick in team colours means another model (`sticks.py`, `tools/stick_colours.py`).
+
+### Custom teams (slots 222-251): the Create a Team look (lab round 37, 2026-10-20)
+
+The game draws every custom slot like a team made in Create a Team, whatever its art id (round 34). `custom_kit.py`.
+
+- **Design fields** (`ttOk`): `jerseybackhome` (spwD, 5 bits) / `jerseybackaway` (tjNg) 0-8 (9 falls back to 0; the
+  community has one 9), `pantsstyle` (ztft, 3 bits) / `sockstyle` (wzfn) / `font` (sgrR) 0-5. `jerseystyle` (ucaK, 1
+  bit) is not the design but whether the game draws it: 0 (every custom slot of the game's own roster) gives a plain
+  jersey in the game, without the design or its colours (white in lab round 46, black in the owner's newer RPCS3), while
+  Select Jerseys still shows the design; 1 (the community's teams) draws it. `custom_kit.write` and `clubs.own_kit`
+  write 1 (`layout.OWN_DESIGN`). The design follows the side a team plays on (Select Jerseys' Home / Away switch changes
+  only the label).
+- Jersey value to `rendering/czjersey/jerseyct_<cut>_<n>`: 0 `0_0`, 1 `0_1`, 2 `1_0`, 3 `1_1`, 4 `2_0`, 5 `4_0`, 6 `4_1`,
+  7 `5_0`, 8 `5_1`. Pants `czpant/pantct_<n>`, socks `czsock/texlib_<n>`, font `czfont/czfont_<n>`. Crest
+  `czlogo/logoct_<logo>_*`, `artid` = 20001 + logo (0-86, 54 has no files); its bump / shine files follow the jersey cut.
+- Menu pictures (cache.big, 256x128 RGBA): `fe/ion/artassets/createteam/{jersey,pants,socks,font}/<kind><n>.big` and
+  `logo/logo<artid>.big` (20001-20086 without 20055).
+- **Colours** (`customteamequipmenttable`, `NDEo`, team = slot + 1, variant 1 home / 2 away, zones 1-9 RGB, `brand` 0):
+
+| Piece | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| What | goalie catching glove | goalie blocker | goalie pads | goalie stick | gloves | socks | pants | helmet | jersey | name and numbers | crest |
+| Zones used | 9 | 9 | 9 | 3 | 9 | 3 | 3 | 3 | 6 | 3 | 6 |
+
+  Jersey zones: 1 body, 2 / 3 stripes and side panels, 4 collar, 5 shoulders, 6 trim. The crest picture's weights
+  (`0_tm`) are made against piece 11's colours. `cTuP` (customteamjerseys) is left alone.
 

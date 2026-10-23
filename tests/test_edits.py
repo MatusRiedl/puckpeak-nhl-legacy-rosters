@@ -1,9 +1,9 @@
 """The player's own edits (edits.py): applied after the update, kept through later updates."""
-from legacy_roster import edits, pipeline
+from legacy_roster import edits, faces, pipeline, verify
 from legacy_roster.editor import model
 from legacy_roster import layout as L
 from legacy_roster.roster import Roster
-from legacy_roster.schema import EA_SKATER, RATING_BASE
+from legacy_roster.schema import LIST_SKATER, RATING_BASE
 
 
 def find(R, name):
@@ -43,7 +43,7 @@ def test_edits_are_applied_after_the_update(base_bytes, data, built):
     assert R.P.get(mcd, 'tRVs') == 98 and R.P.get(mcd, 'pkRG') == 1
     assert all(R.U.get(e, 'tRVs') == 98 for e, _ in R.teams_of(mcd))
     row = next(i for i in range(R.f['yvSd'].cur_rec) if R.f['yvSd'].get(i, 'zIBw') == R.P.get(mcd, 'zIBw'))
-    assert R.f['yvSd'].get(row, EA_SKATER['Passing']) == 99 - RATING_BASE
+    assert R.f['yvSd'].get(row, LIST_SKATER['Passing']) == 99 - RATING_BASE
     assert club_teams(R, find(R, 'Matthew Tkachuk')) == [L.API_TO_SLOT['TOR']]
     new = find(R, 'Puck Peak')
     assert club_teams(R, new) == [L.API_TO_SLOT['EDM']] and R.P.get(new, 'tRVs') == 77
@@ -88,7 +88,7 @@ def test_a_team_edit_renames_the_team_and_gives_it_a_logo(base_bytes, data, pack
     from legacy_roster.builder import Data
     edm = L.API_TO_SLOT['EDM']
     teams = {str(edm): {'full': 'Edmonton Puckers', 'city': 'Edmonton', 'abbr': 'EPK', 'logo': 'file:C:/logo.png'}}
-    d = Data(nhl_players=data.nhl_players, ea_ratings=data.ea_ratings, iihf=data.iihf, season_year=data.season_year,
+    d = Data(nhl_players=data.nhl_players, ratings_list=data.ratings_list, iihf=data.iihf, season_year=data.season_year,
              leagues=pack['leagues'], nhl_logos=pack['nhl_logos'])
     res = pipeline.build(base_bytes, d, steps=pipeline.steps_for(pack), team_edits=teams,
                          art_registry=portraits.Registry(str(tmp_path / 'ids.json')))
@@ -125,7 +125,7 @@ def test_the_editor_shows_the_roster_as_it_is_and_only_the_edits_made_now(base_b
 
 def test_a_rating_edit_reaches_the_national_team_copy_of_a_player(base_bytes, data, built):
     """A person on a club and on a national team (23 goalies) has two player records: both get the edit."""
-    from legacy_roster.schema import EA_GOALIE
+    from legacy_roster.schema import LIST_GOALIE
     R = Roster(built.data)
     by_person = {}
     for prow in range(R.P.cur_rec):
@@ -135,14 +135,14 @@ def test_a_rating_edit_reaches_the_national_team_copy_of_a_player(base_bytes, da
                      if len(r) == 2 and all(R.P.get(x, 'aljv') == 4 for x in r)
                      and any(t in L.NATIONAL for x in r for _, t in R.teams_of(x))
                      and any(t not in L.NATIONAL for x in r for _, t in R.teams_of(x)))
-    label = next(iter(EA_GOALIE))
+    label = next(iter(LIST_GOALIE))
     res = pipeline.build(built.data, data, my_edits={who: {'label': 'goalie', 'ratings': {label: 91}}})
     assert res.ok, res.problems[:5]
     R2, table = Roster(res.data), 'yuHm'
     for prow in rows:
         pid = R.P.get(prow, 'zIBw')
         row = next(i for i in range(R2.f[table].cur_rec) if R2.f[table].get(i, 'zIBw') == pid)
-        assert R2.f[table].get(row, EA_GOALIE[label]) == 91 - RATING_BASE
+        assert R2.f[table].get(row, LIST_GOALIE[label]) == 91 - RATING_BASE
 
 
 def test_equipment_edits_reach_the_player_and_his_team_and_change_nothing_twice(base_bytes, data, built):
@@ -175,14 +175,14 @@ def test_goalie_equipment_and_a_mask_picture_get_a_mask_number_nobody_wears(base
     R = Roster(built.data)
     goalie = find(R, 'Connor Hellebuyck')
     mine = {key_of(R, goalie): {'label': 'Connor Hellebuyck', 'mask_picture': 'file:C:/nowhere/mask.png',
-                                'equipment': {'pads': 5, 'tape': 0, 'neck': 1, 'blocker': 4, 'bogus': 1}}}
+                                'equipment': {'pads': 11, 'tape': 0, 'neck': 1, 'blocker': 12, 'bogus': 1}}}
     first = pipeline.build(base_bytes, data, my_edits=mine)
     assert first.ok, first.problems[:5]
     R = Roster(first.data)
     table = R.f[equipment.GOALIE_TABLE]
     row = equipment.row_of(table, 'goalie')[R.P.get(find(R, 'Connor Hellebuyck'), 'zIBw')]
     got = equipment.read(table, row, 'goalie')
-    assert got['pads'] == 5 and got['tape'] == 0 and got['neck'] == 1 and got['blocker'] == 4
+    assert got['pads'] == 11 and got['tape'] == 0 and got['neck'] == 1 and got['blocker'] == 12   # models the game draws
     wears = [equipment.read(table, i, 'goalie')['mask'] for i in range(table.cur_rec) if i != row
              and table.get(i, equipment.GOALIE_CODE[equipment.MASK_TYPE]) == 0]
     assert wears.count(got['mask']) <= 1 and got['mask'] not in equipment.MASK_FILES_MISSING      # at most his national-team copy
@@ -205,3 +205,45 @@ def test_a_team_left_short_of_players_keeps_its_letters(base_bytes, data, built)
     skipped = [r for r in res.log if r[1] == 'edit skipped']
     assert skipped and 'would have only 1 goalie' in skipped[0][3]
     assert club_teams(Roster(res.data), goalies[0]) == [team]
+
+
+def _style(R, prow):
+    S, pid = R.f['yvSd'], R.P.get(prow, 'zIBw')
+    return next(S.get(i, 'sFgQ') for i in range(S.cur_rec) if S.get(i, 'zIBw') == pid)
+
+
+def test_type_and_face_edits_reach_the_player_and_his_copies_and_change_nothing_twice(data, built):
+    R = Roster(built.data)
+    mcd, makar, crosby = find(R, 'Connor McDavid'), find(R, 'Cale Makar'), find(R, 'Sidney Crosby')
+    face = faces.read(R.P, crosby)
+    drai = find(R, 'Leon Draisaitl')
+    mine = {key_of(R, mcd): {'label': 'Connor McDavid', 'set': {'style': 7, **face}},
+            key_of(R, makar): {'label': 'Cale Makar', 'set': {'style': 2}},
+            key_of(R, drai): {'label': 'Leon Draisaitl', 'set': {'style': 2, 'head': 77}}}
+    first = pipeline.build(built.data, data, my_edits=mine)
+    assert first.ok, first.problems[:5]
+    A = Roster(first.data)
+    for name, style in (('Connor McDavid', 7), ('Cale Makar', 2)):
+        rows = [i for i in range(A.P.cur_rec) if A.name(i) == name and A.teams_of(i)]
+        for prow in rows:               # his club record and his national-team copy
+            assert _style(A, prow) == style
+            assert all(A.U.get(e, 'sFgQ') == style for e, _ in A.teams_of(prow))
+    assert faces.read(A.P, find(A, 'Connor McDavid')) == face
+    assert _style(A, find(A, 'Leon Draisaitl')) == _style(R, drai)       # a defence type on a forward: skipped
+    assert faces.read(A.P, find(A, 'Leon Draisaitl')) == faces.read(R.P, drai)   # no head 77 in the game
+    assert sum(1 for r in first.log if r[1] == 'edit skipped' and r[2] == 'Leon Draisaitl') == 2
+    again = pipeline.build(first.data, data, my_edits=mine)
+    assert again.data == first.data
+
+
+def test_verify_refuses_a_type_or_face_the_game_does_not_have(built):
+    R = Roster(built.data)
+    makar = find(R, 'Cale Makar')
+    S, pid = R.f['yvSd'], R.P.get(makar, 'zIBw')
+    S.set(next(i for i in range(S.cur_rec) if S.get(i, 'zIBw') == pid), 'sFgQ', 7)
+    R.P.set(makar, 'DaPp', 77)
+    R.P.set(makar, 'QDTK', 0)
+    problems, _ = verify.verify(R.f.build(), Roster(built.data))
+    assert "Cale Makar has player type 7, which no defenceman has" in problems
+    assert any(p.startswith("Cale Makar: a roster place shows another player type") for p in problems)
+    assert "Cale Makar: head 77 is not one of the game's heads" in problems

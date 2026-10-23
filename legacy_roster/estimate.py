@@ -4,7 +4,7 @@ A player's level is set relative to the NHL players of the roster being built:
 
     level = NHL median for his position + league gap + age + role + a little spread
 
-The league gaps and the age curve were measured on EA's own final roster for the game, which
+The league gaps and the age curve were measured on the game's own final roster for the game, which
 rated every league it shipped. The shape of the attributes (a centre takes face-offs, a
 defenceman blocks shots) is the median shape of NHL players at the same position.
 """
@@ -100,6 +100,7 @@ class Estimator:
         bonus = next(b_ for limit, b_ in POTENTIAL_BONUS if age <= limit)
         t.set(row, 'koEt', ratings.clamp(stored + bonus))          # c_potential
         b.quality[pid] = ratings.level(t, row) + b.ovr_offset[pos == 4]
+        b.rated_by[pid] = 'estimate'
 
     def shift(self, prow, level):
         """Move an existing player to `level` keeping the shape of his attributes."""
@@ -119,3 +120,4 @@ class Estimator:
             for f in fields:
                 t.set(row, f, ratings.clamp(t.get(row, f) + delta))
         b.quality[pid] = ratings.level(t, row) + b.ovr_offset[pos == 4]
+        b.rated_by[pid] = 'estimate'

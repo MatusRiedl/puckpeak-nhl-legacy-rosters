@@ -2,6 +2,12 @@
 
 State on 2026-10-05, version 0.8.0 (released 2026-10-05). Update this file when something here changes.
 
+**Game patch (2026-10-13, lab, not released):** the year 2026 and 32 teams in Season / Be a GM work in the lab (patch 0.7,
+round 10). Before a release: the All-Star game kept (stage J; the owner's call 2026-10-13), the draft for 32 (stage K), the
+exe installing the patch with undo (Phase D), then the owner's rounds 11-14 (All-Star, draft and next season, Be a Pro, patch
+off). Research afterwards, the owner's picks: 82 games, the 2026-27 salary cap, 3-on-3 overtime, the NA version. Details:
+docs/GAME_PATCH.md.
+
 0.8.0 answers the testers' feedback on 0.7.0 (owner's decisions below):
 - **Free agents:** retired players go, last season's unsigned NHL players come (Reimer, Toews,
   Quick), created if the save lacks them. Rule: `builder.would_retire` (data pack `nhl_last`).
@@ -53,7 +59,7 @@ map is `tools/club_slots.json`.
 | League | Slots | Status | Data source | Notes |
 |---|---|---|---|---|
 | NHL | 0–31 | **Done**, live on every update | NHL.com API | – |
-| Player ratings | – | **Done** | EA ratings via nhlratings.net | EA rates NHL players (and some farm players) only; everyone else is estimated (`estimate.py`) |
+| Player ratings | – | **Done** | the current ratings (data pack) | about 4,600 players of every league are rated; everyone else is estimated (`estimate.py`) |
 | National teams | 133–153 | **Done**: squads kept current, every empty one filled (0.5.0: also squads a community roster emptied) | IIHF roster PDFs (20 countries) + NHL.com | A country that cannot dress 2 G + 18 skaters stays empty and is named in the summary |
 | Liiga | 76–90 | **Done** (played in the game 2026-10-03) | liiga.fi feed | 17 clubs, 15 slots: Jokerit and Jukurit left out. Kiekko-Espoo in the Espoo Blues slot (77) |
 | Extraliga | 105–118 | **Done** (played in the game 2026-10-03) | hokej.cz roster pages | Kladno in Chomutov's slot (107), České Budějovice in Zlín's (118) |
@@ -108,9 +114,18 @@ Only the project owner can run these. They decide when a part leaves `pipeline.E
 | 0.8.0: macOS and Linux | Not tried on a real Mac or Linux PC: the GitHub workflow builds and tests there; a tester with a Mac or Linux should try the program |
 | 0.8.0: prospects in the draft | Waiting: Be a GM's draft list (or scouting) shows undrafted prospects of the next draft, from junior and European clubs |
 | Kaprizov's photo (tester, 0.7.0) | Open: shows on the owner's PC (EU and NA). Asked the tester which roster, the "Photos and logos" line and any "Skipped" lines; 0.8.0's List of changes names skipped pictures |
-| League test (LAB, `cli league-test`) | Waiting. The owner chose (2026-10-04) to wait for it rather than put Coachella and Henderson into the Norway slots |
+| League test (LAB, `cli league-test`) | Waiting. The owner chose (2026-10-04) to wait for it rather than put Coachella and Henderson into the Norway slots. Coachella and Henderson no longer wait for it: the owner moved them into the AHL on patch rosters (2026-10-19, stage Y, below) |
+| This season's jerseys and centre ice, every league (look pack) | Lab round 31 (agent, 2026-10-17): a home game in every league (NHL, AHL, SHL, Liiga, DEL, Extraliga, NL, Norway, national, OHL, WHL); kits looked at on the ice for the NHL, AHL, SHL and DEL: right. Fixed on the way: style-0 pants / socks (a renamed slot kept the 2014 club's orange socks), the Select Jerseys picture (crest on a square), and the centre ice: the NHL and DEL show the arena's file, the national teams file 501, the rest their own, so the DEL clubs and national teams keep the game's own ice (`looks.own_ice`; the List of changes says so). QMJHL not played. Owner: look at the contact sheets (private/NOTES.md) |
+| 0.20.0: current ratings (`'current ratings'`) | Lab round 32: the roster's numbers and type match the ratings for McDavid, Crosby, Makar, Vasilevskiy, Tömmernes, Friberg, Fagemo; Starting Lineups shows type and OVR (within 2 of the source's); one period played. Waiting: the full player cards, Season simulated two weeks. Not copied: potential, traits, growth (docs/notes/full-ratings.md) |
+| 0.20.0: sharp centre ice | Lab round 32 (encoder only): still hatched at the soft edges. Now flattened onto the ice (every mip opaque or clear, `dds.flatten`). Waiting: Utah's home faceoff, close-up and slant (no hatch, no stair steps, no white rim); `LOOKS_DRAWING` '#6' redraws installed looks once (docs/notes/centre-ice-quality.md, lab-round-32.md) |
+| 0.20.0: Select Jerseys from the look pack's pictures | Lab round 32: Pittsburgh, Toronto, Utah match the pack's menu pictures. Waiting: an AHL and a European club, the 3D Pittsburgh home jersey. Socks / pants that differ from this season's are listed for the owner |
+| 0.20.0: line-ups after a position change | Lab round 32, data: Unpatch, then update with Dillon (NJD) and Spence (OTT) forced to LW: saved, 6 D / 2 G (`Builder.repair_lineups`, tests/test_lineups.py). Waiting: Edit Lines, Play Now and Season days on that roster |
+| 0.20.0: Utah / Seattle / Vegas arenas on a community roster | Waiting: a Utah home game's intro says Delta Center, Salt Lake City (lab round 32 showed Arizona Arena, Glendale; `Builder.nhl_identity` now runs with the NHL step on every roster) |
+| Away v AHL home in white | The game's own choice (round 31): an AHL club's "home" row is its light kit (also in this season's kits), so an NHL visitor and an AHL host both wear white unless the player picks another jersey. Left as the game has it |
+| Loading hangs (RPCS3) | Not ours (round 31): a match now and then stops on "Loading" after the Lynx shaders, mostly SHL home games; also with the patch off, the game's own roster and no loose file at all. Restarting RPCS3 clears it. Worth a line in the README's help if players report it |
+| Blank names in Select Teams | Built (2026-10-19, `loc.key_hash` uses the game's rule, `NAMES_VERSION` '#6'): 10 club slots carry an art code the game's text file has no `TEAMLINE1/2_<code>` lines for (AHL COLE, CLE, LAV, CHW, TUC, CLG, ABB; CHL BBD, NFR, WW; the codes come from the community roster); their lines now go under the hash the game asks for. Named in lab round 35 by a re-keyed file; waiting: the same through the program ("Photos, logos and team names") |
 
-Check list for each new league (Roster Management > Load Roster > the new roster, then):
+Check list for each new league (Customize > Save/Load/Delete > Load > Rosters > the new roster, then):
 
 1. Team Management: open two clubs of the league. Real names, about 25 players, full lines, a
    captain and two alternates, numbers.
@@ -127,7 +142,7 @@ Check list for each new league (Roster Management > Load Roster > the new roster
   reusable:
   - legends rated 84+;
   - NHL rights holders;
-  - anyone estimated younger than 26 (`donors.real_birth_year` reads EA-era records' draft year);
+  - anyone estimated younger than 26 (`donors.real_birth_year` reads the draft year of records from the game's own years);
   - free agents;
   - second records of a person (national-team goalies).
 
@@ -152,7 +167,8 @@ Check list for each new league (Roster Management > Load Roster > the new roster
 3. Junior leagues: full rosters reusing retired records; when records run out, every club still
    gets a legal 20 and depth players are skipped. The player table is not grown.
 4. Photos and logos: built on the player's own PC with an undo button; later the same day the owner
-   decided to ship a second exe with every picture inside (photo pack). EA files are never shipped.
+   decided to ship a second exe with every picture inside (photo pack). Since 0.32.0 the pictures are downloaded instead
+   (owner, 2026-10-20).
 
 ## Decisions taken (2026-10-04)
 
@@ -162,9 +178,10 @@ Check list for each new league (Roster Management > Load Roster > the new roster
    country's players in the save).
 3. **No NEW tags; every league on by default.** `pipeline.EXPERIMENTAL` only lists what waits for
    the in-game check.
-4. **Coachella Valley and Henderson** stay in custom slots 234/235 until the LAB league test has been
-   played. Putting them into the Norway slots was considered and set aside: they would be listed
-   under Norway, and their NHL link still could not be set.
+4. **Coachella Valley and Henderson** stay in custom slots 234/235. Putting them into the Norway slots was considered
+   and set aside: they would be listed under Norway, and their NHL link still could not be set. Since 2026-10-19 (the
+   owner's decision) a roster for the patched game gives them the AHL's league fields (stage Y, `gamepatch.league_fit`);
+   the unpatched game keeps them under Custom.
 
 ## Decisions taken (2026-10-04, after the 0.5.0 checks)
 
@@ -189,14 +206,65 @@ Check list for each new league (Roster Management > Load Roster > the new roster
 5. **Real data for every player** (draft first), fetched into the data pack, never by the players'
    PCs.
 
+## Decisions taken (2026-10-16, data of 2026-27)
+
+Plan docs/plans/is-it-possible-to-jaunty-dongarra.md; notes docs/notes/contracts.md (sources: private/NOTES.md).
+
+1. **This season's jerseys and centre-ice logos** for every team the look pack has, converted to the PS3 layout and put
+   onto the player's own disc files. Since 0.32.0 the pack is downloaded, not inside the exe.
+2. **Contracts** of 2026-27; only the numbers go into the data pack.
+3. **Money:** real 2026-27 dollars on 32-team patch rosters, with a new patch entry for the 2026-27 cap ($104.0M, floor
+   $76.9M, minimum $850k); rosters saved without the patch get the same contracts x 0.6865 (71.4 / 104.0).
+4. **Roster editor:** the player type and the face become editable (tester requests). Lines and strategies are already
+   built (tester request 3).
+5. **Round 2 (evening):** the cap follows the real numbers each season (2026-27 $104.0M, 2027-28 $113.5M, 2028-29 the
+   league's $127.5M estimate, then held); contract columns show the real seasons ("26-27"); the rookie maximum is the
+   real amount; the 82 players under contract whom NHL.com leaves out stay with their team (agent's choice); this
+   season's jerseys for every team the pack has, not only the NHL (AHL, CHL, European leagues, national teams).
+
+## Decisions taken (2026-10-20, 0.32.0)
+
+1. **Both picture packs leave the exe** and are downloaded from the program's file server under puckpeak.com while
+   "Photos, logos and team names" is on; the data pack comes from there too.
+2. **Neutral names** in everything the program ships and git publishes (`tools/clean_check.py`); source tools stay in
+   `private/`. README: "Unofficial fan project, not affiliated with or endorsed by the game's makers or the league."
+3. **The window:** the Photos row first and in gold; Patch / Unpatch in gold; important things highlighted.
+4. **The server part stands alone** (its own folder and container), so it cannot affect the other services.
+
+## Decisions taken (2026-10-20, picture fix and 0.35.0)
+
+1. **Own pictures always go into the game** (also with Photos off, also on the Roster editor's Save); **picture-number
+   clashes**: move ours, give theirs back; **a failed photo keeps the old picture**.
+2. **Version 0.35.0** holds everything since 0.10.4 (0.20.0 to 0.32.0 were test builds); one CHANGELOG entry.
+3. **Players without any photo** (silhouettes) stay as they are for now: "just a couple of people". What could fill
+   them: docs/notes/missing-photos.md.
+
+## Decisions taken (2026-10-20 night, 0.50.0: the window with tabs)
+
+Plan docs/plans/listen-right-now-the-robust-walrus.md, notes docs/notes/nhl19-app-ui.md.
+1. **One row of nine tabs** (Setup, Game patch, Update | Roster, Lines, Strategy, Jerseys & ice, Calendar, Front office),
+   one team list for the six team tabs, Lines / Strategy / Jerseys as tabs. A clickable mockup first
+   (`private/mockup/`, git-ignored); the owner approved it ("i love it").
+2. **Calendar** = a month page plus the team's games. **Front office** = cap and contracts view, contract edits, and the
+   player's own Season / Be a GM saves (read only).
+3. **Version 0.50.0** holds everything since 0.10.4 and the new window, one commit and one release.
+
+## Decisions taken (2026-10-22: contracts for every club, the AHL's real rosters, Henderson's own players)
+
+Plan docs/plans/ok-let-me-know-soft-wilkes.md (2026-10-22 version), notes docs/notes/lab-round-42.md.
+1. **All 32 AHL clubs' rosters come from the source database**; NHL.com's NHL rosters still win.
+2. **A made-up starter deal** for every club player without a deal and without NHL rights (by league and overall,
+   `contracts.starter_terms`); an unsigned draft pick stays unsigned.
+3. **Vegas calls up from Henderson** through the game patch (0.23: six-bit player rights), not by keeping Henderson's
+   players on Vegas's NHL roster.
+4. **Free amounts outside NHL organisations**: $5,000 up to the NHL maximum, 1-8 years. The program is an editor for
+   every club (Front office, the contract window, the player card), not only NHL / AHL teams.
+
 ## Open decisions for the owner
 
 1. **Base roster credits and bundling.** Who made ROSTER2526 (for the README credits), and
    whether they allow bundling it. The bundling switch stays off until they agree.
-2. **Data pack hosting.** Published on GitHub (MatusRiedl/puckpeak-nhl-legacy-rosters, release
-   v0.6.0, 2026-10-04). Still open: where data packs are hosted (`PACK_URL`), so new data can reach
-   players without a new exe.
-3. **More room for players** (later): growing the player table by up to ~1,240 records would let the
+2. **More room for players** (later): growing the player table by up to ~1,240 records would let the
    junior leagues keep their depth, but needs an in-game test first.
 
 ## Suggested order
@@ -206,8 +274,7 @@ Check list for each new league (Roster Management > Load Roster > the new roster
 2. The owner's check of photos and logos (below), the Roster editor and the league test.
 3. Season study, experiment C1 ([SEASON_PLAN.md](SEASON_PLAN.md)). Then, with the owner's go-ahead,
    the `lab` command for C2–C4 and the schedule step.
-4. Set `PACK_URL` (the pack `format` check is in place; the project is on GitHub since 0.6.0).
-5. Decide whether ages move to − 1911 for 2026-27 (SEASON_PLAN.md: today every player is one year
+4. Decide whether ages move to − 1911 for 2026-27 (SEASON_PLAN.md: today every player is one year
    too young in the game).
 
 ### Phase B (photos, logos, names): state
@@ -270,7 +337,7 @@ fields. That is untested, and `verify` forbids it everywhere except in this test
 
 ### Draft test (the owner runs this once)
 
-Where must an undrafted prospect be for Be a GM's draft to see him? EA's own roster keeps its future
+Where must an undrafted prospect be for Be a GM's draft to see him? The game's own roster keeps its future
 draft classes on junior and European clubs with their draft year and round 0; the community roster
 keeps them in "Prospects" pools, which the update moves to custom teams, and the owner saw them
 missing from the draft.
@@ -293,7 +360,7 @@ missing from the draft.
    `NHLLegacyRosterUpdater-cli art-test install --rpcs3 "<path to rpcs3.exe>"`
    This writes 13 test pictures into RPCS3's game folder (`dev_hdd0\game\BLES02153\USRDIR\fe\...`),
    backs up anything it replaces, and saves a roster "LAB art test".
-3. Start the game, *Roster Management > Load Roster > "LAB art test"*, then look:
+3. Start the game, *Customize > Save/Load/Delete > Load > Rosters > "LAB art test"*, then look:
 
    | Test | Where to look | Picture |
    |---|---|---|
@@ -332,14 +399,32 @@ What each answer means:
   are listed as Swiss.
 - Some junior depth players are skipped when player records run out (all leagues on).
 - The NHL has 32 slots: an expansion team cannot be added (hard limit).
-- The team in slot 31 (Vegas) cannot hold player rights: `proteam` is 5 bits. Henderson's NHL
-  contracts therefore carry no rights.
+- The team in slot 31 (Vegas) cannot hold player rights on a roster for the unpatched game: `proteam` is 5 bits.
+  Henderson's NHL contracts carry no rights there. A roster for the game patch gives it 6 bits (patch 0.23, lab round 42):
+  Henderson's players hold Vegas's rights as every farm club's hold its parent's.
+- **The game lists at most 10 roster saves** (found 2026-10-14 in the lab: `cellSaveDataListLoad2` with
+  `dirListMax=10`; RPCS3 hands it the first 10 folders by name, `...0200`-`...0209`). A roster saved as new in
+  `...0210` or later never shows in the game's Load list. **Handled (2026-10-16, owner's wish):** a new roster takes the
+  lowest free number 01-09, none is made when a version has 10 (`savedata.RosterFull`), step 2 counts "N of 10" and marks
+  rows the game does not show. Still to see in the lab: with a gap below 10, does a `...0210` folder show (the "first 10
+  by name" rule).
 - The exe is unsigned (SmartScreen warns) and Windows-only.
 - New data reaches players only with a new exe until `PACK_URL` is set.
+
+## Left as they are until somebody complains (owner, 2026-10-18)
+
+- **The jersey hem of this season's kits** (Letang's jersey looked tucked oddly): `jerseytuck` is 0 for every player,
+  so it is the converted hem, not a tuck. The pack's maker (`private/`) maps the source hem (x 290-780) onto the PS3's
+  (x 232-818); the corner squares are a flat median colour. A fix would warp the hem rows on their own.
+- **The NHL All-Star teams** (Seattle and Vegas took their slots 30 / 31): nothing in the game needs them. Season's
+  All-Star game uses EASHL 220 / 221 on patch rosters (`gamepatch.ALL_STAR_RINK`). The custom slots 236-251 are empty and
+  could hold them.
 
 ## Ideas (not planned yet)
 
 - Grow the player table (needs an in-game test) so junior depth is not skipped.
+- Photos for players who show a silhouette: the National League's own headshots and NHL.com's (by name and birthdate)
+  would give about 350 of the 1,373 one (docs/notes/missing-photos.md; owner 2026-10-20: not now).
 - Real nationality for National League players (the federation's site may have it).
 - Tell the player in the window when a newer version is released.
 - Build the data pack on a schedule (GitHub Actions) and publish it to `PACK_URL`.
@@ -355,3 +440,231 @@ What each answer means:
 - Select Teams: cycle every league (also with the game in Czech) after updating with "Photos, logos and team names".
 - Roster editor: change a player's ratings a lot, save as new, see whether the game's OVR changes (if not, write `FUWe`).
 - First start with no saved roster: pick the game, update from the game's own roster, save lands in ...01.
+
+## Checks of 0.21.0 (2026-10-18; in the lab first, lab round 33)
+Lab round 33 (2026-10-18, docs/notes/lab-round-33.md) played most of them; the owner's own check still decides
+`pipeline.EXPERIMENTAL`.
+- Boot with "No pop ups at start": no boxes before the main menu. **Passed** (four boots).
+- Main menu with "Photos, logos and team names": no View Player Hub, Leaderboards, Lobby (COMMUNITY); HUT still
+  there; every other entry opens. **Passed**: COMMUNITY holds only My Highlights; PLAY, CUSTOMIZE, LIVE THE LIFE, NHL 94
+  open. The loose `fe/ion/game/menus/mainmenuitems.big` is read before boot.big (docs/notes/menus.md).
+- The game's old offline news panel and the tuner-set notices say "Puck Peak" / "www.puckpeak.com"; Zamboni's news unchanged.
+  **Passed in English** (menu and loading screen; once HUT reaches Zamboni the panel shows Zamboni's news). Czech and
+  the tuner-set notice not seen.
+- Utah: black helmets and gloves (no Arizona red), sticks in team colours. **Passed** (white / grey sticks, the red is
+  only Bauer's print). Seattle navy: **passed**. Philadelphia, Washington in their own colours: **passed**.
+  **Vegas: steel grey helmets** home and away, as the real team's usual helmet (gold is their alternate; notes
+  equipment.md).
+- Also passed: Utah's flattened centre ice (a clean ring), Select Jerseys of Abbotsford and Björklöven, the 3D
+  Pittsburgh jersey, player cards (McDavid, Crosby, Makar, Silovs, Wallmark).
+- Not played: Season for two weeks (it would write the lab's autosaves), Czech, the unpatched path in the game (the
+  lab's own "(test)" patch entries come back with `game-patch remove`, so a normal roster reads "damaged" there).
+- Face of a player: the head pictures match the heads the game puts on the player. Not checked yet.
+- **Loading hangs** (two in round 33) were RPCS3's own: Resolution Scale above 100 % with "Disable Blit Engine
+  Upscaling" off. Ticked in the lab's EU config: four games in a row loaded in about 6 s.
+
+## Checks of round 47 (2026-10-23; my pro in the game, running Be a Pro careers, no Press Start)
+Notes docs/notes/lab-round-47.md, be-a-pro-save.md, press-start.md. Plan: top section of
+docs/plans/another-context-window-is-sorted-liskov.md.
+- **Built, tested on copies:** My pro's states read from the roster as saved, the restart gap closed, the pro's team
+  NHL / CHL only, the close question; `careersave.py` reads and rebuilds every Be a Pro copy byte for byte (the lab's,
+  round 47's game-written ones), `verify.career_problems`, `savedata.update_career` (backup first), the window's "Be a
+  Pro careers" view (name with the Load Pro label, ratings 40-99, XP to spend = earned - spent); `art/pressstart.py`,
+  on with "Skip the intro" (`patchinstall.NO_PRESS`).
+- **Played (lab 47, agent):** 47d: with the quick boot the game opens on the main menu with no press (profile and roster
+  autoload, pad 1, Play Now, a Be a Pro and a Season started, saved and loaded, five minutes idle); with the file removed
+  Press Start is back. 47a: a pro with 98 everywhere is "99 Overall" under Overall 90-99. 47b: a career saved after
+  spending XP and after a game, six copies with one change each (name, XP, ratings ...): all load, play, save and
+  reload.
+- **Found (47a): the roster the game loads at boot** is the oldest one written since the last boot (the game writes its
+  settings save `1300` right after every boot; it loads the roster just above it in the newest-first list). One roster
+  written between two boots boots; two written (an update and the editor's Save into another roster), the older one.
+  Round 41's open point. **Owner's call:** leave it (players load their roster through Customize > Save/Load/Delete >
+  Load > Rosters, as the window says), or let the program set the time of the folder it just wrote so that it is the one
+  that boots (only its own folder; no other save touched).
+- **Not tried:** Be a GM and online (Zamboni) with no Press Start; the NA disc (same file); a goalie career's ratings
+  (not editable yet).
+- **Played by the agent (47c, the built exes):** the window edited a lab career (name, XP, Passing; the backup equals
+  the career before, byte for byte); `cli game-patch install --skip-intro --no-login` booted with no key pressed; Load
+  Pro listed the new label, Player Growth showed the XP and Passing, the game made the Overall 75 from them; a game
+  played into the first intermission; Unpatch removed the press files. **Not played:** the game's own save and reload
+  of the edited career (47b did that on copies), the career unpatched, a second edit.
+- **To check (owner):** after the next build, save your pro to the roster (the line turns from gold to "in the game"),
+  pick him in Be a NHL Pro; change a career's XP or a rating in "Be a Pro careers" with RPCS3 closed, then Load Pro;
+  Patch with "Skip the intro" and boot: the main menu with no Press Start.
+
+## Checks of round 46 (2026-10-23; calendars of every league, Coachella's jersey, the RPCS3 path, my pro)
+Notes docs/notes/lab-round-46.md, docs/notes/league-calendars.md. Plan: top section of
+docs/plans/another-context-window-is-sorted-liskov.md.
+- **Played:** Season mode's League Type offers all ten leagues with a table and plays the roster's own table (a swapped
+  DEL row showed). Coachella with `jerseystyle` 1: navy with stripes (0 gave a plain jersey). Centre ice: the crest
+  showed in every game (from `czlogo/logoct_72_*`). The owner's pro (Anaheim, all 88) is listed under Overall 80-89 in
+  Be a NHL Pro; his career starts, saves and shows his created face.
+- **Played through the built exe (46c):** Patch + update, then an SHL and an OHL Season: every September / October game
+  of the user's club equals the roster's 2026-27 rows (day, opponent, home / away). Unpatch + update, then an AHL Season
+  on the unpatched game (30 farm clubs): the same. `'league calendars'` left EXPERIMENTAL. Not played one by one: Liiga,
+  Extraliga, National League, QMJHL, WHL (the same writer and the same two id widths).
+- **To check (owner):** your roster after its next update: Coachella in navy at home, the crest on centre ice (send a
+  picture if the ring is still empty); a Season of a European or CHL league opening on the real date; Setup keeps your
+  RPCS3 path.
+
+## Checks of round 45 (2026-10-22; the Draft & Pro tab, created looks, the main-menu news; patch 0.24)
+Notes docs/notes/lab-round-45.md. Played by the agent in the lab, made through the window's own controllers.
+- **Played:** a random class of 16 and two hand-made prospects (with created looks) in a new Be a GM's 2027 pool with
+  the potentials the window gave; every look on Edit Players as set; my pro (Seattle) with his own face in a new Be a GM
+  (after the fix: `builder.own_links`, `faces.link_problems`). The patch's news entry boots and the panel shows the
+  gg.puckpeak.com line.
+- **To check (owner):** the news panel while signed in online (Zamboni): Puck Peak's line, not the server's news. A
+  created look in a running Be a Pro career (my pro picked in Be a Pro, a game played). The career start may move my pro
+  to another team of the organisation (Corvin went to Coachella Valley): fine, or should the window warn?
+
+## Checks of round 44 (2026-10-22; draft classes and Be a Pro, plan docs/plans/another-context-window-is-sorted-liskov.md)
+Notes docs/notes/lab-round-44.md. Played by the agent in the lab with a hand-made LAB roster (not through the window yet).
+- **Played:** made-up juniors on OHL and Liiga clubs are in a new Be a GM's 2027 pool and drafted by potential (a tier-1
+  player went 2nd overall); AHL and teamless players are not pooled; the game fits potential into a band per growth tier
+  (`draftclass.TIER_BANDS`). Be a NHL Pro lists NHL roster players, Be a CHL Pro the juniors.
+- **Bug, not fixed:** Be a CHL Pro with an undrafted junior crashes in the patched game (GAME_PATCH.md section 6). Until
+  it is fixed, a made-up pro in the patched game should be on an NHL club or a drafted junior.
+- **Built (engine only, `'draft classes'` / `'new player records'` experimental):** `draftclass.py`, records held for
+  new players (`edits.records_needed`, `Builder.hold_records`), `verify` checks the class. Not played: the second draft
+  (June 2028), the face table, commentary names, the built exe.
+
+## Checks of round 42 (2026-10-22; contracts for every club, the AHL's real rosters, patch 0.23; in 0.50.0)
+Plan docs/plans/ok-let-me-know-soft-wilkes.md, notes docs/notes/lab-round-42.md. Played by the agent in the lab.
+- **Owner:** Patch again (the Game patch tab says "patch again": 0.23; a 32-team roster made before is marked "made
+  for another version of the game patch": update it), then in the game: Team Rosters for Coachella Valley and
+  Henderson (the real AHL lists, a deal for everyone), an Extraliga club (Kladno: starter deals), a contract edited in
+  Front office for a European or AHL-only player; a new Be a GM with Vegas: In the System lists Henderson.
+- **Played in the lab:** six-bit rights load; Henderson In the System, a call-up / send-down swap; a season, the June
+  2027 draft (32 teams), re-signing and free agency to 31 July 2027 with no crash and ordinary signings.
+- **Through the built exe (round 43, docs/notes/lab-round-43.md):** Patch 0.23 + update in place, Team Rosters
+  (Extraliga starter deals, Kempný's and McLain's edited deals, Coachella / Henderson with every deal, Vegas), Play Now
+  Utah at Coachella; Unpatch + update: the unpatched game loads it, the same deals at the $71.4M scale, Coachella /
+  Henderson under Custom; a second run "Already up to date". Found: a hand-copied save folder keeps its original's
+  `SAVEDATA_DIRECTORY` (fixed in `update_in_place`), and the load path the program told players was wrong (fixed).
+- **Open:** what the game does with European / AHL-only deals when they end (after 2027-28).
+
+## Checks of round 41 (2026-10-21; contract amounts, Roster Management's AHL, UFA / RFA; in 0.50.0)
+Plan docs/plans/ok-let-me-know-soft-wilkes.md, notes docs/notes/lab-round-41.md. Played by the agent in the lab.
+- **Owner:** Patch again (the Game patch tab says "patch again": 0.22), update the 32-team roster, then in the game:
+  Team Rosters (Vegas) shows an amount for Eichel and Hanifin; Roster Management's AHL lists Coachella Valley and
+  Henderson; a new Be a GM's Contract Status shows UFA for veterans after their deal, RFA for young players.
+- **Open:** after an update in place the lab game booted another roster (0206) at start, not the updated one (0209);
+  load it by hand (Customize > Save/Load/Delete > Load > Rosters). Which roster the game loads at boot is still unknown
+  (Roster Management's "Set default rosters" not explored).
+- **Owner's choice:** four teams start over the $104.0M cap with the real deals (Vegas $112.26M, Florida, NY Rangers,
+  Dallas), so every new Be a GM asks "Salary Cap On?" ("Yes" trims their salaries a little). Henderson's line-up is
+  topped up with the best free agents (Sewell, Toews, Mrazek).
+- **Through the built exe (agent, lab):** Unpatch + update (turned back): the unpatched game loads it, Vegas without
+  N/A, the normal money scale right; Patch (0.22) + update: Roster Management's AHL lists Coachella Valley and Henderson
+  with their rosters.
+- Latent, not seen: a stock roster turned back for the unpatched game keeps slots 234 / 235 switched on.
+- **Known, not new:** in the unpatched game, Roster Management's CUSTOM list says "Not Available" on a roster made from
+  the game's own (its walk counts 224 switched-on teams and stops before 234 / 235; the community roster has 236 on and
+  shows them). Only the patch's walk skips the gaps.
+
+## Checks of 0.50.0 (2026-10-20 night; the window with tabs, Calendar, Front office, contract edits, My season)
+Plan docs/plans/listen-right-now-the-robust-walrus.md. Experimental: `'contract edits'`. Nothing else new goes into the save.
+- Every tab at 100 / 150 / 200 % and on a 768-line screen; the team list keeps the picked team across the six team
+  tabs; Lines / Strategy changes not applied stay with their team; Jerseys & ice loads only while it shows.
+- Calendar: October 2026 starts on Monday 28 September; a team's games are the roster calendar's (76-80 on a 30-team roster, 84 on a patch roster); a farm club
+  shows the AHL on a patch roster, a note on a normal one; the All-Star row is named, not counted.
+- Front office: payroll and cap space per season; NHL / farm / prospects; Vegas's note (no prospect rights).
+- **Contract edits, in the game:** set a deal (cap hit, years, two-way, extension), Save, and look at the game's
+  Contract Status / payroll screen, then start a new Be a GM: the deal is there, on both money scales (normal and patch
+  roster). Then `'contract edits'` leaves EXPERIMENTAL. **Played by the agent in lab round 41** on a patch roster (real
+  dollars, `cli update --edits`): Team Rosters, a new Be a GM's Contract Status and Be a Pro Central show the edited
+  deals; `'contracts'` and `'contract edits'` left EXPERIMENTAL (2026-10-21). The normal scale (x 0.6865) was played
+  through the built exe (Unpatch, then update): Carlsson's edited $9M shows $6.180M, Eichel's $15M $10.300M.
+- **My season, against the game's own screens:** the Standings screen's order (ties: fewer games, ROW, wins, goal
+  difference are assumed), OT and SO losses counted together as OTL, a save in the preseason (the game's team row counts
+  preseason games, the window does not), the farm league's division names on an unpatched save
+  (docs/notes/season-saves.md).
+- The Seattle / Vegas contracts (fixed 2026-10-20 in the local data pack): a Kraken player NHL.com leaves out stays with
+  Seattle, not Vegas. Published to the server on 2026-10-23.
+
+## Checks of the picture fix (2026-10-20, in 0.35.0; testers of 0.10.4: own pictures, wrong faces)
+Plan docs/plans/giggly-squishing-candy.md, notes docs/notes/player-pictures.md. Experimental: `'picture numbers'`,
+`'own pictures on save'`.
+- Roster editor, Photos off: pick a photo for a player (a new one too), Apply, Save with RPCS3 closed: "Your own pictures
+  are in the game now."; in the game his card shows it. With RPCS3 running: saved, "Your own pictures go into the game
+  when you save with RPCS3 closed." **Played by the agent in lab round 40** (Troy Terry, Save as new, Photos off: his
+  card and Player Info show the picture; docs/notes/lab-round-40.md).
+- Update with Photos off and an own photo in My edits: the result says "Your own pictures: ..."; team names and jerseys
+  unchanged.
+- Two rosters on one PC (the community 2026-27 roster and a Puck Peak roster): update the Puck Peak one, then the other;
+  Zach Benson, Spencer Knight and Dante Fabbro show their own faces in both (simulated on the owner's rosters, read
+  only: 0 strangers after both, 127 before). Until the community roster is updated, those 127 show no picture
+  instead of a stranger's.
+- A player whose photo NHL.com has not got yet (the grey silhouette: Grzelcyk, Englund, ...) keeps the picture he had;
+  the List of changes names him.
+
+## Checks of 0.32.0 (2026-10-20; pictures downloaded, a clean product, gold highlights)
+Plan docs/plans/ok-new-plan-check-sprightly-dragonfly.md (top). Nothing new goes into the save.
+- A new PC (empty `%LOCALAPPDATA%\NHLLegacyRosterUpdater`): the Photos row is first, gold and on; it says "Downloading
+  automatically... %" and then "Downloaded automatically. Ready." without being asked. About 160 MB.
+- Update pressed during the download: "Waiting for the download... %", then the update runs with every picture.
+- Switch the row off: the download stops, nothing is downloaded at the next start; on again: it goes on.
+- No network at start: "Not downloaded yet. It tries again automatically."; the update still runs (pictures one by one,
+  jerseys the game's own) and the result says "Some pictures could not be downloaded".
+- Jerseys and ice before the download: "This season's jerseys come with Photos, logos and team names (Update tab)."
+- Patch / Unpatch in gold, easy to find; "Update roster" the one bright blue button.
+- A Utah home game after `update --photos` through the new exe: this season's jersey and ice, as with 0.31.0.
+  **Played by the agent (lab round 39, 2026-10-20, unpatched EU):** Select Jerseys, the players' jerseys and the centre
+  ice right; the window exe downloaded both packs by itself in 42 s; SHA-256 = the manifest; offline status fine.
+- puckpeak.com and cheerin.quest unchanged after many downloads (`docker stats nhl-legacy-files`).
+
+## Checks of 0.31.0 (2026-10-20; jerseys and ice for every team)
+Plan docs/plans/ok-new-plan-check-sprightly-dragonfly.md (top), lab round 37 (docs/notes/lab-round-37.md).
+`'custom team kits'` and `'shared ice'` are experimental. Lab round 38 (docs/notes/lab-round-38.md) played them
+through the program's own update, patched game.
+- **Coachella Valley** with a new home / away jersey, pants, socks, numbers and three colours ("Paint everything"),
+  then one piece changed by hand (the helmet, away): Select Jerseys and a home game show it; the goalie's gear follows.
+  **Passed in the lab** (round 38: Select Jerseys home and away, an away game with the magenta helmets). Not played:
+  the goalie's gear, the unpatched game.
+- **Coachella's home jersey navy** without any edit (0.30.0 painted the catching glove). Not played since the fix.
+- **A custom team (one of the 12 NHL copies) with a crest picture** (with "Photos, logos and team names"): the crest
+  on the jerseys, Select Jerseys and the centre ice; no other team wears it. "Restore the game's own pictures" takes it
+  away. **Passed in the lab** (round 38, Custom Team 1: menus, loading screen, jerseys, goalie, centre ice; removed
+  again by "photos remove").
+- **A custom team with one of the game's logos** in the team colours. **Passed in the lab** (round 38, Custom Team 2:
+  the bandit, orange, on the jerseys and centre ice). A prospect pool (art id 21000 + slot since 0.4, for its menu
+  logo) keeps its menu logo until a crest is picked; its jerseys may show a blue square until then (round 34: an art
+  id without create-a-team files). Not looked at in the game.
+- **A national team's centre ice** (my picture): every national team's home game shows it. **A DEL club's** the same.
+  **Passed in the lab** (round 38: saved on Canada, shown at Austria's home game; saved on slot 91, shown at
+  Augsburg's).
+- **A Winter Classic team** opens its NHL team's window; a change shows on both. Window only (tests and pictures).
+
+## Checks of 0.30.0, addendum (2026-10-19 evening; Coachella / Henderson in the AHL, Be a Pro, names)
+Plan docs/plans/ok-new-plan-check-sprightly-dragonfly.md, notes docs/notes/league-menus.md, lab rounds 35 and 36.
+Patch 0.21. `'farm clubs in the AHL'` is experimental.
+- **Patched game, "Photos, logos and team names" on:** Play Now > Select Teams > AHL lists 32 clubs, Coachella Valley
+  FIREBIRDS and Henderson SILVER KNIGHTS among them with their crests; Custom Teams no longer has them; a game between
+  them. **Passed in the lab** through the program's own update (round 36); the game between them in round 35.
+- **The same with "Photos, logos and team names" off:** the two are in the AHL list but without names (the names are
+  texts the program installs, as for every club). Not played.
+- **Unpatched game** (Unpatch, then update): both back under Custom Teams, AHL of 30, no crash. **Passed in the lab**
+  (round 36; the lab's own "(test)" entries had to be switched off first, a player's RPCS3 has none). The turn-back now
+  also gives slots 30 / 31 the game's own names and divisions back (it kept Seattle / Vegas there since 2026-10-18).
+- **Be a Pro** with a Seattle and a Vegas player on the NHL roster (patch 0.21, `0x458ec8`): the career loads, the GM's
+  office names the AHL affiliate. **Passed in the lab**: Seattle (round 35), Vegas's Demek (round 36, Henderson named).
+- **Blank names**: the AHL's Colorado, Cleveland, Laval, Chicago, Tucson, Calgary, Abbotsford and the CHL's Brantford,
+  Newfoundland, Wenatchee are named in Select Teams.
+- Season / Be a GM with Seattle or Vegas: the farm clubs as before (Season's lists go by slot).
+
+## Checks of 0.30.0 (2026-10-19; jerseys for every league, Coachella / Henderson crests, HUT, gear)
+Plan docs/plans/the-0-21-0-exe-is-parallel-haven.md. `'jerseys every league'`, `'own art ids'` and `'gear colours'` are
+experimental. Lab round 34 (docs/notes/lab-round-34.md) played the first three rows, the crests, HUT and the goalie gear.
+- Charlotte (AHL): this season's home, the game's own away (picked in the Roster editor). Play Now Select Jerseys and a
+  home game: home is this season's, away the game's own.
+- A Liiga / SHL club (the classic cut, style 0): home = "My picture" (a template from "This season's template..." painted
+  on). Shown in Select Jerseys and in a game, no broken shirt.
+- An NHL team with a third (Boston v2, Pittsburgh v6): the third is the game's own again after the update.
+- A DEL club: the window keeps the centre ice at the game's own (shared DEL ice).
+- **Coachella Valley / Henderson** (played in the lab): art 900 / 901 gave a blue square, so they keep 20073 / 20081
+  with the crests (`art/crests.py`) on the ice, the jerseys and Select Jerseys. Still to see: the game's own roster with
+  the update (art 20054 → 20073 / 20081), an away game of each.
+- **HUT hidden** (played): no Hockey Ultimate Team in the main menu nor in Play.
+- **Gear colours**: an AHL / European club's helmets and gloves, goalies of a few teams (Minnesota, Coachella,
+  Charlotte played); a goalie with pads 85-88 before the update now wears a drawn model.

@@ -8,7 +8,7 @@ SYS-DATA layout (big-endian unless noted):
   0x28  CRC-32/BZIP2 over [0x2C, 0x2C + section size)
   0x2C  section: u32 LE zlib length + zlib stream (or raw DB when uncompressed), zero padded
 
-Inside is an EA "TDB" database: "DB" header (CRC-32/MPEG-2 over bytes 0..0x14), a table
+Inside is a "TDB" database: "DB" header (CRC-32/MPEG-2 over bytes 0..0x14), a table
 index, then per table a 40-byte header (CRC-32/MPEG-2 over header bytes 4..0x24), 16-byte
 field definitions and fixed-length, big-endian bit-packed records.
 Each table's first 4 bytes chain the tables together: CRC-32/MPEG-2 of the table index for
@@ -154,6 +154,83 @@ class Table:
             self.set(i, k, v)
         return i
 
+    def grow(self, max_rec):
+        """Give the table room for `max_rec` records (empty ones at the end). The game gives a table the room of its own
+        database plus `maxinsert` of db/nhlng-meta.xml; only a roster for the game patch, whose loose meta file gives
+        more, may have more (gamepatch.CALENDAR_TABLES)."""
+        if max_rec < self.max_rec:
+            raise ValueError(f"{self.name}: cannot shrink from {self.max_rec} to {max_rec} records")
+        self.records += bytes((max_rec - self.max_rec) * self.rec_len)
+        self.max_rec = max_rec
+
+    def shrink(self, max_rec):
+        """Give the table room for only `max_rec` records again (grow's counterpart: a roster made for the game patch
+        turned back into one for the unpatched game, gamepatch.unpatch_roster). The records past it must be empty."""
+        if max_rec > self.max_rec:
+            raise ValueError(f"{self.name}: cannot shrink from {self.max_rec} to {max_rec} records")
+        if self.cur_rec > max_rec:
+            raise ValueError(f"{self.name}: {self.cur_rec} records do not fit in {max_rec}")
+        self.records = self.records[:max_rec * self.rec_len]
+        self.max_rec = max_rec
+
+    def widen(self, fname, bits):
+        """Give field `fname` `bits` bits in every record (its value stays): the fields after it move along by the bits it
+        gains, as the game packs a table's fields in offset order without gaps. Needs that room at the records' end. Only
+        where the game is told the same layout: the game patch's database (gamepatch.fit_db) and the roster's player
+        rights on a roster for the patch (gamepatch.rights_wide; its db files describe them). Only the records in use move:
+        the spare ones hold filler that add_record overwrites, and narrow then gives the same bytes back."""
+        f = self.field(fname)
+        extra = bits - f.bits
+        if extra < 0:
+            raise ValueError(f"{self.name}.{f.name}: cannot narrow from {f.bits} to {bits} bits (narrow)")
+        used = max(x.offset + x.bits for x in self.fields.values())
+        if used + extra > self.rec_bits:
+            raise ValueError(f"{self.name}: no room for {extra} more bits ({used} of {self.rec_bits} used)")
+        if not extra:
+            return
+        after = self.rec_bits - f.offset                    # the bits from the field's start to the record's end
+        for i in range(self.cur_rec):
+            a = i * self.rec_len
+            v = int.from_bytes(self.records[a:a + self.rec_len], 'big')
+            v = (v >> after << after) | ((v & ((1 << after) - 1)) >> extra)
+            self.records[a:a + self.rec_len] = v.to_bytes(self.rec_len, 'big')
+        self._move_fields(f, bits, extra)
+
+    def narrow(self, fname, bits):
+        """Undo widen: field `fname` keeps `bits` bits in every record and the fields after it move back. Every record's
+        value must fit (raises ValueError otherwise)."""
+        f = self.field(fname)
+        less = f.bits - bits
+        if less < 0:
+            raise ValueError(f"{self.name}.{f.name}: cannot widen from {f.bits} to {bits} bits (widen)")
+        if not less:
+            return
+        after = self.rec_bits - f.offset
+        rest = (1 << after) - 1
+        for i in range(self.cur_rec):
+            a = i * self.rec_len
+            v = int.from_bytes(self.records[a:a + self.rec_len], 'big')
+            if (v & rest) >> (after - less):
+                raise ValueError(f"{self.name}.{f.name}: record {i} holds a value of more than {bits} bits")
+            v = (v >> after << after) | ((v << less) & rest)
+            self.records[a:a + self.rec_len] = v.to_bytes(self.rec_len, 'big')
+        self._move_fields(f, bits, -less)
+
+    def _move_fields(self, f, bits, shift):
+        """Field `f` gets `bits` bits in the field list, the fields after it move by `shift` bits."""
+        out = bytearray(self.field_defs)
+        for k in range(len(out) // 16):
+            ftype, off, name, b = struct.unpack_from('>II4sI', out, k * 16)
+            if name.decode('latin1') == f.name:
+                b = bits
+            elif off > f.offset:
+                off += shift
+            struct.pack_into('>II4sI', out, k * 16, ftype, off, name, b)
+        self.field_defs = bytes(out)
+        for k in range(len(out) // 16):
+            ftype, off, name, b = struct.unpack_from('>II4sI', out, k * 16)
+            self.fields[name.decode('latin1')] = Field(ftype, off, name.decode('latin1'), b)
+
     def delete_record(self, i):
         """Remove record `i`, shifting later records down (table order is not significant)."""
         if not 0 <= i < self.cur_rec:
@@ -211,6 +288,13 @@ class RosterFile:
         self.section_size = section_size
         self._parse_db(db)
         return self
+
+    def resize(self, section_size):
+        """Give the save section `section_size` bytes (the file is 0x2C bytes longer): the game reads a roster whose
+        section is as long as its database in memory (gamepatch.STAGE_S makes that longer)."""
+        raw = bytearray(self.raw[:0x2C]) + bytes(section_size)
+        struct.pack_into('>I', raw, 0x24, section_size)
+        self.raw, self.section_size = bytes(raw), section_size
 
     @property
     def is_roster(self):

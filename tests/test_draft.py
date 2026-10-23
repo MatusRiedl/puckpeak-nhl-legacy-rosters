@@ -5,7 +5,7 @@ from legacy_roster import draft
 PICKS = [['Will', 'Smith', 'C', 2023, 1, 4, 'SJS'],
          ['Sebastian', 'Aho', 'C', 2015, 2, 35, 'CAR'],      # the Finn
          ['Sebastian', 'Aho', 'D', 2017, 5, 139, 'NYI'],     # the Swede
-         ['Cody', 'Glass', 'C', 2017, 1, 6, 'VGK'],          # Vegas is slot 31: five bits cannot hold 32
+         ['Cody', 'Glass', 'C', 2017, 1, 6, 'VGK'],          # Vegas is slot 31: draftteam's five bits cannot hold 32
          ['Evander', 'Kane', 'C', 2009, 1, 4, 'ATL']]        # Atlanta's picks are Winnipeg's now
 WIDTH = {'WzKY': 8, 'Ujcc': 4, 'WfTt': 9, 'uWgv': 5}
 
@@ -67,7 +67,7 @@ def test_a_namesake_of_another_age_gets_no_pick():
 def test_a_junior_waits_for_his_draft():
     rows = [player('Young', 'Prospect', 2009, month=3), player('Late', 'Birthday', 2008, month=10)]
     draft.apply(Roster(rows), PICKS, 2026)
-    assert drafted(rows[0]) == (127, 0, 0, 0)              # 18 in 2027: the 2027 draft, round 0 (EA's way)
+    assert drafted(rows[0]) == (127, 0, 0, 0)              # 18 in 2027: the 2027 draft, round 0 (the game's way)
     assert drafted(rows[1]) == (127, 0, 0, 0)              # 18 only after September 15, 2026
 
 

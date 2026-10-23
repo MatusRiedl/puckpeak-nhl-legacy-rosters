@@ -8,14 +8,25 @@
             [--in-place]                              update the roster save itself (old one copied first), no new folder
             [--photos]                                also install current photos and logos (RPCS3 closed)
             [--edits]                                 apply your edits from the window's Roster editor
-    export-roster --file <SYS-DATA> [--out <folder>]    update a roster file without RPCS3: writes a new SYS-DATA folder next to the program
+                                                      a patched RPCS3 (game-patch install) gets a roster for 32
+                                                      teams and the year 2026, an unpatched one a normal roster
+            [--game-patch [--skip-intro] [--no-login]]   patch RPCS3 first (RPCS3 closed), then update
+    game-patch install [--skip-intro] [--no-login] | status | remove --rpcs3 <rpcs3.exe>
+                                                      patch the game for 32 teams and the year 2026, is it patched,
+                                                      take the patch out again
+    export-roster --file <SYS-DATA> [--out <folder>] [--for-patch]   update a roster file without RPCS3: writes a new
+                                                      SYS-DATA folder next to the program (--for-patch: for a patched game)
     photos remove                                     take the photos and logos away again
+    packs download | status | remove                  the pictures for --photos: download them now, show what is on
+                                                      this PC, free the space (update --photos downloads by itself)
     stock-test --rpcs3 <rpcs3.exe> [--version EU|NA]  the in-game check of the game's own roster (two LAB rosters)
     draft-test --rpcs3 <rpcs3.exe> [--source <save>]  the in-game check of where the draft finds prospects
     rendering-test --rpcs3 <rpcs3.exe> [--version EU|NA]   Utah's jerseys and centre-ice logo as loud loose files (in-game test)
     looks-test --rpcs3 <rpcs3.exe> [--version EU|NA]   the new Utah, Seattle and Vegas jerseys and centre-ice logos as loose files (in-game test)
     equipment-test --rpcs3 <rpcs3.exe> [--source <save>|file:<SYS-DATA>]   LAB roster: every tuck / tape colour on a player (in-game test)
     calendar-test --rpcs3 <rpcs3.exe> [--source <save>|file:<SYS-DATA>]   LAB rosters with the real 2026-27 calendar (in-game test)
+    year-test --rpcs3 <rpcs3.exe> [--source <save>|file:<SYS-DATA>]   a LAB roster for the year 2026 game patch, and the patch file
+    team32-test --rpcs3 <rpcs3.exe> [--source <save>|file:<SYS-DATA>] [--photos] [--version EU|NA]   a LAB roster for the 32-team game patch, the patch file and the game's database description
     season-test --rpcs3 <rpcs3.exe> [--source <save>|disc]   LAB rosters with more and more update steps: which one crashes Season mode
     export  --rpcs3 <rpcs3.exe> [--source <save>] --out <folder>    every table as CSV, real names
 
@@ -82,13 +93,20 @@ def _source(args):
 def cmd_list(args):
     folder, _ = _folder(args)
     print(folder)
-    for s in savedata.list_rosters(folder):
+    slots = savedata.list_rosters(folder)
+    titles = sorted({s.title_id for s in slots})
+    hidden = set().union(*(savedata.hidden_in_game(folder, t) for t in titles)) if titles else set()
+    for s in slots:
         try:
             kind = layout.check_base(Roster(s.sys_data))
             status = "ok" if kind == layout.COMMUNITY else "ok (the game's own roster)"
         except (layout.LayoutError, ValueError) as err:
             status = f"not usable: {err}"
+        if s.folder in hidden:
+            status += "  (the game does not show it: it lists only 10)"
         print(f"  {s.folder}  {s.region:<3} {s.name:<24} {s.modified:%Y-%m-%d %H:%M}  {status}")
+    for t in titles:
+        print(f"  {savedata.region(t)}: {savedata.roster_count(folder, t)} of {savedata.GAME_LISTS} rosters the game lists")
     if args.rpcs3:
         for s in _find(args).disc_slots():
             print(f"  disc:{s.region}        {s.region:<3} {s.name}  (from {s.path})")
@@ -106,7 +124,8 @@ def cmd_export_roster(args):
     try:
         res = pipeline.export_sysdata(args.file, steps, args.name, print, args.offline,
                                       my_edits=edits.load() if args.edits else None,
-                                      team_edits=edits.load_teams() if args.edits else None, out_root=args.out)
+                                      team_edits=edits.load_teams() if args.edits else None, out_root=args.out,
+                                      game_patch=args.for_patch)
     except (FileNotFoundError, layout.LayoutError, datasource.Offline) as err:
         sys.exit(str(err))
     for line in res.build.summary():
@@ -142,29 +161,48 @@ def cmd_update(args):
         if None in wanted:
             sys.exit("--for takes EU, NA or both")
         targets = wanted
+    rpcs3 = _find(args) if args.rpcs3 else None     # the roster follows RPCS3: patched or not (game-patch install)
+    game_patch = None
+    if args.game_patch:
+        if rpcs3 is None:
+            sys.exit("--game-patch needs --rpcs3 <rpcs3.exe>: the patch goes into that RPCS3")
+        game_patch = True
+        if not args.dry_run:
+            from . import patchinstall
+            try:
+                patchinstall.install_patch(rpcs3, rpcs3.games(), intro=args.skip_intro, login=args.no_login)
+            except (RuntimeError, datasource.Offline, OSError) as err:
+                sys.exit(str(err))
+    elif args.skip_intro or args.no_login:
+        sys.exit("--skip-intro and --no-login go with --game-patch")
     art_rpcs3 = None
     if args.photos:
         if not args.rpcs3:
             sys.exit("--photos needs --rpcs3 <rpcs3.exe>: the pictures go into RPCS3's game folder")
         art_rpcs3 = _find(args)
+        if not args.offline and not args.dry_run:
+            _download_packs()
     data = None
     if args.research:      # saved inputs instead of live data (tests, reproducing an old build)
         r = datasource.load_research_dir(args.research)
         data = Data(nhl_players=datasource.flatten_nhl(r['teams'], r['extra']) if pipeline.NHL in steps else [],
-                    ea_ratings=r['ea'] if pipeline.RATINGS in steps else None,
+                    ratings_list=r['ratings_list'] if pipeline.RATINGS in steps else None,
                     iihf=r['iihf'] if pipeline.NATIONAL in steps else None,
                     leagues={k: v for k, v in pack.get('leagues', {}).items() if k in steps})
     try:
         mine = edits.load() if args.edits else None
+        teams = edits.load_teams() if args.edits else None
         if args.edits:
-            print(f"My edits: {len(mine)} from {edits.path()}")
+            print(f"My edits: {len(mine)} players, {len(teams)} teams from {edits.path()}")
         res = pipeline.update(folder, slot.folder, steps, args.name, print, args.offline, args.dry_run, data,
-                              art_rpcs3=art_rpcs3, my_edits=mine, team_edits=edits.load_teams() if args.edits else None,
+                              art_rpcs3=art_rpcs3, my_edits=mine, team_edits=teams,
                               targets=targets, disc=slot if getattr(slot, 'disc', False) else None,
-                              in_place=args.in_place)
-    except RuntimeError as err:          # photos and logos: RPCS3 running, game not found; in place: refused
+                              in_place=args.in_place, rpcs3=rpcs3, game_patch=game_patch)
+    except layout.LayoutError as err:    # e.g. EU patched, NA not, saving for both
         sys.exit(str(err))
-    for line in res.build.summary() + ([res.art_line()] if res.art_line() else []):
+    except RuntimeError as err:         # photos and logos: RPCS3 running, game not found; in place: refused
+        sys.exit(str(err))
+    for line in res.build.summary() + ([res.art_line()] if res.art_line() else []) + res.patch_lines():
         print(line)
     if not res.build.ok:
         for p in res.build.problems[:40]:
@@ -175,11 +213,11 @@ def cmd_update(args):
         print("Already up to date." if res.unchanged else f"Updated {res.saved_where()}.")
         if res.backup:
             print(f"The old roster is kept in {res.backup}")
-        print(f"In the game: start it; if \"{res.slot.name}\" is not the roster in use, Roster Management > "
-              "Load Roster, then save it once.")
+        print(f"In the game: start it; if \"{res.slot.name}\" is not the roster in use, Customize > Save/Load/Delete > "
+              "Load > Rosters, then save it once.")
     elif res.slot:
         print(f"Saved in {res.saved_where()}.")
-        print(f"In the game: Roster Management > Load Roster > \"{res.slot.name}\", then save it once.")
+        print(f"In the game: Customize > Save/Load/Delete > Load > Rosters > \"{res.slot.name}\", then save it once.")
     else:
         print("Dry run: nothing was written.")
 
@@ -202,7 +240,7 @@ def cmd_stock_test(args):
             print("  problem:", p)
         sys.exit(2)
     print(f"Saved \"{res.slot.name}\" in {res.saved_where()}.")
-    print("In the game: Roster Management > Load Roster, load each LAB roster in turn and check what "
+    print("In the game: Customize > Save/Load/Delete > Load > Rosters, load each LAB roster in turn and check what "
           "docs/ROADMAP.md (\"The game's own roster\") lists.")
 
 
@@ -272,8 +310,31 @@ def cmd_equipment_test(args):
         equipmenttest.equipment_test(folder, slot, print)
     except (RuntimeError, ValueError) as err:
         sys.exit(str(err))
-    print("Saved the roster \"EQUIPMENT TEST\". In the game: Roster Management > Load Roster, then Edit Players > Anaheim or Winnipeg > "
+    print("Saved the roster \"EQUIPMENT TEST\". In the game: Customize > Save/Load/Delete > Load > Rosters, then Edit Players > Anaheim or Winnipeg > "
           "each player > Customization: do the game's words match the list above?")
+
+
+def cmd_year_test(args):
+    """The owner's in-game check of the year patch: a LAB roster made for it and the patch file."""
+    from . import calendartest
+    try:
+        folder, slot = _lab_source(args, allow_disc=False)
+        calendartest.year_test(folder, slot, print)
+    except (RuntimeError, ValueError) as err:
+        sys.exit(str(err))
+
+
+def cmd_team32_test(args):
+    """The owner's in-game check of the 32-team patch: a LAB roster made for it, the patch file with every entry, and the
+    game's database description for 32 teams in that RPCS3's game folder (RPCS3 closed; undo: game-patch remove)."""
+    from . import calendartest
+    try:
+        folder, slot = _lab_source(args, allow_disc=False)
+        rpcs3 = _find(args)
+        calendartest.team32_test(folder, slot, print, art_rpcs3=rpcs3 if args.photos else None, rpcs3=rpcs3,
+                                 title_id={'EU': 'BLES02153', 'NA': 'BLUS31540'}.get(args.version))
+    except (RuntimeError, ValueError) as err:          # also install.ArtError (RPCS3 running, game not found)
+        sys.exit(str(err))
 
 
 def cmd_calendar_test(args):
@@ -284,7 +345,7 @@ def cmd_calendar_test(args):
         saved = calendartest.calendar_test(folder, slot, print)
     except (RuntimeError, ValueError) as err:
         sys.exit(str(err))
-    print(f"Saved {len(saved)} rosters. In the game: Roster Management > Load Roster, load each \"CAL\" roster in "
+    print(f"Saved {len(saved)} rosters. In the game: Customize > Save/Load/Delete > Load > Rosters, load each \"CAL\" roster in "
           "turn, then Season mode > Select Team > Calendar (docs/ROADMAP.md, \"Calendar\"; the list above says what to look at).")
 
 
@@ -297,7 +358,7 @@ def cmd_season_test(args):
         saved = seasontest.season_test(folder, slot, print)
     except (RuntimeError, stock.StockError) as err:
         sys.exit(str(err))
-    print(f"Saved {len(saved)} rosters. In the game: Roster Management > Load Roster, load each \"SEASON\" roster in "
+    print(f"Saved {len(saved)} rosters. In the game: Customize > Save/Load/Delete > Load > Rosters, load each \"SEASON\" roster in "
           "turn, then Season mode > pick a team and wait for it to load (docs/ROADMAP.md, \"Season mode crash\").")
 
 
@@ -315,13 +376,70 @@ def cmd_photos(args):
         sys.exit(str(err))
 
 
+def _download_packs():
+    """The pictures for --photos (packs.py): what is missing or changed, with a line per tenth."""
+    from . import packs
+    listed = packs.manifest()
+    names = packs.missing(listed) if listed is not None else []
+    if names:
+        print(f"Downloading the pictures ({packs.size_of(listed, names) / 1e6:.0f} MB)...")
+    shown = [-1]
+
+    def step(at):
+        if int(at * 10) > shown[0]:
+            shown[0] = int(at * 10)
+            print(f"   {int(at * 100)} %")
+    done, why = packs.sync(step if names else None, listed=listed) if listed is not None else ([], 'offline')
+    if why:
+        have = [n for n in packs.NAMES if packs.have(n)]
+        print("The pictures were not downloaded" + ("" if why == 'offline' else f" ({why})") + ": "
+              + ("the copy on this PC is used." if have else "photos come one by one, jerseys stay the game's own."))
+    return done
+
+
+def cmd_packs(args):
+    from . import packs
+    if args.action == 'download':
+        _download_packs()
+    elif args.action == 'remove':
+        print(f"Removed {packs.remove_all() / 1e6:.0f} MB. What an update put into the game stays "
+              "(photos remove takes it away).")
+    for name, have in packs.status().items():
+        print(f"   {name}: " + (f"{have[0]}, {have[1] / 1e6:.0f} MB" if have else "not on this PC"))
+    print(f"   folder: {packs.folder()}")
+
+
+def cmd_game_patch(args):
+    from . import patchinstall
+    rpcs3 = _find(args)
+    if args.action != 'install' and (args.skip_intro or args.no_login):
+        sys.exit("--skip-intro and --no-login go with 'game-patch install'")
+    try:
+        if args.action == 'remove':
+            patchinstall.remove(rpcs3)
+            return
+        if args.action == 'install':
+            patchinstall.install_patch(rpcs3, rpcs3.games(), intro=args.skip_intro, login=args.no_login)
+            print("Now update a roster with --rpcs3: it is made for the patched game.")
+            return
+    except (RuntimeError, datasource.Offline, OSError) as err:     # RPCS3 running, no disc
+        sys.exit(str(err))
+    for title, st in patchinstall.state(rpcs3).items():
+        if st['patched']:
+            extra = [what for what, on in (("the intro skipped", st['intro']), ("no pop-ups at start", st['login'])) if on]
+            print(f"{savedata.region(title)}: patched for 32 teams and the year 2026 ({st['version']})"
+                  + (f", {', '.join(extra)}" if extra else ""))
+        else:
+            print(f"{savedata.region(title)}: not patched")
+
+
 def cmd_league_test(args):
     from .art import lab
     try:
         lab_slot = lab.league_test(_find(args), args.source)
     except RuntimeError as err:
         sys.exit(str(err))
-    print(f"In the game: Roster Management > Load Roster > \"{lab_slot.name}\". Then look, as docs/ROADMAP.md "
+    print(f"In the game: Customize > Save/Load/Delete > Load > Rosters > \"{lab_slot.name}\". Then look, as docs/ROADMAP.md "
           "(\"League test\") says, whether Coachella and Henderson are in the AHL list, Jokerit in Liiga, Ajoie in "
           "the National League and Penticton in the WHL, and play one game with each.")
 
@@ -332,7 +450,7 @@ def cmd_draft_test(args):
         lab_slot = lab.draft_test(_find(args), args.source)
     except RuntimeError as err:
         sys.exit(str(err))
-    print(f"In the game: Roster Management > Load Roster > \"{lab_slot.name}\". Start Be a GM and open the list of "
+    print(f"In the game: Customize > Save/Load/Delete > Load > Rosters > \"{lab_slot.name}\". Start Be a GM and open the list of "
           "draft prospects (scouting or the draft); if there is none yet, simulate to the draft. Tell us which of "
           "the names above are in it (docs/ROADMAP.md, \"Draft test\").")
 
@@ -348,7 +466,7 @@ def cmd_art_test(args):
         lab_slot = lab.install(_find(args), args.source)
     except RuntimeError as err:          # RPCS3 running, test already installed: a sentence for the user
         sys.exit(str(err))
-    print(f"In the game: Roster Management > Load Roster > \"{lab_slot.name}\". Then look at the pictures "
+    print(f"In the game: Customize > Save/Load/Delete > Load > Rosters > \"{lab_slot.name}\". Then look at the pictures "
           "listed in docs/ROADMAP.md (\"Art test\"). Afterwards: art-test remove.")
 
 
@@ -388,6 +506,12 @@ def main(argv=None):
                                 "be closed; 'photos remove' takes them away)")
             p.add_argument('--edits', action='store_true',
                            help="apply your own edits from the window's Roster editor after the update")
+            p.add_argument('--game-patch', action='store_true',
+                           help="patch the game in RPCS3 for 32 teams and the year 2026 first (as 'game-patch install'; "
+                                "RPCS3 must be closed), then make the roster for it ('game-patch remove' takes it out)")
+            p.add_argument('--skip-intro', action='store_true', help="with --game-patch: start at the main menu, no intro")
+            p.add_argument('--no-login', action='store_true',
+                           help="with --game-patch: no pop ups at start (no sign-in boxes; online modes still sign in when opened)")
             p.add_argument('--research', help=argparse.SUPPRESS)
         if name == 'export':
             p.add_argument('--out', required=True)
@@ -399,9 +523,21 @@ def main(argv=None):
     p.add_argument('--name')
     p.add_argument('--offline', action='store_true')
     p.add_argument('--edits', action='store_true', help="apply your edits from the window's Roster editor")
+    p.add_argument('--for-patch', action='store_true', help="make it for a game patched for 32 teams and the year 2026")
+    p = sub.add_parser('game-patch', help="patch the game for 32 teams and the year 2026, is it patched, take the patch "
+                                          "out again")
+    p.set_defaults(fn=cmd_game_patch)
+    p.add_argument('action', choices=('install', 'status', 'remove'))
+    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe (or the folder it is in)")
+    p.add_argument('--skip-intro', action='store_true', help="with install: start at the main menu, no intro")
+    p.add_argument('--no-login', action='store_true',
+                   help="with install: no pop ups at start (no sign-in boxes; online modes still sign in when opened)")
     p = sub.add_parser('photos', help="remove the installed photos and logos (every file goes back as it was)")
     p.set_defaults(fn=cmd_photos)
     p.add_argument('action', choices=('remove',))
+    p = sub.add_parser('packs', help="the pictures for --photos: download them now, show them, free the space")
+    p.set_defaults(fn=cmd_packs)
+    p.add_argument('action', choices=('download', 'status', 'remove'))
     p = sub.add_parser('stock-test', help="save two LAB rosters made from the game's own roster (in-game test)")
     p.set_defaults(fn=cmd_stock_test)
     p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
@@ -424,6 +560,20 @@ def main(argv=None):
     p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
     p.add_argument('--source', help="roster save to start from, or file:<a roster file> (default: the newest roster this "
                                     "program did not make)")
+    p = sub.add_parser('year-test', help="save a LAB roster for the year 2026 game patch, and the patch file (in-game test)")
+    p.set_defaults(fn=cmd_year_test)
+    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--source', help="roster save to start from, or file:<a roster file such as a downloaded community "
+                                    "SYS-DATA> (default: the newest roster this program did not make)")
+    p = sub.add_parser('team32-test', help="save a LAB roster for the 32-team game patch, the patch file and the game's "
+                                                   "database description for 32 teams (in-game test; RPCS3 closed)")
+    p.set_defaults(fn=cmd_team32_test)
+    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--source', help="roster save to start from, or file:<a roster file such as a downloaded community "
+                                    "SYS-DATA> (default: the newest roster this program did not make)")
+    p.add_argument('--photos', action='store_true', help="also install the team names, NHL logos and new jerseys into "
+                                                         "that RPCS3's game folder (RPCS3 closed; undo: photos remove)")
+    p.add_argument('--version', choices=('EU', 'NA'), help="which version of the game to save for (default: the source's)")
     p = sub.add_parser('season-test', help="save LAB rosters with more and more update steps (finds what crashes Season mode)")
     p.set_defaults(fn=cmd_season_test)
     p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")

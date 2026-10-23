@@ -54,6 +54,27 @@ def test_thirty_two_teams_get_the_same_number_of_home_and_away_games(games):
             played[(date, t)] = 1
 
 
+def test_the_game_patch_calendar_has_one_all_star_row_in_the_break(base_bytes, games):
+    rows = schedule.rows_for(games, schedule.ALL_PATCH)
+    own = [g for g in rows if g[1] == g[2]]
+    assert rows == sorted(schedule.slot_games(games) + own, key=lambda g: g[0])          # every game of the real season
+    assert len(rows) == schedule.PATCH_ROWS == 1345
+    assert own == [(schedule.all_star_date(games), 0, 0)]                     # nobody plays in the break: Anaheim's row
+    source = Roster(base_bytes)
+    R = Roster(base_bytes)
+    assert R.f[schedule.TABLE].max_rec == 1291
+    info = schedule.apply(R, games, schedule.ALL_PATCH)
+    assert 0 < min(info['per_team'].values()) == max(info['per_team'].values()) == 84        # the row is nobody's game
+    assert R.f[schedule.TABLE].max_rec == 1345 and R.f[schedule.FAVOURITE].max_rec == 1431    # room the patch's meta gives
+    again = Roster(R.f.build())
+    assert schedule.apply(again, games, schedule.ALL_PATCH) == info and again.f.build() == R.f.build()   # rule 4
+    assert schedule.check(R, source, info) == []
+    assert schedule.check(R, source, dict(info, variant=schedule.ALL))[0] ==         f"schedule row {rows.index(own[0])}: 0 against 0"                     # only the patch's calendar may have it
+    T, at = R.f[schedule.TABLE], rows.index(own[0])
+    T.set(at, schedule.ROW['home'], 5)                                        # an ordinary game instead: per team wrong
+    assert "the calendar has 0 All-Star rows" in schedule.check(R, source, info)
+
+
 def test_the_calendar_is_written_into_the_tables_and_checked(base_bytes, games):
     R = Roster(base_bytes)
     source = Roster(base_bytes)
@@ -83,7 +104,7 @@ def test_the_check_finds_what_the_game_cannot_use(base_bytes, games):
 
 
 def test_the_calendar_step_builds_a_roster_that_passes_and_builds_again_the_same(base_bytes, data, games):
-    d = Data(nhl_players=data.nhl_players, ea_ratings=data.ea_ratings, iihf=data.iihf, season_year=data.season_year,
+    d = Data(nhl_players=data.nhl_players, ratings_list=data.ratings_list, iihf=data.iihf, season_year=data.season_year,
              nhl_last=data.nhl_last, drafts=data.drafts, schedule=games)
     steps = list(pipeline.CORE_STEPS) + [pipeline.SCHEDULE]
     res = pipeline.build(base_bytes, d, steps)
@@ -99,6 +120,66 @@ def test_the_calendar_step_builds_a_roster_that_passes_and_builds_again_the_same
     broken.f[schedule.TABLE].cur_rec -= 1
     problems, _ = verify(broken.f.build(), Roster(base_bytes), calendar=res.builder.calendar)
     assert any("schedule" in p for p in problems)
+
+
+def test_every_club_league_gets_its_real_season_in_its_own_table(base_bytes, pack):
+    parts = schedule.league_schedules(pack)
+    assert set(parts) == set(schedule.LEAGUES)                     # Norway has no table
+    R = Roster(base_bytes)
+    infos = {}
+    for part, games in sorted(parts.items()):
+        tag, slots = schedule.LEAGUES[part]
+        rows = schedule.league_rows(games, set(slots))
+        info = infos[part] = schedule.apply_league(R, part, games)
+        assert info['games'] == len(rows) == R.f[tag].cur_rec <= R.f[tag].max_rec
+        assert set(info['per_team']) == set(slots)                 # every club of the game plays
+        assert schedule.check_league(R, part, info) == []
+        day = datetime.date.fromisoformat(rows[0][0])
+        assert schedule.read_league(R, part)[0] == (day.month - 1, day.day - 1, rows[0][1], rows[0][2])
+        assert R.f[tag].get(0, schedule.ROW['home']) == list(slots).index(rows[0][1])     # a team = its place in the league
+    for part in ('shl', 'del', 'extraliga'):                       # 14 clubs, all with a slot: the real 52 games each
+        assert set(infos[part]['per_team'].values()) == {52}
+    assert len(parts['liiga']) == 544 and infos['liiga']['games'] < 544      # Jokerit's / Jukurit's games left out
+    again = Roster(R.f.build())
+    for part, games in sorted(parts.items()):
+        assert schedule.apply_league(again, part, games) == infos[part]
+    assert again.f.build() == R.f.build()                          # rule 4
+    # what the game cannot use
+    T = R.f['LmeT']
+    for field in ('month', 'day'):
+        T.set(1, schedule.ROW[field], T.get(0, schedule.ROW[field]))
+    T.set(1, schedule.ROW['home'], T.get(0, schedule.ROW['home']))
+    assert any("twice" in p for p in schedule.check_league(R, 'shl', infos['shl']))
+    T.set(2, schedule.ROW['month'], 6)                             # July
+    assert any("the date 7/" in p for p in schedule.check_league(R, 'shl', infos['shl']))
+    assert schedule.league_rows([['2026-10-01', 62, 63], ['2026-10-01', 63, 64], ['2026-07-30', 62, 64],
+                                 ['2026-10-02', 62, 'Frisk Asker']], set(schedule.LEAGUES['shl'][1])) == \
+        [('2026-10-01', 62, 63)]                                   # twice a day, July, a club without a slot
+    with pytest.raises(schedule.ScheduleError, match="no games"):
+        schedule.apply_league(R, 'nl', [['2026-10-01', 'HC Ajoie', 'SCRJ Lakers']])
+
+
+def test_the_calendar_step_writes_the_calendars_of_the_leagues_it_updates(base_bytes, data, pack, games):
+    d = Data(nhl_players=data.nhl_players, ratings_list=data.ratings_list, iihf=data.iihf, season_year=data.season_year,
+             nhl_last=data.nhl_last, drafts=data.drafts, schedule=games, leagues={'shl': pack['leagues']['shl']},
+             league_schedules=schedule.league_schedules(pack))
+    steps = list(pipeline.CORE_STEPS) + ['shl', pipeline.SCHEDULE]
+    res = pipeline.build(base_bytes, d, steps)
+    assert res.ok, res.problems[:3]
+    assert set(res.builder.league_calendars) == {'shl'}            # the other leagues were not updated: kept
+    assert ("League calendars", "SHL 364 games") in res.lines()
+    source, built = Roster(base_bytes), Roster(res.data)
+    assert schedule.read(built, 'RBQQ') == schedule.read(source, 'RBQQ')
+    assert schedule.read(built, 'LmeT') != schedule.read(source, 'LmeT')
+    again = pipeline.build(res.data, d, steps)
+    assert again.ok and again.data == res.data                     # rule 4
+    assert 'league calendars' not in pipeline.EXPERIMENTAL          # played in the lab (round 46)
+    # verify: a league table nobody wrote stays the source's
+    broken = Roster(res.data)
+    broken.f['RBQQ'].set(0, schedule.ROW['day'], 3)
+    problems, _ = verify(broken.f.build(), source, calendar=res.builder.calendar,
+                         league_calendars=res.builder.league_calendars)
+    assert "schedule table RBQQ changed" in problems
 
 
 def test_the_calendar_test_writes_new_rosters_and_a_list_of_what_to_look_at(tmp_path, base_dir, monkeypatch):

@@ -1,4 +1,4 @@
-# Game saves and game data: never commit (EA content and other modders' work)
+# Game saves and game data: never commit (the game's content and other modders' work)
 SYS-DATA
 PARAM.SFO
 ICON0.PNG
@@ -11,9 +11,10 @@ work/
 # Maintainer caches (re-created by tools/build_datapack.py)
 tools/cache/
 
-# The photo pack: a release file (tools/build_photopack.py), shipped inside the photo exe only
-legacy_roster/data/photopack.zip
-legacy_roster/data/photopack.zip.tmp
+# The maintainer's private tools and the picture packs the program downloads (DEVELOPING.md): never in git
+private/
+legacy_roster/data/*.zip
+legacy_roster/data/*.zip.tmp
 
 # Python
 __pycache__/

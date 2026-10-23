@@ -10,19 +10,39 @@ it finds him in any later roster whichever record he has there.
                  "equipment": {"tape": 1, "sock_tuck": 3, ...},   for every skater of the team, except what he chose himself
                  "uniforms": {"colours": {"primary": "#rrggbb", "secondary": "#rrggbb", "crest": "file:<path>"},
                               "versions": {"<variant>": "game" | "colours" | "file:<path of a 1024 x 1024 colour map>"}},
-                 "ice": {"use": "game" | "logo" | "file:<path>", "arena": "<name on the ice>"}}   (apply_teams;
-                 the jerseys and the ice are installed by art/looks.py with the photos and logos)
+                 "ice": {"use": "game" | "logo" | "file:<path>", "arena": "<name on the ice>"},   (apply_teams;
+                 the jerseys and the ice are installed by art/looks.py with the photos and logos; on a team whose
+                 home ice other teams share (looks.ice_group) it is the group's)
+                 "kit": {"jersey": [home, away] (0-8), "pants": 0-5, "socks": 0-5, "font": 0-5,   a custom team's look
+                         "colours": ["#rrggbb"] * 3,        (slots 222-251, custom_kit.py; only what the player set):
+                         "pieces": {"<piece>/<1 home | 2 away>": ["#rrggbb" per zone]},   team colours paint every
+                         "crest": "logo:<n>" | "file:<path>"},     piece, then the pieces set one by one
+                                                            (custom_kit.PIECES); a crest picture is installed
+                                                            with the photos (art/crests.py)
+                 "lines": {"slots": {"l1c": who, ...  all 71 (schema.SLOT_TAG)}, "letters": {who: "C" | "A"}},
+                 "strategy": {"oz_forecheck": 2, "forward1_bias1": 6, ...}}   (strategy.FIELDS; only the changed ones)
     edit        {"label": "Connor McDavid",              shown in the editor's list
                  "was": {"first", "last", "birth"},         his name before a rename (see restore())
                  "set": {"first", "last", "num", "pos" (C/L/R/D/G), "shoots" (L/R),
-                         "birth": [y, m, d], "country" (ISO3), "height_in", "weight_lb"},
-                 "ratings": {"Passing": 90, ...},           EA attribute names (schema.EA_SKATER / EA_GOALIE)
+                         "birth": [y, m, d], "country" (ISO3), "height_in", "weight_lb",
+                         "style": 7,                    player type (ratings.STYLE_CHOICES of his position)
+                         "head": 60012, "skin": 2, "eyes": 2},   his face (faces.py; the hair comes with the head)
+                 "look": {"shape": 5, "tone": 8, "hair": 3, ...},   a created look (the game's Create Player "Custom
+                                                            Head", faces.LOOK, the game's numbers): only a new player
+                                                            gets one, on a record the game's Create Player fills
+                                                            (faces.RESERVED); it replaces `set` head / skin / eyes
+                 "ratings": {"Passing": 90, ...},           the ratings list's attribute names (schema.LIST_SKATER / LIST_GOALIE)
                  "ovr": 75,                                 a new player without ratings: all attributes at this level
                  "team": <slot> or "FA",                    move, sign or release
                  "equipment": {"stick": 105, "tape": 1, ...},  skaters: equipment.CHOICES, goalies: equipment.GOALIE_CHOICES
                                                             (the game's own model numbers)
                  "mask_picture": "file:<path>",             a goalie's own picture on his mask (512 x 512)
                  "photo": "file:<path>",                    a picture of the player's own
+                 "contract": {"cap": 12500000, "years": 2,  his contract in real dollars (both money scales: the
+                              "two_way": 0 | 1,             roster's scale is applied when it is written), the cap hit
+                              "ext": [years, cap, two_way] | null},   per season; written after the real deals
+                                                            (apply_contracts), on an NHL roster or to a player whose
+                                                            rights an NHL team holds (contracts.edit_problems)
                  "new": true}                               a player the game does not have: created
 
 Rules the game enforces are kept: at most 40 a team, numbers unique on a team, goalies stay
@@ -31,11 +51,12 @@ report ("edit skipped: ..."), never half done. `verify()` still checks the resul
 """
 import json
 import os
+from collections import Counter
 
-from . import datasource, equipment, lines, ratings
+from . import contracts, custom_kit, datasource, equipment, faces, lines, ratings
 from . import layout as L
 from .art.portraits import person_key
-from .schema import EA_GOALIE, EA_SKATER, RATING_BASE
+from .schema import LIST_GOALIE, LIST_SKATER, RATING_BASE
 
 VERSION = 1
 POSITIONS = ('C', 'L', 'R', 'D', 'G')
@@ -111,13 +132,44 @@ def apply_teams(b, teams, say=None):
             b.team_names[slot] = True
         if e.get('logo'):
             b.logos[slot] = e['logo']
+            b.own_logos.add(slot)
         if e.get('equipment'):
             _team_equipment(b, slot, e['equipment'])
         if e.get('uniforms') or e.get('ice'):
             b.looks_edits[slot] = {k: e[k] for k in ('uniforms', 'ice') if e.get(k)}
+        if e.get('kit') and custom_kit.is_custom(slot):
+            _team_kit(b, slot, e['kit'], keep_logo=bool(e.get('logo')))
+        if e.get('strategy'):
+            _team_strategy(b, slot, e['strategy'])
+        if e.get('lines'):
+            _team_lines(b, slot, e['lines'])
         b.log.append(['edits', 'team edited', b.R.team_name(slot), ', '.join(sorted(e)), ''])
     if teams and say:
         say(f"My edits: {len(teams)} teams")
+
+
+def _team_kit(b, slot, kit, keep_logo=False):
+    """A custom team's look (custom_kit.write): designs, colours, crest. A crest picture is installed with the photos
+    (art/crests.py) on a create-a-team logo no other team wears, and is the team's menu logo unless the player gave it
+    one (`keep_logo`)."""
+    own, T = L.OWN_ART.get(slot), b.R.T
+    # logos another team's own crest is drawn on (Coachella Valley's, Henderson's, a crest picture given earlier)
+    reserved = {custom_kit.logo_of(art) for s, art in L.OWN_ART.items() if s != slot}
+    reserved |= {custom_kit.logo_of(T.get(s, 'artid')) for s in b.crest_pictures if s != slot}
+    words, picture = custom_kit.write(b.R, slot, kit, reserved=reserved, own_art=own)
+    crest = str(kit.get('crest') or '')
+    if picture:
+        b.crest_pictures[slot] = picture
+        if not keep_logo:
+            b.logos[slot] = picture
+    elif crest.startswith('file:'):
+        b.log.append(['edits', 'edit skipped', b.R.team_name(slot), "crest picture: every create-a-team logo is taken",
+                      ''])
+    elif crest.startswith('logo:') and "crest" not in words:
+        b.log.append(['edits', 'edit skipped', b.R.team_name(slot), "crest: another team's own crest is drawn on it",
+                      ''])
+    if words:
+        b.log.append(['edits', 'team look', b.R.team_name(slot), ', '.join(words), ''])
 
 
 def birth_of(P, prow, base=1910):
@@ -162,6 +214,34 @@ def people_and_copies(b):
         else:
             out[who] = prow
     return out, copies
+
+
+def records_needed(b, edits):
+    """{position code: count} of the player's new players who are not in the roster yet: Builder.hold_records takes
+    their records before the leagues', so a full update does not use them up. On a second run the players are there
+    and need none; the leagues then find the same records left as on the first run. A new player with a created look
+    takes one of the game's Create Player records instead (no league ever does), while they last (_look_records)."""
+    found = people(b)
+    free = _look_records(b)
+    left = {kind: len(rows) for kind, rows in free.items()}
+    out = Counter()
+    for who in sorted(edits or {}):
+        e = edits[who]
+        if e.get('new') and who not in found:
+            pos = L.POS_CODE.get((e.get('set') or {}).get('pos') or 'C', 0)
+            if e.get('look') and left[pos == 4]:
+                left[pos == 4] -= 1
+                continue
+            out[pos] += 1
+    return out
+
+
+def _look_records(b):
+    """{goalie?: [free Create Player records this program may take, the highest game id first]} (faces.free_reserved),
+    worked out once per build: no league step takes or frees one."""
+    if not hasattr(b, 'look_records'):
+        b.look_records = {kind: faces.free_reserved(b.R, kind) for kind in (False, True)}
+    return b.look_records
 
 
 def restore(R, edits):
@@ -216,10 +296,16 @@ def apply(b, edits, say=None):
             skipped += 1
             continue
         b.edited[1].add(prow)
-        if e.get('photo'):                  # a picture of the player's own, installed with photos and logos
+        if e.get('photo'):                  # a picture of the player's own: always installed (portraits.plan own_only)
             b.photos[prow] = e['photo']
-        problems = _set_fields(b, prow, e.get('set') or {}, changed)
-        _set_ratings(b, prow, e.get('ratings') or {}, e.get('ovr') if e.get('new') else None)
+            b.own_photos.add(prow)
+        fields = e.get('set') or {}
+        if e.get('look'):           # the look's head, skin and eyes win
+            fields = {k: v for k, v in fields.items() if k not in faces.FIELDS}
+        problems = _set_fields(b, prow, fields, changed)
+        if e.get('look'):
+            problems += _set_look(b, prow, e['look'])
+        _set_ratings(b, prow, e.get('ratings') or {}, e.get('ovr') if e.get('new') else None, bool(e.get('new')))
         problems += _set_equipment(b, prow, e.get('equipment'))
         for other in copies.get(who, []):          # the same person's national-team record: same name, same ratings
             b.edited[1].add(other)
@@ -229,14 +315,68 @@ def apply(b, edits, say=None):
         if e.get('mask_picture'):
             problems += _mask_picture(b, [prow] + list(copies.get(who, [])), e['mask_picture'])
         if 'team' in e:
-            problems += _move(b, prow, e['team'], changed)
+            problems += _move(b, prow, e['team'], changed, wins=not e.get('new') or bool((e.get('set') or {}).get('num')))
+            if e.get('new') and e['team'] not in (None, 'FA'):
+                changed.add(int(e['team']))     # dealt into the lines on every run, so a second run deals the same
         for text in problems:
             b.log.append(['edits', 'edit skipped', label, text, ''])
-        b.log.append(['edits', 'edited', label, ', '.join(sorted(k for k in e if k not in ('label',))), ''])
-        done += 1
+        parts = sorted(k for k in e if k not in ('label', 'contract'))      # the contract: apply_contracts
+        if parts:
+            b.log.append(['edits', 'edited', label, ', '.join(parts), ''])
+            done += 1
+    for rows in b.held_records.values():   # held for a new player who did not need one after all: left as it was
+        b.created.difference_update(rows)
+    b.held_records = {}
     _relines(b, changed, say)
-    say(f"My edits: {done} applied" + (f", {skipped} skipped (see the report)" if skipped else ""))
+    if done or skipped:
+        say(f"My edits: {done} applied" + (f", {skipped} skipped (see the report)" if skipped else ""))
     return changed
+
+
+def apply_contracts(b, edits, say=None):
+    """The contracts the player set ("contract", real dollars), written on the roster's money scale (`b.money`). It runs
+    after the real and the starter deals (Builder.real_contracts / starter_contracts would write over them,
+    pipeline.build), so a second run writes the same. The deal is with his NHL organisation or else his club
+    (contracts.contract_home; free amounts outside the NHL organisations); one the game cannot hold
+    (contracts.edit_problems) or a player on no club and with no NHL organisation is left out and named in the report.
+    His rights stay as they are. Returns {player row: deal} of those written (verify checks them)."""
+    say = say or (lambda msg: None)
+    wanted = {who: e for who, e in sorted(edits.items()) if e.get('contract')}
+    if not wanted:
+        return {}
+    found = people(b)
+    clubs = contracts.contract_clubs(b.R)
+    written = {}
+    for who, e in wanted.items():
+        label, deal = e.get('label') or who, dict(e['contract'])
+        prow = found.get(who)
+        teams = _teams_of(b, prow) if prow is not None else set()
+        home = contracts.contract_home(b.P, prow, teams, clubs) if prow is not None else None
+        why = (["player not found in this roster"] if prow is None else
+               ["contract: he is on no club and with no NHL organisation (a free agent, a national team only)"]
+               if home is None else [f"contract: {text}" for text in contracts.edit_problems(deal, nhl=home[1])])
+        if why:
+            b.log.append(['edits', 'edit skipped', label, '; '.join(why), ''])
+            continue
+        if b.P.get(prow, 'BSXd') and b.P.get(prow, 'BSXd') - 1 not in teams:   # with a team he is on (verify)
+            b.P.set(prow, 'BSXd', (home[0] if home[0] in teams else min(teams & clubs or teams)) + 1)
+        contracts.write(b.P, prow, deal, b.money)
+        written[prow] = deal
+        b.log.append(['edits', 'edited', label, "contract: " + contract_text(deal), ''])
+    if written:
+        say(f"My edits: {len(written)} contract{'s' if len(written) != 1 else ''} set")
+    return written
+
+
+def contract_text(deal):
+    """'$12.5M x 2 seasons, two-way, then 8 x $16M': a contract in the player's words."""
+    years = deal['years']
+    text = f"{contracts.money(deal['cap'])} x {years} season{'s' if years != 1 else ''}"
+    if deal.get('two_way'):
+        text += ", two-way"
+    if deal.get('ext'):
+        text += f", then {deal['ext'][0]} x {contracts.money(deal['ext'][1])}"
+    return text
 
 
 # --- the parts of an edit ---------------------------------------------------------------------------
@@ -260,6 +400,19 @@ def _set_fields(b, prow, fields, changed):
             b.set_position(prow, new)
             if new != old:
                 changed |= _teams_of(b, prow)
+    if fields.get('style') is not None:
+        style, kind = int(fields['style']), ratings.style_class(P.get(prow, 'aljv'))
+        if style not in ratings.STYLE_CHOICES[kind]:
+            problems.append(f"player type {ratings.style_label(style)} does not fit his position")
+        else:                   # the lines stay: they go by ratings and position, not by type
+            b.set_style(prow, style)
+    face = {key: int(fields[key]) for key in faces.FIELDS if fields.get(key) is not None}
+    if face:
+        why = faces.wrong(face, faces.heads(b.R))
+        if why:
+            problems.append(f"face: {why}")
+        else:
+            faces.write(P, prow, face)
     if fields.get('shoots') in ('L', 'R'):
         P.set(prow, 'pkRG', 0 if fields['shoots'] == 'L' else 1)
     if fields.get('birth'):
@@ -290,6 +443,15 @@ def _set_fields(b, prow, fields, changed):
     return problems
 
 
+def _set_look(b, prow, look):
+    """A created look (faces.LOOK) on a player of one of the game's Create Player records; others keep their head."""
+    if not faces.is_reserved(b.P, prow):
+        return ["a created look needs a new player made in this program (this one keeps his head)"]
+    whole, problems = faces.clean_look(look)
+    faces.write_look(b.R, prow, whole)
+    return [f"look: {why} (the game's default kept)" for why in problems]
+
+
 def _free_number(b, team, keep, n):
     """Another player on `team` wearing `n` gets the next free number (the edited one wins)."""
     U = b.U
@@ -304,7 +466,7 @@ def _free_number(b, team, keep, n):
                           f"#{n} given to an edited player", free])
 
 
-def _set_ratings(b, prow, values, ovr=None):
+def _set_ratings(b, prow, values, ovr=None, new=False):
     P = b.P
     goalie = P.get(prow, 'aljv') == 4
     tname = ratings.GOALIE_TABLE if goalie else ratings.SKATER_TABLE
@@ -312,12 +474,14 @@ def _set_ratings(b, prow, values, ovr=None):
     if row is None:
         return
     table = b.R.f[tname]
-    amap = EA_GOALIE if goalie else EA_SKATER
+    amap = LIST_GOALIE if goalie else LIST_SKATER
     if ovr and not values:
         ratings.write_attributes(table, row, {'ovr': ovr}, b.ovr_offset[goalie])
     for label, v in values.items():
         if label in amap and v is not None:
             table.set(row, amap[label], ratings.clamp(int(v) - RATING_BASE))
+    if new or values:       # rated by his attributes, as the next run's Builder rates him: lines deal the same
+        b.quality[P.get(prow, 'zIBw')] = ratings.level(table, row) + b.ovr_offset[goalie]
 
 
 def _set_equipment(b, prow, values):
@@ -391,6 +555,54 @@ def _team_equipment(b, slot, values):
     b.log.append(['edits', 'team equipment', b.R.team_name(slot), f"{n} skaters", ''])
 
 
+def team_lineup_view(b, team):
+    """({slot name: entry}, {entry: 'C' | 'A'}, {entry: position letter}, {entry: name}, {entry: person key}) of a team."""
+    P = b.P
+    slots, letters = lines.lineup(b, team)
+    pos, name, who = {}, {}, {}
+    for e in b.entries_on(team):
+        prow = b.prow_of_entry(e)
+        pos[e] = 'CLRDG'[P.get(prow, 'aljv')]
+        name[e] = b.R.name(prow)
+        who[e] = who_of(P, prow)
+    return slots, letters, pos, name, who
+
+
+def _team_lines(b, slot, saved):
+    """The player's own lines and letters (Roster editor's Lines): `saved` {"slots": {slot name: person key},
+    "letters": {person key: "C" | "A"}}. Lines that no longer fit the team (a player left, a rule is broken) are
+    left out for this run and named in the List of changes: the team keeps the lines the update gave it."""
+    team = b.R.team_name(slot)
+    if slot in L.MIRROR_OF:
+        return
+    _, _, pos, name, who = team_lineup_view(b, slot)
+    entry = {w: e for e, w in sorted(who.items())}
+    gone = sorted({w for w in list(saved.get('slots', {}).values()) + list(saved.get('letters', {})) if w not in entry})
+    if gone:
+        names = ', '.join(w.split('|')[0].title() + ' ' + w.split('|')[1].title() for w in gone[:3])
+        b.log.append(['edits', 'edit skipped', team, f"your lines: {names} no longer on the team; the update's lines "
+                      "are used", ''])
+        return
+    slots = {s: entry[w] for s, w in saved.get('slots', {}).items() if s in lines.S}
+    letters = {entry[w]: l for w, l in saved.get('letters', {}).items() if l in ('C', 'A')}
+    problems = lines.check_lineup(slots, letters, pos, name, nhl=slot in L.NHL_PRIMARY)
+    if problems:
+        b.log.append(['edits', 'edit skipped', team, f"your lines: {problems[0]} The update's lines are used", ''])
+        return
+    lines.set_lineup(b, slot, slots, letters)
+    b.log.append(['edits', 'own lines', team, 'lines, special teams and letters', ''])
+
+
+def _team_strategy(b, slot, saved):
+    """The player's own strategies (Roster editor's Strategies): {field: value}, only the fields he changed."""
+    from . import strategy
+    ok, problems = strategy.clean({k: v for k, v in saved.items()})
+    for text in problems:
+        b.log.append(['edits', 'edit skipped', b.R.team_name(slot), text, ''])
+    if strategy.write(b.R, slot, ok):
+        b.log.append(['edits', 'own strategies', b.R.team_name(slot), f"{len(ok)} strategies", ''])
+
+
 def _too_few_without(b, team, leaving):
     """A plain sentence when `team` can dress 20 now but not without the entry `leaving`, else None. (A team
     that cannot dress its 20 loses its lines and its captain and alternates, and the save is refused.)"""
@@ -412,8 +624,10 @@ def _too_few_without(b, team, leaving):
     return None
 
 
-def _move(b, prow, target, changed):
-    """Put a player on team `target` (a slot), or release him to the free agents ('FA')."""
+def _move(b, prow, target, changed, wins=True):
+    """Put a player on team `target` (a slot), or release him to the free agents ('FA'). `wins`: his number wins a
+    clash; False for a new player without a number of his own, whose record's old number would take a team-mate's
+    (the next run's league step gives it back to the team-mate, so the two runs would differ)."""
     R, U, P = b.R, b.U, b.P
     pid = P.get(prow, 'zIBw')
     live = b.live_entries()
@@ -451,7 +665,13 @@ def _move(b, prow, target, changed):
         b.arrivals.setdefault(target, []).append(entry)
         b.drop_fa(pid)
     changed.add(target)
-    _free_number(b, target, entry, U.get(entry, 'tRVs'))
+    if wins:
+        _free_number(b, target, entry, U.get(entry, 'tRVs'))
+    else:
+        taken = {U.get(e, 'tRVs') for e in b.entries_on(target) if e != entry}
+        n = next(x for x in (U.get(entry, 'tRVs'), *range(2, 99)) if x and x not in taken)
+        U.set(entry, 'tRVs', n)
+        P.set(prow, 'tRVs', n)
     if target not in L.NATIONAL:        # a player's contract team is his club (as the leagues set it)
         P.set(prow, 'BSXd', target + 1)
     if target in L.NHL_PRIMARY:
@@ -464,13 +684,27 @@ def _create(b, who, e):
     fields = e.get('set') or {}
     pos = L.POS_CODE.get(fields.get('pos') or 'C', 0)
     name = f"{fields.get('first', '')} {fields.get('last', '')}".strip()
-    prow = b.take_record(pos, name, required=False)
+    looks = _look_records(b)[pos == 4] if e.get('look') else []
+    if looks:                   # one of the game's Create Player records: the only ones a created look shows on
+        prow = looks.pop(0)
+        b.created.add(prow)
+        b.P.set(prow, 'NYKk', 1)        # active: the game's Create Player no longer sees it as free
+        if pos != b.P.get(prow, 'aljv'):
+            b.set_position(prow, pos)
+        country = fields.get('country') or 'CAN'       # an empty record has none (127)
+    else:
+        held = b.held_records.get(pos)
+        prow = held.pop(0) if held else b.take_record(pos, name, required=False)
+        country = fields.get('country')
     if prow is None:
         return None
     y = (fields.get('birth') or [b.data.season_year - 22, 1, 1])[0]
-    b.donors.reset_identity(prow, name, L.country_code(fields.get('country')), y)
+    b.donors.reset_identity(prow, name, L.country_code(country), y)
     b.P.set(prow, 'JzFM', '')
     b.P.set(prow, 'BSXd', 0)
+    for f in contracts.FIELDS:      # not the record's last wearer's deal: his club's starter deal or an NHL one
+        b.P.set(prow, f, 0)
+    b.P.set(prow, contracts.STATUS, 0)
     b.placed.add(b.P.get(prow, 'zIBw'))
     if not fields.get('birth'):
         fields = dict(fields, birth=[y, 1, 1])

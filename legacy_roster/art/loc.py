@@ -4,18 +4,20 @@ Team names in the menus come from here, not from the roster (FORMAT.md section 7
 whose art code (`ttOk.artabbr`) is CHOM the game asks for NHLTeamName_CHOM, NHLCityName_CHOM,
 TXT_NICKNAME_CHOM, TXT_NICKNAME_ALT_CHOM and X_XLA_TEAM_CHOM; a custom team's name is the text
 whose key is its `shortname` (LAS_VEGAS -> "Las Vegas"; the update writes such keys in the game's
-own style, layout.city_key). A corrected copy goes into the game's
+own style, layout.city_key). The same copy carries Puck Peak in the game's dead promo lines
+(PROMO). A corrected copy goes into the game's
 folder on RPCS3's hard disk, where the game reads it before the disc's (install.py).
 
-The file is an EA "DB" with one table, LanguageStrings: per text a 32-bit key hash (CRC-32 of the
-upper-case key, initial value 0xFFFFFFFF, no final inversion; records sorted by it) and two
-Huffman-compressed strings, the key and the text, stored after the records. The game keeps its
-keys in their own case (NHLTeamName_CHOM, ChangeDay); an added key is stored exactly as asked
-for. In the game (owner, 2026-10-04) texts changed under the game's own keys showed, while texts
-added under "2026 PROSPECTS 2" for a custom team whose shortname was "2026 Prospects 2" did not;
-custom teams now use keys in the game's style (COACHELLA_VALLEY), which read the same in any case.
-About 11,700 of the game's own records carry a hash that is not that of their key under any rule
-tried (they are found by hash only, from the game's code); they are kept as they are.
+The file is a "DB" with one table, LanguageStrings: per text a 32-bit key hash (the game's own,
+0xdbae20: CRC-32 of the key with every byte & 0xdf, initial value 0xFFFFFFFF, no final inversion;
+records sorted by it) and two Huffman-compressed strings, the key and the text, stored after the
+records. The game keeps its keys in their own case (NHLTeamName_CHOM, ChangeDay); an added key is
+stored exactly as asked for. & 0xdf is upper case for letters but also changes digits and spaces:
+until 2026-10-19 this program hashed the upper-case key, so every text it added under a key with a
+digit (TEAMLINE1_BAKE, NICKLINE2_CLE, NHLTeamName_Abbr3_COLE, "2026 PROSPECTS 2") was never found by
+the game, and seven AHL and three CHL clubs had blank names in Select Teams (lab round 35,
+docs/notes/league-menus.md). The game's rule gives the hash of all 25,985 of its own records.
+Custom teams use keys in the game's style (COACHELLA_VALLEY).
 
     tail    the Huffman tree: node n is the 2-byte entries 2n and 2n+1 (0 / 1 bit), an entry
             (k, 0) leads to node k, (0, c) is the byte c; node 0 is the root
@@ -41,8 +43,26 @@ TEAM_KEYS = {'full': 'NHLTeamName_{}', 'city': 'NHLCityName_{}', 'nick': 'TXT_NI
 # of the team screens (TEAMLINE1/2, NICKLINE2, Abbr3, the NHL slots' numbered texts), 0.8.1;
 # '#3': no text longer than the longest the game itself keeps under that kind of key (0.9.3: a
 # longer one overwrote memory and crashed Select Teams when a league with long names came up)
-NAMES_VERSION = '#5'   # '#5': the short codes (scoreboard) of clubs whose name the game already has
+# '#5': the short codes (scoreboard) of clubs whose name the game already has; '#6': keys hashed the game's way (key_hash),
+# the Select Teams lines added where the game has none, Coachella Valley / Henderson also named the club way (stage Y)
+NAMES_VERSION = '#6'
 LANGUAGES = ('eng_us', 'fre_fr', 'ger_de', 'swe_se', 'fin_fi', 'cze_cz', 'rus_ru')
+
+# the game's dead advertising lines show Puck Peak, the same words in every language (docs/notes/promo-texts.md): the
+# main menu's offline news (title / body 0 EASHL, 1 HUT, 2 GM Connected, 3 the fighting tip, 4 Live the life, the NHL 94
+# title / body), the tuner-set notices. The HUT banner (FUT_NEWS_AND_EVENTS) stays the game's own (owner, 2026-10-18:
+# Zamboni serves HUT again). Online the server's news replaces these; the game patch's NEWS_ENTRY keeps them. Found by
+# the key as stored (most hashes are not the key's CRC). A change of the table or of PROMO_VERSION rewrites every
+# installed text file once ('#2': no HUT banner; '#3': the news bodies invite to the Discord, the tuner notices keep the
+# site; '#4': every news panel text, also the fighting tip and NHL 94, owner 2026-10-22).
+PROMO_VERSION = '#4'
+_SITE, _NAME = 'www.puckpeak.com', 'Puck Peak'
+_NEWS = 'Updates, patches, statistics! Join us on gg.puckpeak.com'
+PROMO = {**{f"TXT_OFFLINE_DYNAMIC_MSG_TITLE_{n}": _NAME for n in range(5)},
+         **{f"TXT_OFFLINE_DYNAMIC_MSG_BODY_{n}": _NEWS for n in range(5)},
+         'TXT_OFFLINE_DYNAMIC_MSG_CLASSIC_TITLE': _NAME, 'TXT_OFFLINE_DYNAMIC_MSG_CLASSIC_BODY_0': _NEWS,
+         'TXT_TUNER_SET_AVAILABLE': _SITE, 'TXT_GAME_MODE_TUNER_SET_AVAILABLE': _SITE,
+         'TXT_TUNER_SETS_UPDATE_AVAIL': _SITE, 'TXT_GAME_MODE_TUNER_SETS_UPDATE_AVAIL': _SITE}
 
 # the kinds of team text with a length limit, longest key prefix first
 KINDS = ('NHLTEAMNAME_ABBR3', 'TXT_NICKNAME_ALT', 'TXT_NICKNAME', 'NHLTEAMNAME', 'NHLCITYNAME', 'TEAMLINE1',
@@ -55,7 +75,8 @@ PART_KIND = {'full': 'NHLTEAMNAME', 'city': 'NHLCITYNAME', 'nick': 'TXT_NICKNAME
 
 
 def key_hash(key):
-    return zlib.crc32(key.upper().encode('utf-8'), 0xFFFFFFFF) ^ 0xFFFFFFFF
+    """The game's hash of a text's key (0xdbae20): every byte & 0xdf, then CRC-32 without the final inversion."""
+    return zlib.crc32(bytes(b & 0xdf for b in key.encode('utf-8')), 0xFFFFFFFF) ^ 0xFFFFFFFF
 
 
 def kind_of(key):
@@ -158,6 +179,36 @@ def apply_names(loc, names):
             loc.set(key, text)
             changed += 1
     return changed
+
+
+def promo_limits(files):
+    """{key: bytes} the longest text the game keeps under each PROMO key in any of `files` (its language files as it
+    made them). The same program shows every language, so a text that long fits its buffers."""
+    room = {}
+    for f in files:
+        for key in PROMO:
+            text = f.get_existing(key)
+            if text is not None:
+                room[key] = max(room.get(key, 0), _size(text))
+    return room
+
+
+def apply_promo(loc):
+    """Put the Puck Peak texts (PROMO) into a text file, only under keys the game has; never an empty one. Returns how
+    many texts changed."""
+    changed = 0
+    for key, text in sorted(PROMO.items()):
+        if text and loc.get_existing(key) not in (None, text):
+            loc.set_existing(key, text)
+            changed += 1
+    return changed
+
+
+def promo_over(loc, room):
+    """[(key, bytes, limit)] for the PROMO keys whose text is longer than `room` (promo_limits) allows."""
+    found = ((key, loc.get_existing(key)) for key in PROMO)
+    return [(key, _size(text), room.get(key, 0)) for key, text in found
+            if text is not None and _size(text) > room.get(key, 0)]
 
 
 class LocFile:
@@ -281,27 +332,36 @@ class LocFile:
                 self.set(TEAM_KEYS[part].format(art), fit(value, limits[PART_KIND[part]]))
 
     def set_existing(self, key, text):
-        """Change the text under a key the game has, found by the key as stored (not by hash: the
-        Select Teams lines have hashes that are not the CRC of their key, so `set` would add a text
-        the game never asks for). Does nothing, and says False, when the game has no such key."""
-        if self._by_key is None:
-            self._by_key = {e[1].upper(): e for e in self.entries if not e[3]}
-        e = self._by_key.get(key.upper())
+        """Change the text under a key the game has, found by the key as stored. Does nothing, and
+        says False, when the game has no such key."""
+        e = self._stored(key)
         if e is None:
             return False
         e[2], e[4] = text, not text         # empty = 'no text', as in the game's own file
         return True
 
+    def get_existing(self, key):
+        """The text under a key the game has, found by the key as stored (see set_existing), or None."""
+        e = self._stored(key)
+        return None if e is None else e[2]
+
+    def _stored(self, key):
+        if self._by_key is None:
+            self._by_key = {e[1].upper(): e for e in self.entries if not e[3]}
+        return self._by_key.get(key.upper())
+
     def set_select_lines(self, key_tail, line1, line2, abbr=None, city=None):
         """The texts the team screens (Play Now "Select Teams", Season) read: TEAMLINE1/2 are the small
         line above and the big line of a team's name, NICKLINE2 the big line again, Abbr3 the short
-        code, CITYLINE1 and NHLCityName a city, under `key_tail` (a team's art code, or an NHL slot number)."""
+        code, CITYLINE1 and NHLCityName a city, under `key_tail` (a team's art code, or an NHL slot number).
+        A line the game has no text for is added (the clubs the game never had, Coachella Valley's CVF);
+        an empty one only empties a text the game has."""
         limits = self.limits()
         for key, text in ((f"TEAMLINE1_{key_tail}", line1), (f"TEAMLINE2_{key_tail}", line2),
                           (f"NICKLINE2_{key_tail}", line2), (f"NHLTeamName_Abbr3_{key_tail}", abbr),
                           (f"CITYLINE1_{key_tail}", city), (f"NHLCityName_{key_tail}", city)):
-            if text is not None:
-                self.set_existing(key, fit(text, limits[kind_of(key)]))
+            if text is not None and (text or self.get(key) is not None):
+                self.set(key, fit(text, limits[kind_of(key)]))
 
     # --- writing -------------------------------------------------------------------------------------------
     def _codes(self, tree):

@@ -7,15 +7,17 @@ another record. `apply_edits()` makes the roster with the edits (no window neede
 """
 import datetime
 
-from .. import edits, equipment, ratings
+from .. import edits, equipment, faces, ratings
 from .. import layout as L
 from ..roster import Roster
-from ..schema import EA_GOALIE, EA_SKATER, RATING_BASE
+from ..schema import LIST_GOALIE, LIST_SKATER, RATING_BASE
 
 POSITION = {0: 'C', 1: 'LW', 2: 'RW', 3: 'D', 4: 'G'}
 POS_KEY = {'C': 'C', 'LW': 'L', 'RW': 'R', 'D': 'D', 'G': 'G'}
 COUNTRY = {code: iso for iso, code in L.NAT_CODE.items()}
 FREE_AGENTS = 'FA'
+SHOWN_AS = {22: ('Arizona Coyotes', 'Utah Mammoth', 'UTA'), 30: (' / ', 'Seattle Kraken', 'SEA'),
+            31: (' / ', 'Vegas Golden Knights', 'VGK')}
 
 
 def _labels(amap):
@@ -28,13 +30,14 @@ def _labels(amap):
     return out
 
 
-SKATER_ATTRIBUTES = _labels(EA_SKATER)
-GOALIE_ATTRIBUTES = _labels(EA_GOALIE)
+SKATER_ATTRIBUTES = _labels(LIST_SKATER)
+GOALIE_ATTRIBUTES = _labels(LIST_GOALIE)
 
 
 class Player:
     __slots__ = ('who', 'prow', 'pid', 'first', 'last', 'pos', 'num', 'birth', 'country', 'shoots', 'height_in',
-                 'weight_lb', 'teams', 'ovr', 'ratings', 'artid', 'hasportrait', 'equipment', 'style')
+                 'weight_lb', 'teams', 'ovr', 'ratings', 'artid', 'hasportrait', 'equipment', 'style', 'face', 'created',
+                 'look')
 
     @property
     def name(self):
@@ -48,13 +51,19 @@ class Player:
         """What can be edited, for comparing two rosters."""
         return {'first': self.first, 'last': self.last, 'num': self.num, 'pos': self.pos, 'shoots': self.shoots,
                 'birth': self.birth, 'country': self.country, 'height_in': self.height_in,
-                'weight_lb': self.weight_lb, 'ovr': self.ovr, 'equipment': self.equipment}
+                'weight_lb': self.weight_lb, 'ovr': self.ovr, 'equipment': self.equipment, 'style': self.style,
+                'face': self.face, 'look': self.look}
+
+    @property
+    def style_label(self):
+        """His player type as the editor names it (GRN, PLY ... or its number), '' without a rating record."""
+        return '' if self.style is None else ratings.style_label(self.style, self.pos == 'G')
 
 
 class Snapshot:
     """Teams and players of one roster save (bytes or Roster)."""
 
-    def __init__(self, source, ovr_offset=None, season_year=None):
+    def __init__(self, source, ovr_offset=None, season_year=None, farm_ahl=False):
         self.R = R = source if isinstance(source, Roster) else Roster(source)
         self.season_year = season_year or datetime.date.today().year - (datetime.date.today().month < 9)
         self.offset = ovr_offset or {False: 0.0, True: 0.0}
@@ -64,7 +73,18 @@ class Snapshot:
         from .. import stock
         base = 1900 if stock.is_stock(R) and not stock.prepared(R) else 1910
         self.team_names = {t: R.team_name(t) for t in range(T.cur_rec)}
-        self.team_league = {t: L.LEAGUE_NAMES.get(T.get(t, 'jjMx'), 'Other') for t in range(T.cur_rec)}
+        # slots 30 / 31 keep the game's All-Star names in the table of a roster for the unpatched game, 22 Arizona's; the
+        # game names them Utah / Seattle / Vegas from its text file (art/portraits.NHL_NAMES), and so does the window
+        self.team_codes = {}
+        for t, (old, full, code) in SHOWN_AS.items():
+            if old in self.team_names.get(t, ''):
+                self.team_names[t], self.team_codes[t] = full, code
+        self.heads = faces.heads(R)       # the heads the game can draw (the Roster editor's Face)
+        # by the game's league field, as the game lists them: Coachella Valley and Henderson (custom slots 234 / 235)
+        # under the AHL in a roster for the game patch (gamepatch.league_fit), also when it is read the update's way
+        # (`farm_ahl`: unleagued), else under Custom (owner, 2026-10-19)
+        self.team_league = {t: 'AHL' if farm_ahl and t in L.AHL else L.LEAGUE_NAMES.get(T.get(t, 'jjMx'), 'Other')
+                            for t in range(T.cur_rec)}
         self.rosters = {}                 # team -> [pid]
         teams_of = {}
         for i in range(U.cur_rec):
@@ -102,17 +122,20 @@ class Snapshot:
             p.teams = sorted(teams_of.get(pid, []))
             p.artid, p.hasportrait = P.get(prow, 'artid'), P.get(prow, 'hasportrait')     # his menu photo
             p.ratings, p.ovr, p.style = {}, None, None
+            p.face = faces.read(P, prow)
+            p.created = faces.is_reserved(P, prow)        # on a record of the game's Create Player: can have a look
+            p.look = faces.read_look(R, prow) if p.created else None
             p.equipment = (equipment.read(pads, pads_row[pid], 'goalie') if p.pos == 'G' and pid in pads_row else
                            equipment.read(gear, gear_row[pid]) if p.pos != 'G' and pid in gear_row else None)
             where = ai.get(pid)
             if where:
                 table = R.f[where[0]]
                 goalie = where[0] == ratings.GOALIE_TABLE
-                amap = EA_GOALIE if goalie else EA_SKATER
+                amap = LIST_GOALIE if goalie else LIST_SKATER
                 labels = GOALIE_ATTRIBUTES if goalie else SKATER_ATTRIBUTES
                 p.ratings = {a: table.get(where[1], amap[a]) + RATING_BASE for a in labels}
                 p.ovr = round(ratings.level(table, where[1]) + self.offset[goalie])
-                p.style = ratings.style_name(table.get(where[1], 'sFgQ'), goalie)
+                p.style = table.get(where[1], 'sFgQ')
             self.players[pid] = p
         self.by_who = {}
         for p in sorted(self.players.values(), key=lambda p: (not [t for t in p.teams if t not in L.NATIONAL], p.prow)):
@@ -143,14 +166,20 @@ class Snapshot:
         t = text.lower().strip()
         return [p for p in self.by_who.values() if t in p.name.lower()][:limit] if t else []
 
+    def wearers(self, head):
+        """The players (one per person) who wear the head `head`, by name."""
+        return sorted((p for p in self.by_who.values() if p.face['head'] == head), key=lambda p: p.name)
 
-def apply_edits(raw, my_edits, team_edits, season_year):
+
+def apply_edits(raw, my_edits, team_edits, season_year, art=None):
     """The roster `raw` (SYS-DATA bytes) with the player's edits and no update step: a pipeline.BuildResult
-    (its `data` is the new SYS-DATA, `problems` what the safety checks found)."""
-    from .. import pipeline
+    (its `data` is the new SYS-DATA, `problems` what the safety checks found). `art` (pipeline.Pictures, own pictures
+    only): the players with a picture of the player's own get their picture numbers; `art` of the result lists them."""
+    from .. import gamepatch, pipeline
     from ..builder import Data
+    from ..roster import Roster
     return pipeline.build(raw, Data(season_year=season_year or 2026), steps=[], my_edits=my_edits or None,
-                          team_edits=team_edits or None)
+                          team_edits=team_edits or None, game_patch=gamepatch.is_patch_roster(Roster(raw)), art=art)
 
 
 def club(teams):

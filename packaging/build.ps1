@@ -1,7 +1,7 @@
 # Build the Windows program into dist\ :
-#   NHLLegacyRosterUpdater.exe          the window (double-click), with every photo and logo inside
-#                                       (legacy_roster\data\photopack.zip, made by tools\build_photopack.py)
-#   NHLLegacyRosterUpdater-cli.exe      the same engine on the command line (no photo pack)
+#   NHLLegacyRosterUpdater.exe          the window (double-click); its pictures (photos, logos, this season's jerseys and
+#                                       centre ice) are not inside: it downloads them (legacy_roster\packs.py)
+#   NHLLegacyRosterUpdater-cli.exe      the same engine on the command line
 #
 # Uses its own virtual environment (.venv) so nothing is installed into your Python.
 #   powershell -ExecutionPolicy Bypass -File packaging\build.ps1
@@ -35,34 +35,27 @@ $common = @(
     # photos and logos: Pillow finds its file readers by name at run time, so name the ones used
     '--hidden-import', 'PIL.PngImagePlugin', '--hidden-import', 'PIL.JpegImagePlugin',
     '--hidden-import', 'PIL.WebPImagePlugin', '--hidden-import', 'PIL.GifImagePlugin',
-    '--hidden-import', 'PIL.DdsImagePlugin', '--hidden-import', 'legacy_roster.art.images', '--hidden-import', 'legacy_roster.art.looks',
+    '--hidden-import', 'PIL.DdsImagePlugin', '--hidden-import', 'legacy_roster.art.images', '--hidden-import', 'legacy_roster.art.looks', '--hidden-import', 'legacy_roster.art.lookpack',
     '--distpath', 'dist', '--workpath', 'build', '--specpath', 'build'
 )
 
-# one window program for everyone, with every photo and logo inside (owner, 2026-10-04): new players'
-# pictures are downloaded by it and kept on the player's PC
-$pack = Join-Path $data 'photopack.zip'
-$aside = Join-Path $root 'build\photopack.zip.aside'
+# no pack goes inside (0.32.0): the program downloads its pictures, and nothing names where the game's content came
+# from (tools\clean_check.py)
 New-Item -ItemType Directory -Force (Join-Path $root 'build') | Out-Null
-if (-not (Test-Path $pack)) {
-    throw "No photo pack (legacy_roster\data\photopack.zip). Run .venv\Scripts\python tools\build_photopack.py first."
-}
+$zips = Get-ChildItem $data -Filter '*.zip*' -ErrorAction SilentlyContinue
+if ($zips) { throw "legacy_roster\data holds $($zips.Name -join ', '): packs never go inside the program (private\packs)." }
+& $py tools\clean_check.py
+if ($LASTEXITCODE -ne 0) { throw "tools\clean_check.py found words that must not ship (see above)" }
 $old = Join-Path $root 'dist\NHLLegacyRosterUpdater-Photos.exe'     # the second exe of 0.4-0.5
 if (Test-Path $old) { Remove-Item -Force $old }
 & $py -m PyInstaller @common --windowed --add-data "$web;legacy_roster\web" `
     --collect-all webview --collect-all pythonnet --collect-all clr_loader --collect-all customtkinter `
     --name NHLLegacyRosterUpdater packaging\launcher.py
 if ($LASTEXITCODE -ne 0) { throw "building the window program failed" }
-# the command line stays small: no pack (it downloads, and keeps what it downloaded)
-if (Test-Path $pack) { Move-Item -Force $pack $aside }
-try {
-    & $py -m PyInstaller @common --console --exclude-module customtkinter --exclude-module tkinter `
-        --exclude-module webview --exclude-module pythonnet --exclude-module clr_loader --exclude-module clr `
-        --name NHLLegacyRosterUpdater-cli packaging\launcher_cli.py
-    if ($LASTEXITCODE -ne 0) { throw "building the command-line program failed" }
-} finally {
-    if (Test-Path $aside) { Move-Item -Force $aside $pack }
-}
+& $py -m PyInstaller @common --console --exclude-module customtkinter --exclude-module tkinter `
+    --exclude-module webview --exclude-module pythonnet --exclude-module clr_loader --exclude-module clr `
+    --name NHLLegacyRosterUpdater-cli packaging\launcher_cli.py
+if ($LASTEXITCODE -ne 0) { throw "building the command-line program failed" }
 
 # checksums of the programs, to attach to the release (the update check compares the download with them)
 Get-ChildItem dist\*.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |

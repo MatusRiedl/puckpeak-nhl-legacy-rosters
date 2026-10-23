@@ -41,7 +41,7 @@ def main():
     leagues = args.leagues.split(',') if args.leagues else [k for k in pipeline.LEAGUE_ORDER if k in pack['leagues']]
     with open(os.path.join(args.base, 'SYS-DATA'), 'rb') as f:
         base = f.read()
-    data = Data(nhl_players=datasource.flatten_nhl(pack['nhl']), ea_ratings=pack['ea_ratings'], iihf=pack['iihf'],
+    data = Data(nhl_players=datasource.flatten_nhl(pack['nhl']), ratings_list=pack['ratings_list'], iihf=pack['iihf'],
                 season_year=pack['season'], leagues={k: pack['leagues'][k] for k in leagues})
     before = records(Builder(Roster(base), data).donors)
     result = pipeline.build(base, data, steps=list(pipeline.CORE_STEPS) + leagues)

@@ -1,9 +1,13 @@
-// The Update tab: 1 where RPCS3 is, 2 which roster, 3 what to update, 4 how to save.
+// The Setup, Update and Game patch tabs: where RPCS3 is, which roster (Setup); what to update and how to save (Update);
+// the RPCS3 game patch (Game patch). All three show the Update controller's state (app/update.py).
 import { html, cls, useEffect, useRef, useState } from './lib.js';
-import { Button, Toggle, Checkbox, Segmented, Card, PathText, RegionTag, Flag, TextField } from './ui.js';
+import { Button, Toggle, Checkbox, Segmented, Card, PathText, RegionTag, Flag, TextField, Info } from './ui.js';
 import { call } from './bridge.js';
 
-function RpcsCard({ r, exp, busy, checkUpdates }) {
+const goTo = (tab) => window.dispatchEvent(new CustomEvent('lr-tab', { detail: tab }));
+
+// --- Setup ------------------------------------------------------------------------------------------------
+function RpcsCard({ r, exp, busy }) {
   const note = r.note;
   return html`<${Card} n="1" title="Where is RPCS3?" style=${{ '--i': 0 }}>
     <div class="card-body">
@@ -12,17 +16,34 @@ function RpcsCard({ r, exp, busy, checkUpdates }) {
         <${Button} kind=${r.path ? 'ghost' : 'primary'} disabled=${!r.enabled} onClick=${() => call('pick_rpcs3')}>
           ${r.path ? 'Change' : r.find_label}</${Button}>
       </div>
-      ${(note || r.running) && html`<div class=${cls('note', note && note.tone)}>
-        ${r.running && html`<span class="pill" style=${{ marginRight: '8px' }}>RPCS3 is running</span>`}
-        ${note && note.text}</div>`}
+      ${note && html`<div class=${cls('note', note.tone)}>${note.text}</div>`}
       ${r.needs_game && html`<div class="row" style=${{ marginTop: '10px' }}>
         <${Button} kind="primary" disabled=${busy} onClick=${() => call('pick_game', false)}>Pick the game (.iso)...</${Button}>
         <${Button} disabled=${busy} onClick=${() => call('pick_game', true)}>or its folder...</${Button}>
       </div>`}
       <${Checkbox} on=${exp.on} disabled=${busy} onChange=${(v) => call('set_export_only', v)}>Export only SYS-DATA roster</${Checkbox}>
-      <div class="row">
-        <${Checkbox} on=${checkUpdates} onChange=${(v) => call('set_check_updates', v)}>Look for a newer version when this program starts</${Checkbox}>
-        <${Button} small disabled=${busy} onClick=${() => call('check_updates_now')}>Check for updates now</${Button}>
+    </div>
+  </${Card}>`;
+}
+
+function DownloadsCard({ items }) {
+  return html`<${Card} title="Downloads" aside="kept on this PC" style=${{ '--i': 1 }}>
+    <div class="card-body"><div class="list">
+      ${items.map((d) => html`<div key=${d.title} class="step dl"><div class="main">
+        <div class="title">${d.title}</div>
+        <div class=${cls('sub', d.tone === 'good' && 'goodtext', d.tone === 'amber' && 'ambertext')}>${d.text}</div>
+        ${d.bar != null && html`<div class="bar"><span style=${{ width: `${Math.round(d.bar * 100)}%` }}></span></div>`}
+      </div></div>`)}
+    </div></div>
+  </${Card}>`;
+}
+
+function ProgramCard({ s, version }) {
+  return html`<${Card} title="This program" aside=${version ? `version ${version}` : ''} style=${{ '--i': 2 }}>
+    <div class="card-body">
+      <div class="row wrap">
+        <${Checkbox} on=${s.check_updates} onChange=${(v) => call('set_check_updates', v)}>Look for a newer version when this program starts</${Checkbox}>
+        <${Button} small disabled=${s.busy} onClick=${() => call('check_updates_now')}>Check for updates now</${Button}>
       </div>
     </div>
   </${Card}>`;
@@ -36,9 +57,10 @@ function RosterRow({ r, isNew }) {
       onKeyDown=${(e) => { if (usable && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); e.stopPropagation(); call('select_roster', r.folder); } }}>
     <span class="dot"></span>
     <div class="main">
-      <div class="name"><span class="n">${r.name}</span>${r.chip && html`<span class=${cls('chip', r.chip.kind)}>${r.chip.text}</span>`}</div>
+      <div class="name"><span class="n">${r.name}</span>${r.tag && html`<span class="chip patch">${r.tag}</span>`}${r.chip && html`<span class=${cls('chip', r.chip.kind)}>${r.chip.text}</span>`}</div>
       <div class="meta"><${RegionTag} region=${r.region}/><span class="t">${r.meta}</span></div>
       ${r.problem && html`<div class="problem">${r.problem}</div>`}
+      ${r.misfit && html`<div class="problem">${r.misfit}</div>`}
     </div>
     ${r.actions && html`<div class="acts" onClick=${(e) => e.stopPropagation()}>
       <${Button} small onClick=${() => call('open_roster_folder', r.folder)}>Open folder</${Button}>
@@ -59,12 +81,17 @@ function RosterCard({ s }) {
     if (el) el.scrollIntoView({ block: 'nearest' });
   }, [s.selected, folders.join('|')]);
   const exp = s.export;
-  return html`<${Card} n="2" title="Which roster should be updated?" grow style=${{ '--i': 1, minHeight: '150px' }}>
+  return html`<${Card} n="2" title="Which roster do you work on?" grow className="rosters" style=${{ '--i': 3 }}>
     <div class="card-body fill">
       ${exp.on ? html`<div>
           <div class=${cls('note', exp.tone)} style=${{ marginTop: 0, marginBottom: '10px' }}>${exp.text}</div>
           <${Button} kind="primary" disabled=${s.busy} onClick=${() => call('pick_export_file')}>Pick the roster file (SYS-DATA)...</${Button}>
         </div>` : html`
+        <div class="small-note roster-use">The Update tab, the team tabs and their Save all use this roster.</div>
+        ${s.room && html`<div class=${cls('room', s.room.tone)}>
+          ${s.room.counts.map((c) => html`<span key=${c.region} class=${cls('count', c.tone)}
+              title=${s.room.tip}><${Flag} region=${c.region}/>${c.text}</span>`)}
+          ${s.room.text && html`<span class="text">${s.room.text}</span>`}</div>`}
         ${s.fresh.length > 0 && html`<div class="fresh">Start fresh:
           ${s.fresh.map((f) => html`<${Button} small key=${f.folder} disabled=${s.busy}
               onClick=${() => call('select_roster', f.folder)}><${Flag} region=${f.region}/>${f.label}</${Button}>`)}</div>`}
@@ -75,32 +102,67 @@ function RosterCard({ s }) {
   </${Card}>`;
 }
 
+export function SetupTab({ s, version }) {
+  if (!s) return null;
+  return html`<div class="columns">
+    <div class="col">
+      <${RpcsCard} r=${s.rpcs3} exp=${s.export} busy=${s.busy}/>
+      ${s.downloads && html`<${DownloadsCard} items=${s.downloads}/>`}
+      <${ProgramCard} s=${s} version=${version}/>
+    </div>
+    <div class="col">
+      <${RosterCard} s=${s}/>
+    </div>
+  </div>`;
+}
+
+// --- Update -------------------------------------------------------------------------------------------------
+function FromBar({ s }) {
+  const r = s.rosters.find((x) => x.selected);
+  const exp = s.export;
+  return html`<div class="upd-from card">
+    ${exp.on ? html`<span class="faint">Making a new roster</span><span class=${cls('t', exp.tone)}>${exp.text}</span>`
+      : r ? html`<span class="faint">Updating</span><b class="n">${r.name}</b><${RegionTag} region=${r.region}/>
+          ${r.tag && html`<span class="chip patch">${r.tag}</span>`}
+          ${r.misfit && html`<span class="chip hidden" title=${r.misfit}>Not loadable now: update it</span>`}
+          <span class="faint t">${r.meta}</span>`
+        : html`<span class="faint">No roster picked yet.</span>`}
+    <span class="sp"></span>
+    <a onClick=${() => goTo('setup')}>${r || exp.on ? 'Change it in Setup' : 'Pick one in Setup'}</a>
+  </div>`;
+}
+
 function StepRow({ row }) {
-  return html`<div class=${cls('step', row.on && 'on', row.restoring && 'restoring')}>
+  return html`<div class=${cls('step', row.on && 'on', row.restoring && 'restoring', row.featured && 'featured')}>
     <div class="main">
       <div class="title">${row.title}</div>
       <div class="sub">${row.sub}</div>
+      ${row.bar != null && html`<div class="bar"><span style=${{ width: `${Math.round(row.bar * 100)}%` }}></span></div>`}
       ${row.warn && html`<div class="warn">${row.warn}</div>`}
       ${row.hint && html`<div class="hint">${row.hint}</div>`}
     </div>
     ${row.restore && html`<${Button} small kind=${row.restoring ? 'amber' : 'ghost'} disabled=${!row.restore_enabled}
         title=${row.restoring ? 'Press again to keep it as it is' : 'Put this part back as the game had it, in the next save'}
         onClick=${() => call('toggle_restore', row.key)}>${row.restoring ? 'Restoring' : 'Restore'}</${Button}>`}
-    <${Toggle} on=${row.on} disabled=${!row.enabled} label=${row.title} onChange=${(v) => call('set_step', row.key, v)}/>
+    <${Toggle} on=${row.on} gold=${row.featured} disabled=${!row.enabled} label=${row.title}
+        onChange=${(v) => call('set_step', row.key, v)}/>
   </div>`;
 }
 
 function StepsCard({ s }) {
-  return html`<${Card} n="3" title="What should be updated?" grow style=${{ '--i': 2 }}>
+  // two columns where there is room; the Photos row (first, gold) stays at the top of the first
+  const half = Math.ceil(s.steps.length / 2);
+  return html`<${Card} n="1" title="What should be updated?" grow className="steps" style=${{ '--i': 1 }}>
     <div class="card-body fill">
-      <div class="scroll"><div class="list">${s.steps.map((row) => html`<${StepRow} key=${row.key} row=${row}/>`)}</div></div>
+      <div class="scroll"><div class="upd-steps">
+        <div class="list">${s.steps.slice(0, half).map((row) => html`<${StepRow} key=${row.key} row=${row}/>`)}</div>
+        <div class="list">${s.steps.slice(half).map((row) => html`<${StepRow} key=${row.key} row=${row}/>`)}</div>
+      </div></div>
     </div>
     <div class="card-foot">
       ${s.later && html`<div class="later">${s.later}</div>`}
-      ${s.restore_pictures.shown && html`<div><${Button} small disabled=${!s.restore_pictures.enabled}
-          onClick=${() => call('remove_photos')}>Restore the game's own pictures</${Button}></div>`}
-      ${s.restore_all.shown && html`<${Button} kind="primary" big block disabled=${!s.restore_all.enabled}
-          onClick=${() => call('restore_default')}>Restore default: rosters, calendar and pictures</${Button}>`}
+      ${s.restore_all.shown && html`<div><${Button} small kind="danger" className="glow" disabled=${!s.restore_all.enabled}
+          onClick=${() => call('restore_default')}>Restore default: rosters, calendar and pictures</${Button}></div>`}
     </div>
   </${Card}>`;
 }
@@ -110,7 +172,7 @@ function Result({ result }) {
   const [shown, setShown] = useState(result);
   useEffect(() => { if (result) setShown(result); }, [result]);
   const r = result || shown;
-  return html`<div class=${cls('result-wrap', result && 'open')} style=${{ '--i': 3 }}
+  return html`<div class=${cls('result-wrap', result && 'open')} style=${{ '--i': 2 }}
       onTransitionEnd=${(e) => { if (e.target === e.currentTarget && !result) setShown(null); }}>
     <div class="inner">${r && html`<div class=${cls('result', r.good ? 'good' : 'bad')}>
       <div class="r-head"><div class="r-title">${r.title}</div>
@@ -130,38 +192,74 @@ function Result({ result }) {
 
 function SaveCard({ s }) {
   const v = s.save;
-  const go = () => call('start');
-  return html`<${Card} n="4" title="Save" style=${{ '--i': 4 }}>
-    <div class="card-body">
+  return html`<${Card} n="2" title="Save" className="upd-savecard" style=${{ '--i': 3 }}>
+    <div class="card-body upd-save">
       ${v.mode_shown && html`<${Segmented} value=${v.mode} disabled=${!v.mode_enabled}
           options=${[{ value: 'update', label: 'Update this roster' }, { value: 'new', label: 'Save as a new roster' }]}
           onChange=${(m) => call('set_save_mode', m)}/>`}
-      <div class="save-row">
-        <${TextField} value=${v.name} disabled=${!v.name_enabled} onChange=${(t) => call('set_name', t)}/>
-        <${Button} kind="primary" big className=${cls('go', s.busy && 'working')} disabled=${!v.button.enabled}
-          onClick=${go}>${v.button.text}</${Button}>
-      </div>
-      ${v.save_for && html`<div class="save-row"><span class="savefor">Save for</span>
+      <${TextField} value=${v.name} disabled=${!v.name_enabled} onChange=${(t) => call('set_name', t)}/>
+      ${v.save_for && html`<span class="savefor-wrap"><span class="savefor">Save for</span>
         <${Segmented} value=${v.save_for.value} disabled=${!v.save_for.enabled}
           options=${v.save_for.options.map((o) => ({ value: o, label: o,
             icon: o === 'EU + NA' ? html`<${Flag} region="EU"/><${Flag} region="NA"/>` : html`<${Flag} region=${o}/>` }))}
-          onChange=${(x) => call('set_save_for', x)}/></div>`}
-      <div class="small-note" style=${{ marginTop: '8px' }}>${v.note}</div>
+          onChange=${(x) => call('set_save_for', x)}/></span>`}
+      <${Button} kind="primary" big className=${cls('go', s.busy && 'working')} disabled=${!v.button.enabled}
+        onClick=${() => call('start')}>${v.button.text}</${Button}>
     </div>
+    <div class="small-note upd-note">${v.note}</div>
   </${Card}>`;
 }
 
 export function UpdateTab({ s }) {
   if (!s) return null;
+  return html`<div class="upd">
+    <${FromBar} s=${s}/>
+    <${StepsCard} s=${s}/>
+    <${Result} result=${s.result}/>
+    <${SaveCard} s=${s}/>
+  </div>`;
+}
+
+// --- Game patch ---------------------------------------------------------------------------------------------
+export function PatchTab({ s }) {
+  if (!s) return null;
+  const p = s.patch;
   return html`<div class="columns">
     <div class="col">
-      <${RpcsCard} r=${s.rpcs3} exp=${s.export} busy=${s.busy} checkUpdates=${s.check_updates}/>
-      <${StepsCard} s=${s}/>
+      <${Card} title=${p.title} className="patch" style=${{ '--i': 0 }}>
+        <div class="card-body">
+          <div class="sub">${p.sub}</div>
+          <div class="row patch-state">
+            <div class=${cls('state', p.state.tone)}>${p.state.text}</div>
+            ${p.buttons.map((b) => html`<${Button} small key=${b.call} kind=${b.kind} disabled=${!b.enabled}
+                onClick=${() => call(b.call)}>${b.label}</${Button}>`)}
+          </div>
+          <div class="checks">${p.checks.map((c) => html`<div key=${c.key} class="sw">
+            <${Checkbox} on=${c.on} title=${c.tip} disabled=${!c.enabled || s.busy}
+              onChange=${(v) => call('set_patch_switch', c.key, v)}>${c.label}</${Checkbox}>
+            ${c.tip && html`<div class="small-note sw-tip">${c.tip}</div>`}</div>`)}</div>
+          ${p.note && html`<div class="hint">${p.note}</div>`}
+        </div>
+      </${Card}>
+      ${(p.regions || []).map((r, k) => html`<${Card} key=${r.title} title=${`${r.region} version`} aside=${r.title}
+          className="patch region" style=${{ '--i': k + 1 }}>
+        <div class="card-body">
+          <div class="row patch-state"><${Flag} region=${r.region}/><div class=${cls('state', r.tone)}>${r.state}</div></div>
+          <div class="small-note region-rosters">Rosters: ${r.rosters.map((x) => x.name + (x.tag ? ` (${x.tag})` : '')
+            + (x.misfit ? ' (not loadable now: update it)' : '')).join(' · ') || 'none yet'}</div>
+        </div>
+      </${Card}>`)}
     </div>
     <div class="col">
-      <${RosterCard} s=${s}/>
-      <${Result} result=${s.result}/>
-      <${SaveCard} s=${s}/>
+      <${Card} title=${p.info ? p.info.title : 'What the game patch does'} grow style=${{ '--i': 3 }}>
+        <div class="card-body fill"><div class="scroll patch-info">
+          ${(p.info ? p.info.sections : []).map((sec) => html`<div key=${sec.head} class="pi-part"><div class="pi-head">${sec.head}</div>
+            <ul>${sec.items.map((it, k) => html`<li key=${k}>${it}</li>`)}</ul></div>`)}
+        </div></div>
+      </${Card}>
     </div>
   </div>`;
 }
+
+// kept for the classic look of the patch row elsewhere (the "?" next to Patch)
+export { Info };

@@ -6,6 +6,8 @@ The player table cannot simply grow, so a new player takes over an existing reco
      oldest first. Never taken: legends and well-rated players, anyone whose NHL rights a team
      holds, anyone younger than MIN_AGE, free agents, and anyone whose name appears in the data
      being applied (he may still be placed later in the same run).
+The records the game's Create Player fills (faces.RESERVED) are never taken: they are the only ones
+that can carry a created look (edits.py gives them to the player's own new players with a look).
 
 Taking a record over also wipes what belonged to its previous owner: portrait, commentary
 name, draft and career data.
@@ -15,11 +17,12 @@ import zlib
 from collections import Counter
 
 from . import layout as L
+from .faces import RESERVED
 from .matching import norm
 
 LEGEND_LEVEL = 84      # teamless records at or above this level are kept (legends, recent stars)
 MIN_AGE = 26           # teamless records of younger players are kept (prospects who may sign anywhere)
-EA_ART_MAX = 12401     # portrait ids up to here are EA's own (records from EA's 2015 database)
+GAME_ART_MAX = 12401     # portrait ids up to here are the game's own (records from the game's 2015 database)
 UNDRAFTED = 255
 GENERIC_HEAD = 60000   # head ids from here on are the game's generic head models
 CAREER_FIELDS = ('nhlgamesplayedcareer', 'progamesplayedcareer', 'nhlgamesplayedlastseason',
@@ -30,13 +33,16 @@ NORTH_AMERICA = (L.NAT_CODE['CAN'], L.NAT_CODE['USA'])
 def real_birth_year(P, i, stale=True):
     """The player's actual birth year, as well as the record tells it.
 
-    This roster family stores birth years as year - 1910, but records nobody updated since EA's
+    This roster family stores birth years as year - 1910, but records nobody updated since the game's
     2015 database still hold year - 1900 and read ten years too young. The draft year (stored as
-    year - 1900 in both) gives such records away; an undrafted record with EA's own portrait is
-    taken to be one of them too. A birth year that fits the draft year (drafted at 15-21) is the
-    record's own: a junior's draft year is when he becomes eligible (draft.py), and his birth year
-    must not move with it. `stale` False: the roster has no such records (the game's own roster,
-    whose birth years stock.prepare moved all at once)."""
+    year - 1900 in both) gives such records away. An undrafted record with the game's own portrait is
+    one of them when its first signing (also year - 1900 in both; the game set it about 20 years after
+    the birth) would come at 12 or younger: 830 such records in the 2025-26 roster sign at 10, the
+    75 the community updated (Krug, Goodrow) at 18-23, and a few have no signing year (their own).
+    A birth year that fits the draft year (drafted at 15-21) is the record's own: a junior's draft
+    year is when he becomes eligible (draft.py), and his birth year must not move with it.
+    `stale` False: the roster has no such records (the game's own roster, whose birth years
+    stock.prepare moved all at once)."""
     shown = P.get(i, 'dnFq') + 1910
     drafted = P.get(i, 'WzKY')
     if drafted != UNDRAFTED:
@@ -46,8 +52,10 @@ def real_birth_year(P, i, stale=True):
         if stale and -3 <= shown - 10 - guess <= 3:
             return shown - 10
         return guess if stale else shown
-    if stale and 0 < P.get(i, 'rnOl') <= EA_ART_MAX and shown >= 1990:
-        return shown - 10
+    if stale and 0 < P.get(i, 'rnOl') <= GAME_ART_MAX and shown >= 1990:
+        signed = P.get(i, 'TNEo')
+        if signed and signed + 1900 - shown <= 12:
+            return shown - 10
     return shown
 
 
@@ -68,7 +76,7 @@ class Donors:
                 if P.get(i, 'DaPp') >= GENERIC_HEAD and not P.get(i, 'LcvS'):
                     heads[(P.get(i, 'DaPp'), P.get(i, 'QDTK'))] += 1
                 continue
-            if pid in fa or pid not in b.quality:
+            if pid in fa or pid not in b.quality or pid in RESERVED:
                 continue
             pos = P.get(i, 'aljv')
             if 'ZZ' in P.get(i, 'RMbQ'):
@@ -104,12 +112,12 @@ class Donors:
         """A record that just became free (a player who retired in this run): spare from now on, in
         its place in the oldest-first order."""
         spare = self.spare[self.b.P.get(prow, 'aljv')]
-        if self._spare_ok(prow) and prow not in spare:
+        if self._spare_ok(prow) and prow not in spare and self.b.P.get(prow, 'zIBw') not in RESERVED:
             bisect.insort(spare, prow, key=self._order)
 
     def refresh(self):
         """The spare records again, as a new Donors would choose them now: after the ratings step
-        changed players' quality (a retired player EA still rates drops below LEGEND_LEVEL). A second
+        changed players' quality (a retired player the ratings list still rates drops below LEGEND_LEVEL). A second
         run, which chooses them from this run's output, then finds exactly the same ones."""
         b, R, P = self.b, self.b.R, self.b.P
         live = b.live_entries()
@@ -117,7 +125,7 @@ class Donors:
         self.spare = {pos: [] for pos in range(5)}
         for i in range(P.cur_rec):
             pid = P.get(i, 'zIBw')
-            if (live.get(pid) or pid in fa or i in b.created or pid in b.attached
+            if (live.get(pid) or pid in fa or i in b.created or pid in b.attached or pid in RESERVED
                     or 'ZZ' in P.get(i, 'RMbQ') or not self._spare_ok(i)):
                 continue
             self.spare[P.get(i, 'aljv')].append(i)

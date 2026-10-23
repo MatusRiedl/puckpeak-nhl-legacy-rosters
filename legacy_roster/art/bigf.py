@@ -1,4 +1,4 @@
-"""The game's art files (portraits, logos): a small "BIGF" archive around an EA Apt UI movie.
+"""The game's art files (portraits, logos): a small "BIGF" archive around an Apt UI movie.
 
     0x00 'BIGF'
     0x04 u32 little-endian: end of the last part

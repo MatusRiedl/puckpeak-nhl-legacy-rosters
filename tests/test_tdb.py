@@ -84,3 +84,37 @@ def test_check_chain_spots_a_broken_checksum(base_bytes):
     bad = bytearray(base_bytes)
     bad[0x10] ^= 0xFF
     assert tdb.check_chain(bytes(bad)) == ["header CRC at 0x10 is wrong"]
+
+
+def test_a_wider_field_keeps_every_value_and_moves_the_ones_after_it(base_bytes):
+    R = Roster(base_bytes)
+    P, before = R.P, Roster(base_bytes).P
+    old = {n: (f.offset, f.bits) for n, f in P.fields.items()}
+    P.widen('WBbd', 6)
+    assert P.field('WBbd').bits == 6 and P.rec_len == before.rec_len
+    assert all(P.fields[n].offset == o + (o > old['WBbd'][0]) for n, (o, _b) in old.items())
+    assert all(P.get(i, n) == before.get(i, n) for i in range(0, P.cur_rec, 5) for n in P.fields)
+    P.set(0, 'WBbd', 32)                                         # Vegas fits now
+    P.widen('WBbd', 6)                                           # already that wide: nothing changes
+    assert P.get(0, 'WBbd') == 32 and Roster(R.f.build()).P.get(0, 'WBbd') == 32
+    with pytest.raises(ValueError):
+        P.widen('WBbd', 5)
+    with pytest.raises(ValueError):
+        P.widen('WBbd', 6 + P.rec_bits)
+    with pytest.raises(ValueError):
+        P.narrow('WBbd', 5)                                      # 32 does not fit in five bits
+    P.set(0, 'WBbd', before.get(0, 'WBbd'))
+    P.narrow('WBbd', 5)                                          # back as it was, byte for byte
+    assert R.f.build() == base_bytes and P.field('WBbd').bits == 5
+
+
+def test_a_longer_save_section_keeps_the_database(base_bytes):
+    f = RosterFile(data=base_bytes)
+    size = f.section_size
+    f.resize(size + 864)                                         # the game patch's stage S
+    out = f.build()
+    again = RosterFile(data=out)
+    assert len(out) == 0x2C + size + 864 and again.section_size == size + 864
+    assert struct.unpack_from('>I', out, 0x24)[0] == size + 864 and again.build_db() == RosterFile(data=base_bytes).build_db()
+    again.resize(size)
+    assert again.build() == RosterFile(data=base_bytes).build()   # back to the game's own length

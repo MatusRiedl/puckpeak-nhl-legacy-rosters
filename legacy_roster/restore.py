@@ -8,7 +8,8 @@ from . import savedata
 from .roster import Roster
 
 ROSTERS, CALENDAR, PICTURES = 'rosters', 'calendar', 'pictures'
-ALL_PARTS = (ROSTERS, CALENDAR, PICTURES)
+PATCH = 'patch'                         # the game patch out of RPCS3 (patchinstall.remove)
+ALL_PARTS = (ROSTERS, CALENDAR, PICTURES, PATCH)
 
 
 class _Raw:
@@ -19,7 +20,7 @@ class _Raw:
 
 def default_slot(rpcs3, title_id):
     """The slot that holds the game's own roster for `title_id`: the roster on the player's game disc (always
-    EA's own data), else the game's own save `...0200` while it has the game's own layout.
+    the game's own data), else the game's own save `...0200` while it has the game's own layout.
     (A roster this program made from the game's own roster has the same layout; taking it would "restore" a
     roster to itself.)"""
     disc = next((d for d in rpcs3.disc_slots() if d.title_id == title_id), None)
@@ -48,9 +49,9 @@ def describe(slot):
 
 
 def copy_calendar(R, default_R):
-    """The schedule tables of `R` become the game's own (`default_R`): rows and count."""
+    """The schedule tables of `R` become the game's own (`default_R`): rows and count, the NHL's and every club league's."""
     from . import schedule
-    for tag in (schedule.TABLE, schedule.FAVOURITE):
+    for tag in (schedule.TABLE, schedule.FAVOURITE) + schedule.LEAGUE_TAGS:
         T, D = R.f[tag], default_R.f[tag]
         for i in range(T.cur_rec):
             for field in schedule.ROW.values():

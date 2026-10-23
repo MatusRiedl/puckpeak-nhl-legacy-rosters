@@ -5,8 +5,8 @@ import pytest
 
 from legacy_roster import layout as L
 from legacy_roster import draft, lines, pipeline, ratings, schema
-from legacy_roster.builder import Builder, Data
-from legacy_roster.matching import match
+from legacy_roster.builder import NHL_LOOK, Builder, Data
+from legacy_roster.matching import closest, match
 from legacy_roster.roster import Roster
 from legacy_roster.verify import verify
 
@@ -24,8 +24,11 @@ def test_every_listed_nhl_player_is_on_his_team_and_nobody_else_is(built, data):
     R = Roster(built.data)
     people = match(R, [dict(p) for p in data.nhl_players])
     assert all(p['row'] is not None for p in people)
+    kept = built.builder.contract_kept         # under contract for 2026-27, on no NHL.com roster (contract_keeps)
+    assert kept and not set(kept) & {R.P.get(p['row'], 'zIBw') for p in people}
     for abbr, slot in L.API_TO_SLOT.items():
-        assert roster_of(R, slot) == {p['row'] for p in people if p['team'] == abbr}, abbr
+        held = {R.p_by_id[pid] for pid, t in kept.items() if t == slot}
+        assert roster_of(R, slot) == {p['row'] for p in people if p['team'] == abbr} | held, abbr
 
 
 def test_mirror_teams_copy_their_primary(built):
@@ -39,7 +42,18 @@ def test_hard_limits_no_new_team_and_no_team_changes_league(built, base_bytes):
     src, new = Roster(base_bytes), Roster(built.data)
     assert new.T.cur_rec == src.T.cur_rec == L.TEAM_COUNT
     assert new.T.column('league') == src.T.column('league')
-    assert new.T.records == src.T.records            # the team table is not touched at all
+    # the team table is not touched, but for Utah's, Seattle's and Vegas's arena (builder.nhl_identity: Seattle and Vegas
+    # shared one arena row; Vegas gets its own)
+    n = src.T.rec_len
+    for t in range(L.TEAM_COUNT):
+        if t not in NHL_LOOK:
+            assert new.T.records[t * n:(t + 1) * n] == src.T.records[t * n:(t + 1) * n]
+    A = new.f['OEtS']
+    for slot, (arena, city, _primary, _secondary) in NHL_LOOK.items():
+        row = new.T.get(slot, 'arenaid')
+        assert (A.get(row, 'arenaname'), A.get(row, 'cityname')) == (arena, city)
+        assert all(new.T.get(slot, f) == src.T.get(slot, f) for f in src.T.fields
+                   if f != src.T.alias['arenaid'])                              # the community's colours too
 
 
 def test_nhl_and_national_teams_dress_a_legal_line_up(built):
@@ -61,14 +75,14 @@ def test_published_attributes_are_stored_exactly(built, pack):
     S, G = R.f['yvSd'], R.f['yuHm']
     rows = {t.name: {t.get(i, 'game_id'): i for i in range(t.cur_rec)} for t in (S, G)}
     checked = 0
-    for p in pack['ea_ratings']:
+    for p in pack['ratings_list']:
         if len(p['attrs']) < 10 or not p['birth']:
             continue
         first, _, last = p['name'].partition(' ')
         found = R.find_player(first, last)
         if len(found) != 1:
             continue
-        t, amap = (G, schema.EA_GOALIE) if p['position'] == 'G' else (S, schema.EA_SKATER)
+        t, amap = (G, schema.LIST_GOALIE) if p['position'] == 'G' else (S, schema.LIST_SKATER)
         row = rows[t.name].get(R.P.get(found[0], 'game_id'))
         if row is None:
             continue
@@ -122,7 +136,7 @@ def test_a_second_run_on_its_own_output_changes_nothing(built, data):
 
 
 def test_steps_can_be_run_on_their_own(base_bytes, data):
-    only_ratings = pipeline.build(base_bytes, Data(ea_ratings=data.ea_ratings, season_year=data.season_year),
+    only_ratings = pipeline.build(base_bytes, Data(ratings_list=data.ratings_list, season_year=data.season_year),
                                   steps=[pipeline.RATINGS])
     assert only_ratings.problems == []
     src, new = Roster(base_bytes), Roster(only_ratings.data)
@@ -130,6 +144,19 @@ def test_steps_can_be_run_on_their_own(base_bytes, data):
     assert new.f['yvSd'].records != src.f['yvSd'].records
     nothing = pipeline.build(base_bytes, Data(), steps=[])
     assert nothing.data == base_bytes
+
+
+def test_a_record_another_person_matches_more_closely_is_not_his(base_bytes):
+    R = Roster(base_bytes)
+    P = R.P
+    row = next(i for i in range(P.cur_rec) if len(P.get(i, 'PedH')) >= 4 and P.get(i, 'RMbQ'))
+    first, last = P.get(row, 'PedH'), P.get(row, 'RMbQ')
+    birth = (P.get(row, 'dnFq') + 1910, P.get(row, 'pLKJ') + 1, P.get(row, 'iwsK') + 1)
+    cousin = dict(first=first[0] + 'zq', last=last, birth=(birth[0] + 1, 1, 1))  # last name + year + initial only
+    alone = match(R, [dict(cousin)])[0]
+    assert alone['how'] == 'last+year' and alone['row'] is not None
+    own, other = closest(match(R, [dict(first=first, last=last, birth=birth), dict(cousin)]))
+    assert own['row'] == row and other['row'] is None          # Aatu Räty's record is not Aku Räty's
 
 
 def test_nhl_players_get_the_position_nhl_com_lists(built, data):
@@ -246,7 +273,7 @@ def test_a_community_roster_with_unfinished_teams_is_updated(base_bytes, data):
 
 
 def test_a_country_without_enough_players_keeps_its_empty_squad(base_bytes, data):
-    no_iihf = Data(nhl_players=data.nhl_players, ea_ratings=data.ea_ratings, iihf={}, season_year=data.season_year)
+    no_iihf = Data(nhl_players=data.nhl_players, ratings_list=data.ratings_list, iihf={}, season_year=data.season_year)
     res = pipeline.build(community_style(base_bytes), no_iihf, steps=['national'])
     assert res.problems == []
     assert res.info['teams'][142]['players'] == 0          # Italy: no IIHF roster, too few Italians in the save
@@ -267,9 +294,9 @@ def test_overall_only_players_land_on_their_overall(built, pack):
     R = Roster(built.data)
     S = R.f['yvSd']
     rows = {S.get(i, 'game_id'): i for i in range(S.cur_rec)}
-    k = ratings.overall_offset(pack['ea_ratings'])[False]
+    k = ratings.overall_offset(pack['ratings_list'])[False]
     seen = 0
-    for p in pack['ea_ratings']:
+    for p in pack['ratings_list']:
         if p['attrs'] or p['position'] == 'G' or not p['birth']:
             continue
         first, _, last = p['name'].partition(' ')
@@ -389,3 +416,10 @@ def test_an_update_in_place_refuses_what_it_cannot_do_and_writes_nothing(save_fo
         pipeline.update(save_folder, 'BLES021530202', pipeline.CORE_STEPS, None, data=data, in_place=True)
     dry = pipeline.update(save_folder, 'BLES021530202', pipeline.CORE_STEPS, None, data=data, in_place=True, dry_run=True)
     assert dry.slot is None and sysdata() == base_bytes
+
+
+def test_the_photos_line_says_how_many_teams_wear_this_seasons_jerseys():
+    res = pipeline.UpdateResult(None, None, None, 'x', art=(12, 3, 0))
+    assert res.art_line() == "Photos and logos: 12 pictures installed, 3 were installed already."
+    res.look_teams = 214
+    assert res.art_line() == "Photos and logos: 12 pictures installed, 3 were installed already. 214 teams wear this season's jerseys."

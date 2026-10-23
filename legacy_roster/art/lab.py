@@ -8,7 +8,7 @@ RPCS3's hard disk (dev_hdd0/game/<TITLEID>/USRDIR/fe/ion/artassets/...), backing
 replaces, and saves a new roster "LAB art test" that points two players at new portrait ids and
 gives the NHL slots of Utah, Seattle and Vegas their names. `remove` puts every file back as it
 was. Every picture is made from an art file of the player's own game disc (only the image is
-swapped); nothing from EA is shipped with the program.
+swapped); nothing of the game's is shipped with the program.
 
 What to look for in the game, and what each test answers:
   1 red    Connor McDavid's portrait replaced           do loose portrait files override the disc?
@@ -110,6 +110,17 @@ class Disc:
             if inner in self.archives[name].entries:
                 return self.archives[name].read(inner)
         return None
+
+    def has(self, inner):
+        """Is this art file or 3D texture on the disc? Nothing is read."""
+        if any(inner in arc.entries for arc in self.archives.values()):
+            return True
+        for name in ('nocacherender.big', 'cacherender.big'):
+            if name not in self.archives:
+                self.archives[name] = EbArchive.open(self.source, name)
+            if inner in self.archives[name].entries:
+                return True
+        return False
 
     def text_file(self, language):
         """The game's text database for a language ('eng_us'), from cacheboot.big (bytes or None)."""
@@ -321,6 +332,8 @@ def draft_lab(src, season_year):
         groups.append((text + where, names))
     b.contracts()
     b.finish()
+    from .. import contracts
+    contracts.status_fit(R)             # moved players: the status follows where they play now
     built = R.f.build()
     problems, _ = verify(built, Roster(src))
     if problems:

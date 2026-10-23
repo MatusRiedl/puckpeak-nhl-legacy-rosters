@@ -14,8 +14,8 @@ from legacy_roster.roster import Roster
 
 @pytest.fixture(scope='module')
 def everything(base_bytes, data, pack):
-    full = Data(nhl_players=data.nhl_players, ea_ratings=data.ea_ratings, iihf=data.iihf,
-                season_year=data.season_year, leagues=pack['leagues'], drafts=pack.get('drafts'))
+    full = Data(nhl_players=data.nhl_players, ratings_list=data.ratings_list, iihf=data.iihf,
+                season_year=data.season_year, leagues=pack['leagues'], drafts=pack.get('drafts'), contracts=data.contracts)
     return full, pipeline.build(base_bytes, full, steps=pipeline.steps_for(pack))
 
 
@@ -52,7 +52,8 @@ def test_every_club_has_its_real_name_and_its_listed_players(everything, pack):
     skipped = {norm(r[2]) for r in result.log if r[1] == 'skipped'}
     fillers = {}
     for r in result.log:
-        if r[1] in ('stays to fill the line-up', 'signed to fill the line-up', 'stays', 'prospect joined'):
+        if r[1] in ('stays to fill the line-up', 'signed to fill the line-up', 'stays', 'prospect joined',
+                    'stays under contract', 'farm under contract'):       # under contract with his NHL parent
             fillers.setdefault(r[0], []).append(r[2])
     on_some_club = set()
     for team in clubs_of(pack):
@@ -95,6 +96,19 @@ def test_every_club_is_playable(everything, pack):
         assert sorted(U.get(e, 'captain') for e in ents if U.get(e, 'captain')) == [1, 2, 2]
         numbers = [U.get(e, 'jersey') for e in ents]
         assert len(set(numbers)) == len(numbers) and 0 not in numbers
+
+
+def test_a_player_who_fills_a_line_up_stays_there(everything):
+    """A later league's step must not take back a player who filled a club's line-up (a junior Henderson kept for its
+    forwards went to the CHL and Henderson dressed 19)."""
+    _, result = everything
+    filled, taken = {}, []
+    for r in result.log:
+        if r[1] in ('stays to fill the line-up', 'signed to fill the line-up'):
+            filled[r[2]] = r[0]
+        elif r[1] in ('joined', 'moved') and filled.get(r[2], r[0]) != r[0]:
+            taken.append(r)
+    assert not taken
 
 
 def test_a_club_player_is_under_contract_to_his_club_only(everything, pack):
@@ -164,15 +178,43 @@ def test_ahl_players_on_nhl_contracts_belong_to_the_parent_club(everything, pack
     parent = {R.T.get(n, 'ahlaffiliate') - 1: n for n in range(32) if R.T.get(n, 'ahlaffiliate')}
     parent.update(L.AHL_PARENT_EXTRA)
     checked = 0
+    orgs = pack['leagues']['ahl'].get('orgs')
     for team in pack['leagues']['ahl']['teams']:
-        nhl_signed = {(norm(p['first']), norm(p['last'])) for p in team['players'] if p.get('nhl_contract')}
+        # the list names each player's organisation (2026-10-22: Calgary's Alex Young is San Jose's), else the parent's
+        org_of = {(norm(p['first']), norm(p['last'])): L.API_TO_SLOT.get(p['org']) if orgs else parent[team['slot']]
+                  for p in team['players'] if p.get('nhl_contract')}
+        rightless = {(norm(p['first']), norm(p['last'])) for p in team['players'] if orgs and not p.get('org')}
         for r in members(R, team['slot']):
             assert R.P.get(r, 'team') == team['slot'] + 1, R.name(r)
-            if (norm(R.P.get(r, 'firstname')), norm(R.P.get(r, 'lastname'))) in nhl_signed and parent[team['slot']] < 31:
-                assert R.P.get(r, 'proteam') == parent[team['slot']] + 1, R.name(r)
+            key = (norm(R.P.get(r, 'firstname')), norm(R.P.get(r, 'lastname')))
+            if key in org_of and org_of[key] < 31:
+                assert R.P.get(r, 'proteam') == org_of[key] + 1, R.name(r)
                 assert R.P.get(r, 'contractlength') and R.P.get(r, 'contractdollars'), R.name(r)
                 checked += 1
+            elif key in rightless or org_of.get(key) == 31:
+                assert not R.P.get(r, 'proteam'), R.name(r)       # an AHL-only deal: an older roster's rights go
     assert checked > 300
+
+
+def test_coachella_valley_and_henderson_get_art_ids_of_their_own(everything, pack, base_bytes):
+    if 'ahl' not in pack['leagues']:
+        pytest.skip("the data pack has no AHL rosters")
+    _, result = everything
+    R, src = Roster(result.data), Roster(base_bytes)
+    assert [src.T.get(s, 'artid') for s in (234, 235)] == [20073, 20081]                  # the community roster's
+    assert [R.T.get(s, 'artid') for s in (234, 235)] == [20073, 20081] == [L.OWN_ART[s] for s in (234, 235)]
+    assert [t for t in range(R.T.cur_rec) if R.T.get(t, 'artid') in (20073, 20081)] == [234, 235]
+    E = R.f['NDEo']                                         # their jersey colours: layout.OWN_KIT, all 22 rows each
+    rows = {}
+    for i in range(E.cur_rec):
+        slot = E.get(i, 'team') - 1
+        if slot in L.OWN_KIT:
+            rows[slot, E.get(i, 'equipment'), E.get(i, 'variant')] = \
+                tuple(tuple(E.get(i, f'zone{z}_{c}') for c in 'rgb') for z in range(1, 10))
+    assert rows == {(s, eq, v): zones for s, kit in L.OWN_KIT.items() for (eq, v), zones in kit.items()}
+    assert rows[234, 1, 1][0] == (0, 34, 63)                # Coachella's home jersey navy, not black
+    for slot, design in L.OWN_DESIGN.items():               # drawn as designed (jerseystyle 1), the community's styles
+        assert {k: R.T.get(slot, k) for k in design} == design == {k: src.T.get(slot, k) for k in design}
 
 
 def test_a_second_run_with_club_leagues_changes_nothing(everything, pack):
@@ -294,7 +336,7 @@ def test_the_draft_test_puts_prospects_in_six_places(everything, pack):
 def test_undrafted_prospects_play_for_real_clubs_of_their_country(everything, pack):
     """Owner, 0.8.0: the community's prospect pools end up on custom teams, where the draft does not
     look. Undrafted prospects of the next drafts join a real club of their country's league (the CHL
-    for the rest), as EA's own roster keeps its draft classes."""
+    for the rest), as the game's own roster keeps its draft classes."""
     from legacy_roster.leagues import clubs
     _, result = everything
     R = Roster(result.data)
@@ -317,3 +359,31 @@ def test_undrafted_prospects_play_for_real_clubs_of_their_country(everything, pa
             want = {league_of[home]} if home in league_of else {9, 10, 11}
             assert T.get(teams[0], 'league') in want, R.name(prow)
     assert on_pools <= 40          # only those who found no club with room
+
+
+def test_every_club_player_holds_a_contract(everything):
+    """Owner, 2026-10-22: every player on a club of any league holds a deal (Team Rosters shows it: status 1), except an
+    unsigned draft pick (an NHL team's rights, no deal: the game's own roster leaves them so) and the game's own deals
+    with a cap hit and no seasons (left as they are). Players without one got a starter deal (contracts.STARTER)."""
+    from legacy_roster import contracts as pay
+    _, result = everything
+    R, b = Roster(result.data), result.builder
+    on, free = pay._status_rows(R)
+    europe = 0
+    for prow in on:
+        teams = {t for _, t in R.teams_of(prow)}
+        cap, years, rights = R.P.get(prow, 'dhKk'), R.P.get(prow, 'GDhI'), R.P.get(prow, 'WBbd')
+        assert cap or rights, R.name(prow)
+        want = pay.status_of(R.P, prow)
+        assert want is None or R.P.get(prow, pay.STATUS) == want == 1, R.name(prow)
+        assert not R.P.get(prow, 'BSXd') or R.P.get(prow, 'BSXd') - 1 in teams, R.name(prow)
+        europe += any(t in L.EUROPE for t in teams) and bool(cap and years) and not rights
+    assert europe > 1500 and sum(b.starter_deals.values()) > 3000
+    assert "got one with their club" in dict(result.lines())['Starter deals']
+    given = [prow for prow in on if {t for _, t in R.teams_of(prow)} <= L.EXTRALIGA and R.P.get(prow, 'zIBw') in b.started]
+    assert len(given) > 200
+    assert all(R.P.get(prow, 'dhKk') in {pay.units(v, pay.GAME) for v in pay.STARTER['LIIGA']}
+               and R.P.get(prow, 'GDhI') in (1, 2) and not R.P.get(prow, 'DVoL') for prow in given)
+    assert all(R.P.get(prow, pay.STATUS) == 0 for prow in free)
+    coachella = [prow for _, prow, *_ in R.team_roster(234)]
+    assert coachella and all(R.P.get(prow, 'dhKk') and R.P.get(prow, 'GDhI') for prow in coachella)

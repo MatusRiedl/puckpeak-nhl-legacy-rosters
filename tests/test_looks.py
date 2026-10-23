@@ -1,6 +1,6 @@
 """The new jerseys and centre-ice logos (art/looks.py).
 
-The files themselves are EA's and need the game's disc: set LEGACY_ROSTER_DISC to a disc image (read only); the tests
+The files themselves are the game's and need the game's disc: set LEGACY_ROSTER_DISC to a disc image (read only); the tests
 that need it skip without it. The drawing helpers are tested on small invented pictures."""
 import os
 
@@ -194,3 +194,233 @@ def test_a_goalies_own_mask_picture_is_installed_and_put_back_when_dropped(disc,
     masks.install_masks(found, title, {}, lambda msg: None)                    # no goalie wears a picture any more
     assert not os.path.exists(path)
     install.remove(lambda msg: None)
+
+
+# --- this season's jerseys from the look pack (art/lookpack.py) ------------------------------------------------------------
+def test_pack_names_and_versions(base_dir):
+    from legacy_roster.art import lookpack
+    from legacy_roster.roster import Roster
+    R = Roster(os.path.join(base_dir, 'SYS-DATA'))
+    assert lookpack.norm('Färjestad BK') == 'farjestadbk' == lookpack.norm('FARJESTAD  bk')
+    # The pack gives home and away only (owner, 2026-10-18): no team's third is the pack's
+    assert looks.pack_versions(R, 27, 1) == {'dark': (4, False), 'light': (3, True)}                       # Toronto
+    assert looks.art_style(R, 27) == 1 and looks.art_style(R, R.T.get(135, 'artid')) == 0                  # Canada: classic
+    # Pittsburgh's default dark v3 is the Winter Classic team's (slot 218, Pittsburgh's art): v0 is the club's own
+    assert looks.pack_versions(R, 23, 1) == {'dark': (0, False), 'light': (1, True)}
+    assert looks.pack_versions(R, 2, 1) == {'dark': (0, False), 'light': (1, True)}                        # Boston
+    assert looks.pack_versions(R, 22, 1) == {'dark': (3, False), 'light': (4, True)}                       # Utah
+    assert looks.pack_versions(R, 36, 1) == {} and looks.pack_versions(R, 162, 1) == {'dark': (4, False), 'light': (3, True)}
+
+
+def test_the_pack_gives_home_and_away_only_and_every_other_version_stays_the_games_own(base_dir, tmp_path, make_look_pack):
+    from legacy_roster.roster import Roster
+    R = Roster(os.path.join(base_dir, 'SYS-DATA'))
+    pack = make_look_pack(tmp_path, {2: ('nhl', 'BOS', 1, {'dark': (20, 20, 20), 'light': (240, 240, 240)}, None),
+                                     23: ('nhl', 'PIT', 1, {'dark': (20, 20, 20), 'light': (240, 240, 240),
+                                                            'third': (250, 180, 0)}, None)})
+    assert sorted(looks.pack_team(R, 2, pack).kits) == [0, 1]                  # Boston's third (v2) stays the game's own
+    assert sorted(looks.pack_team(R, 23, pack).kits) == [0, 1]                 # Pittsburgh's too, though the pack has one
+    assert looks.default_use(2, 2, False, looks.pack_team(R, 2, pack).kits) == 'game'
+    assert looks.default_use(23, 6, False, looks.pack_team(R, 23, pack).kits) == 'game'
+
+
+def test_every_league_is_editable_where_the_game_has_jerseys_and_the_team_wears_its_own(base_dir):
+    from legacy_roster.roster import Roster
+    R = Roster(os.path.join(base_dir, 'SYS-DATA'))
+    assert looks.team_art(R, 36) == (162, 1) and looks.team_art(R, 135) == (R.T.get(135, 'artid'), 0)
+    assert looks.editable(R, 36) is None and looks.editable(R, 135) is None and looks.editable(R, 23) is None
+    # outside the NHL only home and away; the NHL keeps every version
+    assert [(v, light) for v, light, _d in looks.team_versions(R, 36)] == [(3, True), (4, False)]
+    assert len(looks.team_versions(R, 2)) == 4
+    # the Winter Classic team wears Pittsburgh's art; Coachella Valley has no jerseys in the game
+    assert looks.jersey_owner(R, 218) == 23 and 'Pittsburgh' in looks.editable(R, 218)
+    assert looks.editable(R, 234) == "The game has no jerseys of its own for this team."
+    assert looks.editable(R, None) == "Pick a team first."
+
+
+def test_median_and_one_colour_number_sheets():
+    pics = [Image.new('L', (4, 4), v) for v in (9, 1, 7, 3, 5)]
+    assert looks.median_picture(pics).getextrema() == (5, 5)
+    sheet = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
+    sheet.paste((240, 240, 240, 255), (10, 10, 50, 50))                     # one colour, no outline
+    assert looks.sheet_colours(sheet) == ((244, 244, 244),)
+    assert looks.recolour_sheet(sheet, (200, 20, 20), (0, 0, 0)).getpixel((30, 30)) == (196, 16, 16, 255)   # the cloth's shading kept
+    assert looks.recolour_sheet(sheet, (200, 20, 20), (0, 0, 0)).getpixel((2, 2))[3] == 0
+
+
+def test_pack_looks_cover_every_league_and_leave_out_a_slot_holding_another_club(base_dir, tmp_path, make_look_pack):
+    from legacy_roster.roster import Roster
+    R = Roster(os.path.join(base_dir, 'SYS-DATA'))
+    pack = make_look_pack(tmp_path, {27: ('nhl', 'TOR', 1, {'dark': (0, 40, 120), 'light': (240, 240, 240), 'third': (20, 20, 20)},
+                                 (0, 40, 120)),
+                            32: ('ahl', R.team_name(32), 1, {'dark': (150, 10, 10), 'light': (240, 240, 240)}, (150, 10, 10)),
+                            135: ('national', 'CAN', 0, {'dark': (200, 10, 10), 'light': (240, 240, 240)}, (200, 10, 10)),
+                            33: ('ahl', 'Somebody Else', 1, {'dark': (1, 2, 3)}, None),
+                            91: ('del', R.team_name(91), 0, {'dark': (10, 10, 150)}, (10, 10, 150)),
+                            92: ('del', R.team_name(92), 0, {}, (10, 150, 10)),
+                            105: ('extraliga', R.team_name(105), 0, {'dark': (150, 150, 10)}, (150, 150, 10))})
+    skipped, no_ice = [], []
+    made = {m.art: m for m in looks.looks_from(R, {}, {}, {}, look_pack=pack, skipped=skipped, no_ice=no_ice)}
+    tor = made[27]
+    assert sorted((k.variant, k.light) for k in tor.pack) == [(3, True), (4, False)]     # the pack's third left out
+    assert tor.centre.startswith('pack:i/27.webp#') and tor.versions == () and tor.style == 1
+    utica, canada = made[R.T.get(32, 'artid')], made[R.T.get(135, 'artid')]
+    assert utica.style == 1 and len(utica.pack) == 2 and canada.style == 0 and canada.centre == 'game'
+    assert [s for s, _why in skipped] == [33] and R.T.get(33, 'artid') not in made
+    # centre ice only where the game shows it at the club's own home games: the Extraliga's are the club's art; the
+    # DEL's 14 clubs share the DEL's ice and the national teams the international one, so those keep the game's own
+    assert made[R.T.get(105, 'artid')].centre.startswith('pack:i/105.webp#')
+    assert made[R.T.get(91, 'artid')].centre == 'game' and len(made[R.T.get(91, 'artid')].pack) == 1
+    assert R.T.get(92, 'artid') not in made and sorted(s for s, _why in no_ice) == [91, 92, 135]
+    assert looks.shown_centre(R, 91) == looks.shown_centre(R, 92) == 197 and looks.shown_centre(R, 135) == 501
+    assert looks.shown_centre(R, 27) == 27 and looks.shown_centre(R, 158) == R.T.get(158, 'artid')
+    # the player chose the game's own for Toronto's dark version and its ice: only the others stay the pack's
+    edits = {27: {'uniforms': {'versions': {'4': 'game'}}, 'ice': {'use': 'game'}}}
+    tor = next(m for m in looks.looks_from(R, edits, {}, {}, look_pack=pack) if m.art == 27)
+    assert sorted(k.variant for k in tor.pack) == [3] and tor.centre == 'game'
+    # without a pack the NHL teams keep the game's own (Utah, Seattle, Vegas: from their colours) and nothing else is made
+    assert all(m.art in looks.NEW_TEAMS for m in looks.looks_from(R, {}, {}, {}, look_pack=None))
+
+
+def test_a_clubs_edits_are_kept_outside_the_nhl_too(base_dir, tmp_path, make_look_pack):
+    from legacy_roster.roster import Roster
+    R = Roster(os.path.join(base_dir, 'SYS-DATA'))
+    utica, canada = R.T.get(32, 'artid'), R.T.get(135, 'artid')
+    pack = make_look_pack(tmp_path, {32: ('ahl', R.team_name(32), 1, {'dark': (150, 10, 10), 'light': (240, 240, 240)},
+                                          (150, 10, 10)),
+                                     91: ('del', R.team_name(91), 0, {'dark': (10, 10, 150)}, (10, 10, 150))})
+    (v_light, _l, _d), (v_dark, _k, _e) = looks.team_versions(R, 32)
+    mine = tmp_path / 'mine.png'
+    Image.new('RGB', (512, 512), (0, 200, 0)).save(mine)
+    edits = {32: {'uniforms': {'versions': {str(v_light): 'game', str(v_dark): 'file:' + str(mine)}},
+                  'ice': {'use': 'game'}},
+             135: {'uniforms': {'versions': {'1': 'file:' + str(mine), '0': 'colours'}}},     # Canada: the classic cut
+             91: {'ice': {'use': 'file:' + str(mine)}},                                       # the DEL's shared ice
+             218: {'uniforms': {'versions': {'0': 'file:' + str(mine)}}}}                     # Pittsburgh's jerseys
+    no_ice = []
+    made = {m.art: m for m in looks.looks_from(R, edits, {}, {}, look_pack=pack, no_ice=no_ice)}
+    assert made[utica].pack == () and made[utica].files == ((v_dark, False, str(mine)),) and made[utica].centre == 'game'
+    # the classic cut cannot be made from the colours: the game's own stays, the player's picture goes on
+    assert made[canada].style == 0 and made[canada].versions == () and made[canada].files == ((1, False, str(mine)),)
+    # the DEL club keeps the pack's jersey; its home games show the DEL's shared ice, so the player's picture goes there
+    # (0.31.0: a look of its own at art 197, nothing but the ice)
+    assert no_ice == [] and made[R.T.get(91, 'artid')].centre == 'game'
+    assert len(made[R.T.get(91, 'artid')].pack) == 1
+    assert made[197].centre == str(mine) and made[197].versions == made[197].files == made[197].pack == ()
+    assert made.get(23) is None                     # an edit kept for the Winter Classic team changes nothing
+
+
+def test_pack_files_in_both_cuts_keep_the_discs_layout_and_install_once(disc, base_dir, tmp_path, make_look_pack, monkeypatch):
+    from legacy_roster.roster import Roster
+    R = Roster(os.path.join(base_dir, 'SYS-DATA'))
+    pack = make_look_pack(tmp_path, {27: ('nhl', 'TOR', 1, {'dark': (0, 40, 120)}, (0, 40, 120)),
+                            135: ('national', 'CAN', 0, {'light': (240, 240, 240)}, None)})
+    made = [m for m in looks.looks_from(R, {}, {}, {}, look_pack=pack) if m.art in (27, R.T.get(135, 'artid'))]
+    maker = looks.Maker(disc, pack)
+    for look in made:
+        files = maker.files(look)
+        assert sorted(files) == sorted(maker.paths(look))
+        assert looks.Maker(disc, pack).files(look) == files                            # rule 4: deterministic
+        for inner, data in files.items():
+            if inner.endswith('.rpsgl'):
+                mine, own = rpsgl.Rpsgl(data), rpsgl.Rpsgl(disc.render(inner))
+                assert {k: (r['width'], r['height'], r['mips'], r['format']) for k, r in mine.rasters.items()} == \
+                       {k: (r['width'], r['height'], r['mips'], r['format']) for k, r in own.rasters.items()}
+        k = look.pack[0]
+        name = f"{look.style}_{look.art}_{k.variant}"
+        jersey = rpsgl.Rpsgl(files[looks.JERSEY.format(s=look.style, a=look.art, v=k.variant)])
+        colour = jersey.image(f"jersey_{name}_cm").getpixel((512, 300))[:3]
+        assert max(abs(a - b) for a, b in zip(colour, pack.picture(k.member).getpixel((32, 18)))) < 40
+        if look.style == 0:                                    # the classic cut: the clean relief, its own lettering
+            assert jersey.image(f"jersey_{name}_0_nm").tobytes() != \
+                rpsgl.Rpsgl(disc.render(looks.JERSEY.format(s=0, a=look.art, v=k.variant))).image(f"jersey_{name}_0_nm").tobytes()
+    # the player's own picture on a classic-cut version (Canada's dark): the disc's sizes, the clean relief, made the same way
+    mine = tmp_path / 'mine.png'
+    Image.new('RGB', (300, 300), (0, 200, 0)).save(mine)
+    canada = R.T.get(135, 'artid')
+    own = looks.Look(canada, looks.PLAIN_KIT, (None, None), '', (32, 32, 32), (), ((1, False, str(mine)),), 'game', (), 0)
+    files = maker.files(own)
+    assert sorted(files) == sorted(maker.paths(own)) and looks.Maker(disc, pack).files(own) == files
+    jersey = rpsgl.Rpsgl(files[looks.JERSEY.format(s=0, a=canada, v=1)])
+    disc_jersey = rpsgl.Rpsgl(disc.render(looks.JERSEY.format(s=0, a=canada, v=1)))
+    assert {k: (r['width'], r['height'], r['format']) for k, r in jersey.rasters.items()} == \
+           {k: (r['width'], r['height'], r['format']) for k, r in disc_jersey.rasters.items()}
+    green = jersey.image(f"jersey_0_{canada}_1_cm").getpixel((512, 300))[:3]
+    assert max(abs(a - b) for a, b in zip(green, (0, 200, 0))) < 8                # the compression's rounding only
+    found, title = _fake_rpcs3(tmp_path, monkeypatch)
+    n = looks.install_looks(found, title, made, lambda msg: None, look_pack=pack)
+    assert n == sum(len(maker.paths(m)) for m in made)
+    assert looks.install_looks(found, title, made, lambda msg: None, look_pack=pack) == 0          # installed already
+    install.remove(lambda msg: None)
+    assert install.installed() == 0
+
+
+# --- the Select Jerseys picture of a pack kit: the pack's own menu picture on the game's figure -------------------------
+def _menu_shirt(colour=(0, 200, 0)):
+    """A stand-in for the pack's menu picture of a kit: a shirt of one colour on a clear ground."""
+    pic = Image.new('RGBA', (300, 340), (0, 0, 0, 0))
+    pic.paste(colour + (255,), (40, 30, 260, 300))
+    return pic
+
+
+def test_the_menu_picture_puts_the_packs_shirt_on_the_games_black_figure(disc):
+    maker = looks.Maker(disc)
+    chassis, mask = maker.preview_of_chassis(False), maker.mask()
+    head_x, (left, top, right, bottom) = looks.menu_frame(chassis, mask)
+    assert left < head_x < right and 20 < top < bottom < 230
+    figure = looks.menu_figure(chassis, mask)
+    assert sorted(side for side, _glove, _at in figure.gloves) == [0, 1]           # both gloves, moved under the cuffs
+    img = looks.menu_picture(chassis, mask, _menu_shirt(), figure)
+    assert img.size == (256, 256) and img.mode == 'RGBA'
+    assert img.getpixel((round(head_x), (top + bottom) // 2)) == (0, 200, 0, 255)   # the pack's shirt where the game's was
+    head = img.getpixel((round(head_x), top // 2))
+    assert head[:3] == (0, 0, 0) and head[3] > 150                                 # the head stays the game's black
+    assert img.getpixel((5, 5))[3] == 0
+    again = maker.thumbnail(27, 4, False, looks.PACK, menu=_menu_shirt())          # the editor's picture is the same
+    assert again.tobytes() == img.tobytes() == maker.menu_preview(_menu_shirt()).tobytes()   # rule 4: deterministic
+
+
+def _with_menus(pack, menus):
+    """The look pack `pack` with pack menu pictures added ({member: picture}), opened again."""
+    import io
+    import zipfile
+    from legacy_roster.art.lookpack import LookPack
+    pack.zip.close()
+    with zipfile.ZipFile(pack.path, 'a') as z:
+        for name, pic in sorted(menus.items()):
+            buf = io.BytesIO()
+            pic.save(buf, 'WEBP', lossless=True)
+            z.writestr(name, buf.getvalue())
+    return LookPack.open(pack.path)
+
+
+def test_a_pack_kits_menu_picture_is_the_packs_own_and_the_recoloured_chassis_only_without_one(disc, base_dir, tmp_path,
+                                                                                              make_look_pack):
+    from legacy_roster.roster import Roster
+    R = Roster(os.path.join(base_dir, 'SYS-DATA'))
+    (tmp_path / 'plain').mkdir()
+    (tmp_path / 'menu').mkdir()
+    teams = {27: ('nhl', 'TOR', 1, {'dark': (0, 40, 120), 'light': (240, 240, 240)}, None)}
+    plain = make_look_pack(tmp_path / 'plain', teams)
+    menu = _with_menus(make_look_pack(tmp_path / 'menu', teams), {'m/27_dark.webp': _menu_shirt()})
+
+    def toronto(pack):
+        return next(m for m in looks.looks_from(R, {}, {}, {}, look_pack=pack) if m.art == 27)
+    with_menu, without = toronto(menu), toronto(plain)
+    kits = {k.variant: k for k in with_menu.pack}
+    assert kits[4].menu.startswith('m/27_dark.webp#') and kits[3].menu is None          # the light kit has none
+    assert all(k.menu is None for k in without.pack)
+    assert looks.look_digest(with_menu) != looks.look_digest(without)                   # a menu picture redraws the look
+    maker = looks.Maker(disc, menu)
+    files = maker.files(with_menu)
+    assert looks.Maker(disc, menu).files(with_menu) == files                            # rule 4: deterministic
+    head_x, (_left, top, _right, bottom) = looks.menu_frame(maker.preview_of_chassis(False), maker.mask())
+    middle = (round(head_x), (top + bottom) // 2)
+    dark, light = (files[looks.PREVIEW.format(s=1, a=27, v=v)] for v in (4, 3))
+    assert looks.preview_picture(dark).getpixel(middle) == (0, 200, 0, 255)            # the pack's own shirt, not recoloured
+    plain_files = looks.Maker(disc, plain).files(without)
+    r, g, b, _a = looks.preview_picture(plain_files[looks.PREVIEW.format(s=1, a=27, v=4)]).getpixel(middle)
+    assert b > g and b > r                                                              # without one: the kit's blue
+    assert plain_files[looks.PREVIEW.format(s=1, a=27, v=3)] == light                   # ... as the light kit has today
+    assert {k: v for k, v in plain_files.items() if 'jerseys/' not in k} == \
+        {k: v for k, v in files.items() if 'jerseys/' not in k}                         # the 3D files do not change

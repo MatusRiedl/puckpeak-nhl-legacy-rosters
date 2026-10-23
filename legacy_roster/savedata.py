@@ -557,8 +557,9 @@ KEEP_BACKUPS = 10        # backups of one roster the program keeps (its own copi
 
 def update_in_place(savedata, slot, sys_data, name=None, expected=None, backup_root=None):
     """Replace the roster of an existing roster save with `sys_data`: the same folder, icon and PARAM.SFO
-    (only SUB_TITLE changes, and only when `name` is given and differs). Returns (the Slot, the folder of
-    the backup copy or None, whether anything was written).
+    (only SUB_TITLE changes, and only when `name` is given and differs; SAVEDATA_DIRECTORY is set to the folder's
+    own name when it names another: a folder copied by hand keeps its original's, and the game then loads the
+    original, lab round 43). Returns (the Slot, the folder of the backup copy or None, whether anything was written).
 
     The old save is copied to `backup_root` first (the program's own folder: the game lists every folder
     in the save folder that starts like a roster save, so a copy cannot stay there), the new SYS-DATA is
@@ -580,7 +581,8 @@ def update_in_place(savedata, slot, sys_data, name=None, expected=None, backup_r
     sfo = Sfo.load(os.path.join(path, 'PARAM.SFO'))
     new_name = clean_name(name) if name else None
     renamed = new_name is not None and new_name != (sfo.get('SUB_TITLE', '') or '')
-    if current == sys_data and not renamed:
+    moved = (sfo.get('SAVEDATA_DIRECTORY', '') or '') != folder
+    if current == sys_data and not renamed and not moved:
         return Slot(path), None, False
     backup = None
     if backup_root:
@@ -611,8 +613,11 @@ def update_in_place(savedata, slot, sys_data, name=None, expected=None, backup_r
                 if f.read() != sys_data:
                     raise OSError("the new roster did not write correctly")
             os.replace(side, target)
-        if renamed:
-            sfo.set_str('SUB_TITLE', new_name)
+        if renamed or moved:
+            if renamed:
+                sfo.set_str('SUB_TITLE', new_name)
+            if moved:
+                sfo.set_str('SAVEDATA_DIRECTORY', folder)
             sfo.save(side)
             os.replace(side, os.path.join(path, 'PARAM.SFO'))
         os.utime(path)                  # the game lists the newest folder first
@@ -623,6 +628,96 @@ def update_in_place(savedata, slot, sys_data, name=None, expected=None, backup_r
     if backup_root:
         _prune_backups(backup_root, folder)
     return Slot(path), backup, True
+
+
+def update_career(savedata, folder, data, expected, backup_root, now=None, label=None):
+    """Write a changed Be a Pro career (`data`, the bytes of all its DATA files) into its folder `<TITLE>05NN` (AGENTS.md
+    rule 1: only when the player pressed Save on it); `label`: a new SUB_TITLE for PARAM.SFO (the load list's name,
+    careersave.renamed_label). Returns the folder of the backup copy, or None when nothing changed.
+
+    Refused while RPCS3 runs, for anything that is not a Be a Pro career directly in `savedata`, while the game may
+    still be writing it (a file changed in the last careersave.SETTLE seconds), when the career is no longer `expected`
+    (the bytes read when the edit started) and when `data` would need another number of DATA files. The whole folder
+    is copied to `backup_root` first (the newest KEEP_BACKUPS per career are kept); each changed DATA file is written
+    next to the save folder, read back and moved over the old one. If a move fails, the files already moved are put
+    back from the backup."""
+    from . import careersave
+    path = os.path.join(savedata, folder)
+    if not careersave.FOLDER.match(folder) or not careersave.is_career(path) or os.path.islink(path) \
+            or os.path.realpath(os.path.dirname(path)) != os.path.realpath(savedata):
+        raise InPlaceError("That is not a Be a Pro career, so it was not changed.")
+    if running_rpcs3():
+        raise InPlaceError("Close RPCS3 first: a career can only be saved while the game is closed.")
+    files = careersave.data_files(path)
+    if not careersave.Save(path).settled(now):
+        raise InPlaceError("The game is still saving this career. Try again in a moment.")
+    current = []
+    for p in files:
+        with open(p, 'rb') as f:
+            current.append(f.read())
+    if b''.join(current) != expected:
+        raise InPlaceError("The career was changed (by the game?) after it was opened, so it was not touched. "
+                           "Open it again.")
+    try:
+        parts = careersave.pieces(data, [len(p) for p in current])
+    except careersave.CareerError as err:
+        raise InPlaceError(f"{err} It was not changed.") from err
+    changed = [(p, new) for p, old, new in zip(files, current, parts) if old != new]
+    sfo_path = os.path.join(path, 'PARAM.SFO')
+    sfo = None
+    if label:
+        try:
+            sfo = Sfo.load(sfo_path)
+            if (sfo.get('SUB_TITLE', '') or '') == label:
+                sfo = None
+            else:
+                sfo.set_str('SUB_TITLE', label)
+        except (OSError, ValueError, KeyError) as err:
+            raise InPlaceError(f"The career's name in the load list could not be set ({err}), so it was not "
+                               "changed.") from err
+    if not changed and sfo is None:
+        return None
+    os.makedirs(backup_root, exist_ok=True)
+    backup = os.path.join(backup_root, f"{folder}_{datetime.datetime.now():%Y%m%d-%H%M%S}")
+    n = 1
+    while os.path.exists(backup):
+        n += 1
+        backup = f"{backup.rsplit('_', 1)[0]}_{datetime.datetime.now():%Y%m%d-%H%M%S}-{n}"
+    try:
+        shutil.copytree(path, backup)
+        for p, old in zip(files, current):
+            with open(os.path.join(backup, os.path.basename(p)), 'rb') as f:
+                if f.read() != old:
+                    raise OSError("the backup did not copy correctly")
+    except OSError as err:
+        shutil.rmtree(backup, ignore_errors=True)
+        raise InPlaceError(f"The career could not be copied to the backup folder ({err.strerror or err}), "
+                           "so it was not changed.") from err
+    side = os.path.join(os.path.dirname(os.path.abspath(savedata)), f".roster-updater-{folder}.new")
+    moved = []
+    try:
+        for p, new in changed:
+            with open(side, 'wb') as f:
+                f.write(new)
+                f.flush()
+                os.fsync(f.fileno())
+            with open(side, 'rb') as f:
+                if f.read() != new:
+                    raise OSError("the career did not write correctly")
+            os.replace(side, p)
+            moved.append(p)
+        if sfo is not None:
+            sfo.save(side)
+            os.replace(side, sfo_path)
+            moved.append(sfo_path)
+    except OSError as err:
+        if os.path.exists(side):
+            os.remove(side)
+        for p in moved:
+            shutil.copy2(os.path.join(backup, os.path.basename(p)), p)
+        raise InPlaceError(f"The career could not be saved ({err.strerror or err}); the old one is still there.") from err
+    _prune_backups(backup_root, folder)
+    return backup
 
 
 def _prune_backups(root, folder):
@@ -693,20 +788,49 @@ def list_rosters(savedata):
     return sorted(slots, key=lambda s: s.modified, reverse=True)
 
 
-def next_free(savedata, title_id):
-    """Folder name for a new roster save: the number after the highest one in use."""
+# The game lists 10 roster saves per version (cellSaveDataListLoad2, dirListMax 10): RPCS3 hands it
+# the first 10 folders <TITLE>02NN by name, so a roster in ...0210 or later never shows in the game.
+GAME_LISTS = 10
+FULL_TEXT = ("The game shows only 10 rosters, and all 10 are in use. Delete a roster you no longer play "
+             "(the Delete button), or pick \"Update this roster\".")
+
+
+class RosterFull(RuntimeError):
+    """No new roster save fits among the 10 the game lists for this version."""
+    def __init__(self, title_id):
+        super().__init__(f"{FULL_TEXT} ({region(title_id)} version)")
+        self.title_id = title_id
+
+
+def _numbers_in_use(savedata, title_id):
     used = set()
     for name in (os.listdir(savedata) if os.path.isdir(savedata) else []):
         m = SLOT_NAME.match(name)
-        if m and m.group(1) == title_id:
+        if m and m.group(1) == title_id and os.path.isdir(os.path.join(savedata, name)):
             used.add(int(m.group(2)))
-    n = max(used, default=0) + 1        # never ...00: the game keeps its own roster save there
-    if n > 99:
-        free = [k for k in range(1, 100) if k not in used]
-        if not free:
-            raise RuntimeError("all 100 roster save slots are in use; delete an old roster in the game first")
-        n = free[0]
-    return f"{title_id}02{n:02d}"
+    return used
+
+
+def roster_count(savedata, title_id):
+    """How many of the 10 places in the game's list the roster folders of `title_id` take."""
+    return len(_numbers_in_use(savedata, title_id))
+
+
+def hidden_in_game(savedata, title_id):
+    """Folder names of `title_id` the game does not list: all after the first 10 by name."""
+    used = sorted(_numbers_in_use(savedata, title_id))
+    return {f"{title_id}02{n:02d}" for n in used[GAME_LISTS:]}
+
+
+def next_free(savedata, title_id):
+    """Folder name for a new roster save: the lowest free number 01-09, so the game lists it
+    (never ...00: the game keeps its own roster save there). RosterFull when the version already
+    has 10 roster folders or 01-09 are all taken."""
+    used = _numbers_in_use(savedata, title_id)
+    free = [k for k in range(1, GAME_LISTS) if k not in used]
+    if len(used) >= GAME_LISTS or not free:
+        raise RosterFull(title_id)
+    return f"{title_id}02{free[0]:02d}"
 
 
 def default_name(now=None):

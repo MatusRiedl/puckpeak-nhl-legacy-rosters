@@ -37,7 +37,7 @@ NHL_PRIMARY = set(range(32))
 NHL_ALL = NHL_PRIMARY | set(MIRROR_OF)
 AHL = set(range(32, 62)) | {234, 235}   # Coachella Valley and Henderson sit in custom slots
 NATIONAL = set(range(133, 154))   # 133 Austria, 134 Belarus, 135 Canada ... 153 USA (132 is a club)
-# teams that hold player contracts (cPbu.team = team + 1): NHL and AHL clubs
+# NHL teams and AHL clubs (the NHL organisations; every league's clubs hold contracts: CONTRACT_CLUB)
 CLUB = set(range(62)) | {234, 235}
 # the club leagues' slots (ttOk.league 2-7 and 9-11)
 SHL = set(range(62, 76))
@@ -55,9 +55,85 @@ EVENTS = set(range(214, 222))     # Top Prospects, Winter Classic, EASHL: left a
 SPARE = range(236, 252)           # custom slots switched off in the base: room for displaced prospect pools
 # the base roster keeps its NHL "System" prospect pools here (DEL 101-104, Extraliga, National League)
 SYSTEM_POOL_SLOTS = set(range(101, 131))
+# teams whose players hold a contract with the team (owner, 2026-10-22: "this tool is a tool to actually make it happen for
+# players to have contracts"): every club of every league, Coachella Valley / Henderson and the spare custom slots (a
+# player's own teams); prospect pools in those slots are left out by contracts.contract_clubs. Not the national teams,
+# the event teams or the NHL copies 222-233.
+CONTRACT_CLUB = set(range(133)) | CHL | {234, 235} | set(SPARE)
 # farm teams the NHL team table cannot name (ttOk.ahlaffiliate has six bits): Coachella Valley -> Seattle,
 # Henderson -> Vegas
 AHL_PARENT_EXTRA = {234: 30, 235: 31}
+# art ids of their own for Coachella Valley and Henderson: the community roster's 20073 / 20081 (create-a-team logos 72 /
+# 80, art/crests.py) on every roster; the game's own roster has 20054, which every switched-off custom team shows. Lab
+# round 34 (2026-10-19): a free art id of the NHL kind (900 / 901, the owner's first
+# wish) gives a custom slot a blue square on the ice and the jersey, because the game draws custom slots from the
+# create-a-team files whatever the art id; with 20073 / 20081 and the crests the photos install, both teams show their
+# own crest (docs/notes/lab-round-34.md). Only the team table's artid holds a team's art id.
+OWN_ART = {234: 20073, 235: 20081}
+# their jersey colours (table NDEo, team = slot + 1: {(equipment, variant 1 home / 2 away): zones 1-9}; the pieces:
+# custom_kit.PIECES): the community roster's, Coachella's black body and shoulders made this season's navy (equipment 9 zones 1
+# and 5 since 0.31.0: round 34 painted equipment 1, the goalie's catching glove; lab round 37), the crest's colours
+# (equipment 11 zones 1-3; 4-6 white, unused by the crests) and Coachella's socks (equipment 6) as the pack's kits. Played
+# in lab round 34.
+_NAVY, _TEAL, _ORANGE, _RED, _WHITE, _NONE = (0, 34, 63), (129, 229, 214), (180, 66, 18), (131, 13, 13), (255,) * 3, (0,) * 3
+_GREY, _GOLD, _INK = (114, 114, 114), (180, 139, 18), (32, 32, 32)
+# and their two team colours (ttOk primary / secondary; the custom slots hold the placeholder blue / red, which goalie gear
+# and the menus would take)
+OWN_COLOURS = {234: (_NAVY, (200, 16, 46)), 235: ((27, 26, 27), (167, 168, 173))}
+# and their designs (ttOk, custom_kit.DESIGN_FIELDS): the community roster's. The game's own roster has 0 everywhere, and
+# with jerseystyle 0 the game draws a custom team's jersey plain (white in lab round 46, black in the owner's RPCS3)
+OWN_DESIGN = {slot: {'jerseystyle': 1, 'jerseybackhome': 0, 'jerseybackaway': 0, 'pantsstyle': 0, 'sockstyle': 1,
+                     'font': 2} for slot in (234, 235)}
+OWN_KIT = {
+    234: {
+        (1, 1): (_NAVY,) * 4 + (_TEAL,) + (_NAVY,) * 3 + (_ORANGE,),
+        (2, 1): (_NAVY,) * 4 + (_TEAL,) + (_NAVY,) * 3 + (_ORANGE,),
+        (3, 1): (_NAVY,) * 4 + (_TEAL, _RED, _NAVY, _ORANGE, _ORANGE),
+        (4, 1): ((232, 232, 232), _INK, (18, 103, 140)) + (_NONE,) * 6,
+        (5, 1): (_NAVY,) * 6 + (_TEAL, _NAVY, _NAVY),
+        (6, 1): (_NAVY, (200, 16, 46), (242, 107, 33)) + (_NONE,) * 6,
+        (7, 1): (_NAVY,) * 3 + (_NONE,) * 6,
+        (8, 1): ((15, 15, 15), _NAVY, _WHITE) + (_NONE,) * 6,
+        (9, 1): (_NAVY, _RED, _TEAL, _ORANGE, _NAVY, _TEAL) + (_NONE,) * 3,
+        (10, 1): (_RED, _WHITE, _INK) + (_NONE,) * 6,
+        (11, 1): (_NAVY, (200, 16, 46), (242, 107, 33)) + (_WHITE,) * 3 + (_NONE,) * 3,
+        (1, 2): (_WHITE, _NAVY, _WHITE, _WHITE, _TEAL, _WHITE, _WHITE, _WHITE, _ORANGE),
+        (2, 2): (_WHITE, _NAVY, _WHITE, _WHITE, _TEAL, _WHITE, _WHITE, _WHITE, _ORANGE),
+        (3, 2): (_WHITE, _NAVY, _WHITE, _WHITE, _TEAL, _WHITE, _WHITE, _WHITE, _ORANGE),
+        (4, 2): ((232, 232, 232), _INK, (18, 103, 140)) + (_NONE,) * 6,
+        (5, 2): (_NAVY,) * 6 + (_TEAL, _NAVY, _NAVY),
+        (6, 2): (_WHITE, _NAVY, (242, 107, 33)) + (_NONE,) * 6,
+        (7, 2): (_NAVY,) * 3 + (_NONE,) * 6,
+        (8, 2): (_WHITE, _WHITE, _ORANGE) + (_NONE,) * 6,
+        (9, 2): (_WHITE, _TEAL, (7, 25, 34), _RED, _WHITE, (7, 25, 34)) + (_NONE,) * 3,
+        (10, 2): ((7, 25, 34), _ORANGE, _WHITE) + (_NONE,) * 6,
+        (11, 2): (_NAVY, (200, 16, 46), (242, 107, 33)) + (_WHITE,) * 3 + (_NONE,) * 3,
+    },
+    235: {
+        (1, 1): (_GREY,) * 4 + (_GOLD,) + (_GREY,) * 3 + (_GOLD,),
+        (2, 1): (_GREY,) * 4 + (_GOLD,) + (_GREY,) * 3 + (_GOLD,),
+        (3, 1): (_GREY,) * 4 + (_GOLD, _GOLD, _GREY, _GOLD, _GOLD),
+        (4, 1): ((233, 233, 233), _INK, (107, 27, 32)) + (_NONE,) * 6,
+        (5, 1): (_INK, _GOLD, _INK, _INK, _INK, _INK, _GOLD, _INK, _INK),
+        (6, 1): (_GREY, _INK, _GOLD) + (_NONE,) * 6,
+        (7, 1): (_INK, _INK, (231, 231, 231)) + (_NONE,) * 6,
+        (8, 1): ((204, 204, 204), _INK, _WHITE) + (_NONE,) * 6,
+        (9, 1): (_GREY, _INK, _GOLD, _GREY, _GREY, _GOLD) + (_NONE,) * 3,
+        (10, 1): (_WHITE, _GOLD, _GREY) + (_NONE,) * 6,
+        (11, 1): ((27, 26, 27), (167, 168, 173), (245, 245, 245)) + (_WHITE,) * 3 + (_NONE,) * 3,
+        (1, 2): (_WHITE,) * 4 + (_GOLD,) + (_WHITE,) * 3 + (_GREY,),
+        (2, 2): (_WHITE,) * 4 + (_GOLD,) + (_WHITE,) * 3 + (_GREY,),
+        (3, 2): (_WHITE, _GREY, _WHITE, _WHITE, _GOLD, _GREY, _WHITE, _GREY, _GREY),
+        (4, 2): ((233, 233, 233), _INK, (107, 27, 32)) + (_NONE,) * 6,
+        (5, 2): (_WHITE, _GOLD, _WHITE, _WHITE, _WHITE, _GOLD, _INK, _WHITE, _WHITE),
+        (6, 2): (_WHITE, _GREY, _GOLD) + (_NONE,) * 6,
+        (7, 2): (_INK, _INK, (231, 231, 231)) + (_NONE,) * 6,
+        (8, 2): (_WHITE, _WHITE, _GREY) + (_NONE,) * 6,
+        (9, 2): (_WHITE, _GREY, _GOLD, _GREY, _WHITE, _GOLD) + (_NONE,) * 3,
+        (10, 2): (_GREY, _GOLD, _INK) + (_NONE,) * 6,
+        (11, 2): ((27, 26, 27), (167, 168, 173), (245, 245, 245)) + (_WHITE,) * 3 + (_NONE,) * 3,
+    },
+}
 
 POS_CODE = {'C': 0, 'L': 1, 'R': 2, 'D': 3, 'G': 4}
 POS_CLASS = {0: 'C', 1: 'W', 2: 'W', 3: 'D', 4: 'G'}

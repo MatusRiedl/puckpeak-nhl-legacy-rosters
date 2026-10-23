@@ -1,6 +1,6 @@
 """The game's 3D textures (art/rpsgl.py) and the in-game test of loose ones (art/rendering.py).
 
-The files themselves are EA's and need the game's disc: set LEGACY_ROSTER_DISC to a disc image (read only);
+The files themselves are the game's and need the game's disc: set LEGACY_ROSTER_DISC to a disc image (read only);
 without it those tests skip."""
 import os
 

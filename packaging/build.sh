@@ -8,8 +8,7 @@
 #           dist/NHLLegacyRosterUpdater-cli      the command line
 #   macOS:  dist/NHLLegacyRosterUpdater.app      the window
 #           dist/NHLLegacyRosterUpdater-cli      the command line
-# With legacy_roster/data/photopack.zip (tools/build_photopack.py) every photo and logo goes inside,
-# as in the Windows exe; without it the pictures are downloaded on the player's computer.
+# No picture pack goes inside: the program downloads its pictures (legacy_roster/packs.py), as the Windows exe does.
 #
 #   bash packaging/build.sh
 set -euo pipefail
@@ -30,10 +29,11 @@ version=$("$py" -c "import legacy_roster; print(legacy_roster.__version__)")
 cacert=$("$py" -c "import certifi; print(certifi.where())")
 web="$PWD/legacy_roster/web"
 data="$PWD/legacy_roster/data"         # full paths: PyInstaller reads relative ones from its spec folder (build/)
-if [ ! -f "$data/photopack.zip" ]; then
-    echo "No photo pack ($data/photopack.zip): the pictures will be downloaded on the player's computer."
-    echo "To put them inside, run first:  $py tools/build_photopack.py"
+if ls "$data"/*.zip* >/dev/null 2>&1; then
+    echo "$data holds a zip: packs never go inside the program (private/packs)." >&2
+    exit 1
 fi
+"$py" tools/clean_check.py || { echo "tools/clean_check.py found words that must not ship (see above)" >&2; exit 1; }
 
 # PIL._tkinter_finder: Pillow's bridge to Tk, imported only on a fallback path that PyInstaller does
 # not see; without it the window stops at start ("invalid command name PyImagingPhoto").
@@ -43,7 +43,7 @@ common=(--noconfirm --clean
         --hidden-import PIL.PngImagePlugin --hidden-import PIL.JpegImagePlugin
         --hidden-import PIL.WebPImagePlugin --hidden-import PIL.GifImagePlugin
         --hidden-import PIL.DdsImagePlugin --hidden-import legacy_roster.art.images
-        --hidden-import legacy_roster.art.looks --hidden-import PIL._tkinter_finder
+        --hidden-import legacy_roster.art.looks --hidden-import legacy_roster.art.lookpack --hidden-import PIL._tkinter_finder
         --distpath dist --workpath build --specpath build)
 
 if [ "$(uname)" = "Darwin" ]; then
@@ -54,11 +54,7 @@ else
     "$py" -m PyInstaller "${common[@]}" --onefile --windowed --add-data "$web:legacy_roster/web" \
         --collect-all webview --collect-all customtkinter --name NHLLegacyRosterUpdater packaging/launcher.py
 fi
-# the command line stays small: no photo pack, no window toolkit
-aside=build/photopack.zip.aside
-mkdir -p build
-[ -f "$data/photopack.zip" ] && mv "$data/photopack.zip" "$aside"
-trap '[ -f "$aside" ] && mv "$aside" "$data/photopack.zip"' EXIT
+# the command line stays small: no window toolkit
 "$py" -m PyInstaller "${common[@]}" --onefile --console --exclude-module customtkinter --exclude-module tkinter \
     --exclude-module webview --exclude-module gi \
     --name NHLLegacyRosterUpdater-cli packaging/launcher_cli.py

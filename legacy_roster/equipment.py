@@ -186,3 +186,91 @@ def available(names, kind='skater'):
         out[choice] = {int(m.group(1)) for n in names if n.startswith(prefix)
                        for m in [rx.match(n[len(prefix):])] if m}
     return out
+
+
+def _ranges(*pairs):
+    return frozenset(n for a, b in pairs for n in range(a, b + 1))
+
+
+# What available() gives on the EU and the NA disc (the same on both, measured 2026-10-18). The community roster gives
+# 44 goalies pads, blockers or gloves 85-88 (newer models): the game draws them plain blue (Gibson's blocker, lab rounds
+# 33 / 34). Sticks: sticks.DRAWABLE; masks can wear a picture of the player's own (art/masks.py), so they are not here.
+DRAWABLE = {
+    'skater': {
+        'gloves': _ranges((15, 15), (18, 18), (20, 21), (23, 25), (27, 30), (33, 33), (38, 46), (48, 49), (51, 59),
+                          (61, 62), (65, 77), (80, 83), (100, 101)),
+        'skates': _ranges((7, 8), (15, 17), (23, 24), (26, 26), (28, 28), (30, 32), (35, 48), (70, 75)),
+        'helmet': _ranges((1, 1), (6, 8), (11, 21), (23, 25), (110, 110)),
+    },
+    'goalie': {
+        'stick': _ranges((6, 43)),
+        'pads': _ranges((1, 1), (11, 12), (14, 15), (17, 36), (38, 40), (42, 46), (48, 51), (53, 56), (58, 72), (74, 84)),
+        'blocker': _ranges((1, 1), (11, 12), (14, 15), (17, 36), (38, 40), (42, 46), (48, 56), (58, 72), (74, 84)),
+        'trapper': _ranges((1, 1), (11, 12), (14, 15), (17, 36), (38, 40), (42, 45), (48, 51), (53, 56), (58, 72),
+                           (74, 84)),
+    },
+}
+GOALIE_SET = ('pads', 'blocker', 'trapper')     # one model number usually names the goalie's whole set
+
+
+def drawable(kind, choice, n, mates=()):
+    """A model the game can draw for `n`: n itself, else the first of `mates` (the goalie's other parts) it can draw,
+    else the closest lower number it can draw, else its lowest."""
+    ok = DRAWABLE[kind][choice]
+    if n in ok:
+        return n
+    for m in mates:
+        if m in ok:
+            return m
+    lower = [m for m in ok if m < n]
+    return max(lower) if lower else min(ok)
+
+
+def _model_tables(R):
+    """(kind, table, its game-id field) of every table that names models: skaters (ajmx), goalies (lVMf) and the
+    goalies' team gear (nAUy)."""
+    return [('skater', R.f[TABLE], 'game_id'), ('goalie', R.f[GOALIE_TABLE], 'game_id'), ('goalie', R.f['nAUy'], 'game_id')]
+
+
+def _field(kind, choice):
+    return (CHOICES if kind == 'skater' else GOALIE_CHOICES)[choice][0]
+
+
+def fix_models(R):
+    """Every model the game cannot draw (DRAWABLE) becomes one it can (`drawable`). Returns [(kind, game id, choice,
+    old, new)]; a second run changes nothing."""
+    out = []
+    for kind, t, gid in _model_tables(R):
+        for row in range(t.cur_rec):
+            now = {c: t.get(row, _field(kind, c)) for c in DRAWABLE[kind]}
+            for choice, n in now.items():
+                mates = [now[c] for c in GOALIE_SET if c != choice] if choice in GOALIE_SET else ()
+                new = drawable(kind, choice, n, mates)
+                if new != n:
+                    t.set(row, _field(kind, choice), new)
+                    out.append((kind, t.get(row, gid), choice, n, new))
+    return out
+
+
+def model_problems(R, also=None):
+    """Models the game cannot draw (it draws them plain blue): one line per model. `also`: {(kind, choice): models} to
+    accept anyway (`worn(source)`: what the roster carried before)."""
+    count = {}
+    for kind, t, _gid in _model_tables(R):
+        for choice, ok in DRAWABLE[kind].items():
+            accept = (also or {}).get((kind, choice), ())
+            for row in range(t.cur_rec):
+                n = t.get(row, _field(kind, choice))
+                if n not in ok and n not in accept:
+                    count[(kind, choice, n)] = count.get((kind, choice, n), 0) + 1
+    return [f"{c} {'goalie' if kind == 'goalie' else 'player'} row(s) have {CHOICES.get(choice, GOALIE_CHOICES.get(choice))[1].lower()} "
+            f"model {n}, which the game cannot draw" for (kind, choice, n), c in sorted(count.items())]
+
+
+def worn(R):
+    """{(kind, choice): models} the roster's rows carry."""
+    out = {}
+    for kind, t, _gid in _model_tables(R):
+        for choice in DRAWABLE[kind]:
+            out.setdefault((kind, choice), set()).update(t.get(row, _field(kind, choice)) for row in range(t.cur_rec))
+    return out

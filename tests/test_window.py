@@ -52,3 +52,24 @@ def test_every_call_of_the_page_is_offered_by_the_api():
         with open(os.path.join(js, name), encoding='utf-8') as f:
             called |= set(re.findall(r"call\('([a-z_]+)'", f.read()))
     assert called and called <= offered, called - offered
+
+
+def test_the_pages_server_takes_many_connections_at_once():
+    """The page asks for its fonts and scripts at once; with Python's queue of 5 Windows refused the rest (lab 47c)."""
+    import socket
+    from wsgiref.simple_server import WSGIServer
+    from legacy_roster.window import main
+    was = WSGIServer.request_queue_size
+    main.roomy_server()
+    try:
+        server = WSGIServer(('127.0.0.1', 0), None)
+        socks = []
+        try:
+            for _ in range(30):                          # nobody accepts: every connection waits in the queue
+                socks.append(socket.create_connection(server.server_address, timeout=5))
+        finally:
+            for s in socks:
+                s.close()
+            server.server_close()
+    finally:
+        WSGIServer.request_queue_size = was

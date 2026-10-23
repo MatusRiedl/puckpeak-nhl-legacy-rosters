@@ -16,6 +16,28 @@ Nothing of the game's is shipped: the chassis is read from the player's own disc
 
 Not every version of a team uses that layout: the old All-Star versions (Seattle and Vegas 0 and 1) and style 0 are
 painted on other shirts. Those are left as they are (`STANDARD_LAYOUT`).
+
+This season's jerseys (owner, 2026-10-16): the program carries the pack's kits and centre-ice logos of every team both games
+have, already moved into the PS3's two cuts (`art/lookpack.py`). `pack_team` and `looks_from` put them onto the
+player's own disc files: the dark default version gets the pack's dark kit, the light default its light one. The pack gives
+home and away only (owner, 2026-10-18): a third and every other version stays the game's own, also where the pack has a
+third kit.
+Style 1 (the NHL, AHL, CHL, some European clubs) goes the way of the player's own colour map, on the chassis' relief
+and number sheet; style 0 (the classic cut of most European clubs and the national teams) keeps the version's own file
+with a clean relief (`style0_relief`: the median of 11 clubs' reliefs, which drops their embossed crests) and its own
+number sheet in the pack's number colours. Pants and socks share one layout in both cuts: both get the chassis' in the
+kit's colours (`kit_palette`). The Select Jerseys picture is the pack's own menu picture of the kit on the game's black
+figure (`menu_picture`; the chassis' preview in the kit's colours only for a kit the pack has no menu picture for).
+Proven in the lab: gate G2b (Utah,
+Toronto), G3 (Davos, Sparta, Berlin, Canada) and round 31, private/notes/study.md. A club's pack centre ice goes
+in only where the game shows it at that club's home games and nowhere else (`shown_centre`, `own_ice`): not the DEL's
+(one shared ice) and not the national teams' (the game's international ice).
+
+Every team of every league (owner, 2026-10-18) can have its jerseys chosen in the Roster editor's "Jerseys and ice" window
+(app/uniforms.py; `editable`, `team_versions`): an NHL team every version, any other team its home and away versions,
+each the pack's, the game's own, made from the colours (style 1 on the shared layout only) or the player's own picture.
+Jerseys belong to an art id, not a slot: a team sharing its art id with a lower slot (the Winter Classic, EASHL and Top
+Prospects teams) is changed at that slot (`jersey_owner`).
 """
 import hashlib
 import json
@@ -32,6 +54,12 @@ JERSEY = "rendering/jersey/texlib_{s}_{a}_{v}.rpsgl"
 PANT = "rendering/pant/texlib_{s}_{a}_{v}.rpsgl"
 SOCK = "rendering/sock/sock_{s}_{a}_{v}_cm.rpsgl"
 CENTRE = "rendering/icesurface/centerlogo_{a}_cm.rpsgl"
+# which centre-ice file a team's home games show (lab round 31, the files RPCS3's log names in Play Now): the NHL's and
+# the DEL's follow the arena's art (OEtS.arenaartid; the DEL's 14 clubs share one arena, so all show the DEL's own ice),
+# the national teams always show file 501, every other league the home team's own art (AHL, SHL, Liiga, Extraliga, NL,
+# Norway, OHL, WHL played; the QMJHL and the Top Prospects taken to do the same)
+ARENA_ICE_LEAGUES = (0, 4)
+NATIONAL_LEAGUE, NATIONAL_ICE = 8, 501
 ICE_PICTURE = "rendering/icesurface/icesurface_{a}_bm.rpsgl"      # the rink seen from above: the NHL teams' arenas have one
 DECAL = "rendering/logo/texlib_{a}_{s}_{v}.rpsgl"                  # the logo on the helmets (and shoulders) of a version
 PREVIEW = "fe/ion/artassets/jerseys/jersey_{s}_{a}_{v}.big"
@@ -110,6 +138,8 @@ def _mapper(masters, targets, tol, shade):
             r = _dist2(c, p)
             if best is None or r < best[0]:
                 best = (r, a, b, t, p)
+        if best is None:                                   # one colour only: no blends to look for
+            return c
         r, a, b, t, p = best
         if r > (tol * 1.3) ** 2:
             return c
@@ -354,6 +384,126 @@ def _paste_rgba(img, mark, box):
     img.alpha_composite(mark, ((box[0] + box[2] - mark.width) // 2, (box[1] + box[3] - mark.height) // 2))
 
 
+# the pack's own menu picture of a kit (`ui/textures/common/teamjerseysxl/jersey_<cut>_<art>_0_<variant>`, 512 x 512: the
+# shirt alone, turned a little, on a clear ground; the look pack keeps it as `m/<slot>_<role>.webp`) goes onto the game's
+# black figure: the chassis' menu picture without its shirt, the gloves moved under the pack's cuffs. Every pack kit is
+# drawn in the same pose, so the collar and the cuffs sit at the same shares of the shirt's width and height in all of
+# them (measured on 9 kits of the three makes, 2026-10-18).
+MENU_COLLAR = 0.568                            # the collar's middle, share of the shirt's width
+MENU_CUFFS = ((0.15, 0.77), (0.92, 0.74))      # the left and right cuff's lower middle, shares of width and height
+MENU_TUCK = 5                                  # how far a glove reaches up into its sleeve (pixels)
+MENU_REACH = 14                                # how far the neck and the legs go on under the place the shirt was
+Figure = namedtuple('Figure', 'body gloves')
+# body: the figure's alpha ('L'; the figure is black); gloves: ((0 left / 1 right, alpha of the glove, (x, y) of its top
+# middle), ...)
+
+
+def menu_frame(chassis_img, mask):
+    """Where the game's shirt is in the chassis' menu picture: (the middle of the figure's head, (left, top, right, bottom)
+    of the shirt; the mask's rows with at least 20 shirt pixels, so stray pixels do not count)."""
+    mk = mask.load()
+    w, h = mask.size
+    rows = [(y, [x for x in range(w) if mk[x, y]]) for y in range(h)]
+    rows = [(y, xs) for y, xs in rows if len(xs) >= 20]
+    if not rows:
+        return w / 2, (0, 0, w - 1, h - 1)
+    top, bottom = rows[0][0], rows[-1][0]
+    left, right = min(xs[0] for _y, xs in rows), max(xs[-1] for _y, xs in rows)
+    alpha = chassis_img.convert('RGBA').getchannel('A').crop((0, 0, w, max(1, top))).point(lambda v: 255 if v > 40 else 0)
+    head = alpha.getbbox()
+    return ((head[0] + head[2] - 1) / 2 if head else (left + right) / 2), (left, top, right, bottom)
+
+
+def menu_figure(chassis_img, mask, reach=MENU_REACH):
+    """The game's black figure in the chassis' menu picture, without the shirt (a Figure). The figure is pure black, so
+    its alpha is all there is; the shirt's coloured edge pixels outside the mask are left out. The gloves are the figure's
+    parts beside the legs below the shirt's middle; the head and the legs go on `reach` pixels into the place the shirt
+    was, so no gap shows where the pack's shirt is cut another way."""
+    from PIL import Image
+    src = chassis_img.convert('RGBA')
+    sp, mk = src.load(), mask.load()
+    w, h = src.size
+    head_x, (left, top, right, bottom) = menu_frame(chassis_img, mask)
+    fig = Image.new('L', (w, h), 0)
+    fp = fig.load()
+    for y in range(h):
+        for x in range(w):
+            c = sp[x, y]
+            if not mk[x, y] and max(c[:3]) < 64:
+                fp[x, y] = c[3]
+    legs = []                                   # the legs: the run of the figure through the middle below the shirt
+    mid = int(head_x)
+    for y in range(bottom + 1, h):
+        if fp[mid, y] > 40:
+            a = b = mid
+            while a > 0 and fp[a - 1, y] > 40:
+                a -= 1
+            while b < w - 1 and fp[b + 1, y] > 40:
+                b += 1
+            legs.append((a, b))
+    gloves, body = [], fig.copy()
+    if legs:
+        leg_left, leg_right = min(a for a, _b in legs), max(b for _a, b in legs)
+        bp = body.load()
+        for side, beside in enumerate((lambda x: x < leg_left, lambda x: x > leg_right)):
+            glove = Image.new('L', (w, h), 0)
+            gp = glove.load()
+            for y in range((top + bottom) // 2, h):
+                for x in range(w):
+                    if beside(x) and fp[x, y]:
+                        gp[x, y], bp[x, y] = fp[x, y], 0
+            solid = glove.point(lambda v: 255 if v > 40 else 0)
+            box = solid.getbbox()
+            if box is None:
+                continue
+            sx = solid.load()
+            xs = [x for y in range(box[1], min(box[3], box[1] + 6)) for x in range(box[0], box[2]) if sx[x, y]]
+            gloves.append((side, glove, (sum(xs) / len(xs), box[1])))
+    bp = body.load()
+    keep = body.copy()
+    kp = keep.load()
+    for x in range(w):
+        for y in range(h):
+            if mk[x, y] or kp[x, y] <= 40:
+                continue
+            for step in (-1, 1):
+                yy, n = y + step, 0
+                while 0 <= yy < h and mk[x, yy] and n < reach:
+                    bp[x, yy] = max(bp[x, yy], kp[x, y])
+                    yy, n = yy + step, n + 1
+    return Figure(body, tuple(gloves))
+
+
+def menu_picture(chassis_img, mask, kit_menu, figure=None):
+    """The Select Jerseys picture of a kit from the pack's own menu picture `kit_menu` (RGBA, the shirt on a clear ground):
+    the shirt as tall (or as wide) as the game's, its top at the game's shoulders, its collar under the figure's head, on
+    the game's black figure (`figure`: menu_figure, made when not given) with the gloves under the pack's cuffs. 256 x 256
+    RGBA like the game's."""
+    from PIL import Image, ImageChops
+    head_x, (left, top, right, bottom) = menu_frame(chassis_img, mask)
+    figure = figure or menu_figure(chassis_img, mask)
+    shirt = kit_menu.convert('RGBA')
+    box = shirt.getchannel('A').point(lambda v: 255 if v > 16 else 0).getbbox()
+    alpha = figure.body.copy()
+    out = Image.new('RGBA', alpha.size, (0, 0, 0, 0))
+    if box is None:
+        out.putalpha(alpha)
+        return out
+    shirt = shirt.crop(box)
+    scale = min((right - left + 1) / shirt.width, (bottom + 4 - top) / shirt.height)
+    shirt = shirt.resize((max(1, round(shirt.width * scale)), max(1, round(shirt.height * scale))), Image.LANCZOS)
+    x = max(0, min(out.width - shirt.width, round(head_x - MENU_COLLAR * shirt.width)))
+    for side, glove, (gx, gy) in figure.gloves:
+        cx, cy = MENU_CUFFS[side]
+        moved = Image.new('L', alpha.size, 0)
+        moved.paste(glove, (round(x + cx * shirt.width - gx), round(top + cy * shirt.height - MENU_TUCK - gy)))
+        alpha = ImageChops.lighter(alpha, moved)
+    out.putalpha(alpha)
+    layer = Image.new('RGBA', out.size, (0, 0, 0, 0))
+    layer.paste(shirt, (x, top))
+    return Image.alpha_composite(out, layer)
+
+
 # --- the centre-ice logo -----------------------------------------------------------------------------------------
 # measured on the disc's own `centerlogo_<art>_cm` (1024 x 1024 DXT5): an opaque ice-white disc about 388 px in radius
 # with a thin blue ring, the club's logo on it, the arena's name set round it outside the disc (twice: above and
@@ -480,13 +630,21 @@ def finish_centre(img):
 def centre_file(raw, art, logo, arena, colour, picture=None):
     """The team's own centre-ice file with the new picture in it (`picture`: the player's own, else drawn from the logo)."""
     f = rpsgl.Rpsgl(raw)
-    f.replace(f"centerlogo_{art}_cm", finish_centre(picture) if picture is not None else centre_logo(logo, arena, colour))
+    f.replace(f"centerlogo_{art}_cm", finish_centre(picture) if picture is not None else centre_logo(logo, arena, colour),
+              flat=ICE)              # opaque or clear in every level, as the game's own: no hatch (dds.flatten)
     return f.build()
 
 
 def has_ice_picture(art):
     """Does the team's arena have a rink picture on the disc (the NHL teams 0-29 do, not the All-Star slots 30 and 31)?"""
     return art < 30
+
+
+def _ice_picture_wanted(look):
+    """Is the rink picture redrawn with the team's logo? With a new centre-ice logo of an NHL team, except the pack's on a
+    team whose rink picture already shows its own logo (only Utah's shows Arizona's)."""
+    return look.centre != 'game' and has_ice_picture(look.art) and (not look.centre.startswith('pack:')
+                                                                     or look.art in NEW_TEAMS)
 
 
 # where the centre-ice logo sits in the rink picture (512 x 512): its middle, and the half width of what to paint over
@@ -567,22 +725,41 @@ class Chassis:
         return self._get(SOCK.format(s=STYLE, a=CHASSIS_ART, v=CHASSIS[light]))
 
 
-Look = namedtuple('Look', 'art kit logos arena ice_colour versions files centre', defaults=((), 'make'))
+Look = namedtuple('Look', 'art kit logos arena ice_colour versions files centre pack style',
+                  defaults=((), 'make', (), STYLE))
 # art: the team's art id; kit: a Kit; logos: (logo for dark jerseys, logo for light jerseys and the ice) as Pillow pictures;
 # arena: the name on the ice; ice_colour: the colour of that name; versions: ((variant, is the version a light one), ...) made
 # from the colours; files: ((variant, light, path of the player's own colour map), ...); centre: 'make' (drawn from the logo),
-# 'game' (the game's own stays) or the path of the player's own picture
+# 'game' (the game's own stays), 'pack:<member>#<check>' (the pack's, from the look pack) or the path of the player's own
+# picture; pack: (PackKit, ...) the pack's kits; style: the cut of the team's jerseys (1, or 0 for a team of the classic cut:
+# only its pack kits are made then)
+PackKit = namedtuple('PackKit', 'variant light member numbers crc menu', defaults=(None,))
+# a version that gets the pack's kit: the look pack's picture `member` (its check sum `crc`), numbers (fill, outline) or None,
+# menu: the pack's own menu picture of the kit as '<member>#<check sum>' (None: the menu picture is the chassis' recoloured)
+PACK = 'pack'                      # the choice "This season's" (edits.json 'uniforms' versions and 'ice' use)
 
 
-def roster_versions(R, art):
-    """The jersey versions of a team the roster lists (`stockteamjerseys`), style 1 (the one Play Now uses):
-    [(variant, light, isdefault)] sorted; empty when the roster has no such table."""
+def roster_versions(R, art, style=STYLE):
+    """The jersey versions of a team the roster lists (`stockteamjerseys`) in cut `style` (style 1: the one Play Now uses
+    for the NHL): [(variant, light, isdefault)] sorted; empty when the roster has no such table."""
     try:
         t = R.f['wgjx']
     except KeyError:
         return []
     return sorted({(t.get(i, 'variant'), bool(t.get(i, 'islightcolor')), bool(t.get(i, 'isdefault')))
-                   for i in range(t.cur_rec) if t.get(i, 'teamartid') == art and t.get(i, 'style') == STYLE})
+                   for i in range(t.cur_rec) if t.get(i, 'teamartid') == art and t.get(i, 'style') == style})
+
+
+def version_words(R, art, style=STYLE):
+    """{variant: locstring}: the word the game's Select Jerseys shows for each version of a team in cut `style` (0 Home,
+    1 Away, 2 Alternate, others a season's name such as "2009-10 Classic"; lab round 34). Not the colour: the old AHL
+    clubs' light version is their Home one (Charlotte, Utica)."""
+    try:
+        t = R.f['wgjx']
+    except KeyError:
+        return {}
+    return {t.get(i, 'variant'): t.get(i, 'locstring') for i in range(t.cur_rec)
+            if t.get(i, 'teamartid') == art and t.get(i, 'style') == style}
 
 
 def jersey_versions(R, art):
@@ -591,8 +768,149 @@ def jersey_versions(R, art):
     return tuple((v, light) for v, light, _d in roster_versions(R, art) if v in wanted)
 
 
+def art_style(R, art):
+    """The cut (style) of a team's default jerseys in the roster (`stockteamjerseys`), or None when it lists none or two."""
+    try:
+        t = R.f['wgjx']
+    except KeyError:
+        return None
+    styles = {t.get(i, 'style') for i in range(t.cur_rec) if t.get(i, 'teamartid') == art and t.get(i, 'isdefault')}
+    return min(styles) if len(styles) == 1 else None
+
+
+def pack_versions(R, art, style):
+    """{role: (variant, light)}: the versions of a team the pack's kits go on: 'dark' and 'light', the default dark and
+    light versions of the team's cut. The pack gives home and away only (owner, 2026-10-18): the third (`locstring` 2) and
+    every other version stay the game's own, also where the look pack has a third kit."""
+    try:
+        t = R.f['wgjx']
+    except KeyError:
+        return {}
+    rows = sorted((t.get(i, 'variant'), bool(t.get(i, 'islightcolor')))
+                  for i in range(t.cur_rec)
+                  if t.get(i, 'teamartid') == art and t.get(i, 'style') == style and t.get(i, 'isdefault'))
+    out = {}
+    for variant, light in rows:
+        out.setdefault('light' if light else 'dark', (variant, light))
+    return out
+
+
+NHL = range(32)                    # the NHL's slots (their art id is the slot)
+
+
+def team_art(R, slot):
+    """(art id, cut) of a team's jerseys: the cut of its default versions (`art_style`), style 1 for the NHL (Play Now's
+    cut) and when the roster lists none or two."""
+    art = R.T.get(slot, 'artid')
+    style = None if slot in NHL else art_style(R, art)
+    return art, STYLE if style is None else style
+
+
+def jersey_owner(R, slot):
+    """The slot whose jerseys these are: the lowest slot with the same art id (the Winter Classic, EASHL and Top Prospects
+    teams share an NHL team's or each other's)."""
+    T = R.T
+    art = T.get(slot, 'artid')
+    return next(s for s in range(T.cur_rec) if T.get(s, 'artid') == art)
+
+
+def team_versions(R, slot):
+    """[(variant, light, isdefault)]: the versions of a team the Roster editor offers and the update makes: every style-1
+    version of an NHL team (Utah, Seattle and Vegas: DEFAULT_VERSIONS when the roster lists none), only the home and away
+    (default) versions of the team's cut elsewhere (owner, 2026-10-18: the others stay Legacy's own)."""
+    art, style = team_art(R, slot)
+    listed = roster_versions(R, art, style)
+    if slot in NHL:
+        return listed or [(v, light, False) for v, light in DEFAULT_VERSIONS.get(slot, ())]
+    return [row for row in listed if row[2]]
+
+
+def club_logos(R, leagues):
+    """{slot: logo link} of the clubs of the data pack's leagues (`leagues`, datasource: 'leagues') that roster `R` holds
+    in their slots (a league left out of the update leaves other teams there)."""
+    out = {}
+    for league in (leagues or {}).values():
+        for t in league.get('teams') or []:
+            if t.get('logo') and not t.get('own') and R.T.get(t['slot'], 'JkmY') == t.get('full'):
+                out[t['slot']] = t['logo']
+    return out
+
+
+def editable(R, slot):
+    """Why the Roster editor cannot change the jerseys and ice of slot `slot` (a sentence for the player), or None when it
+    can."""
+    if not isinstance(slot, int) or not 0 <= slot < R.T.cur_rec:
+        return "Pick a team first."
+    if not team_versions(R, slot):
+        return "The game has no jerseys of its own for this team."
+    owner = jersey_owner(R, slot)
+    if owner != slot:
+        return f"This team wears the jerseys of {R.team_name(owner)}: change them there."
+    return None
+
+
+def number_roles(fill, outline, light):
+    """Colours for `recolour(chassis number sheet, MASTERS, roles)`: the chassis' dark sheet (v3) has a white fill with red
+    and black outlines, its light sheet (v4) a red fill with white and black outlines."""
+    return (fill, outline, outline) if light else (outline, outline, fill)
+
+
+def sheet_colours(font):
+    """The one or two colours a number sheet is painted in (fill, then outline when it has one): its most common opaque
+    colours, a second one only when it covers 5 % as much as the first and differs clearly."""
+    from PIL import Image
+    img = font.convert('RGBA').resize((256, 256), Image.NEAREST)
+    counts, raw = {}, img.tobytes()
+    for i in range(0, len(raw), 4):
+        if raw[i + 3] > 200:
+            key = (raw[i] // 8, raw[i + 1] // 8, raw[i + 2] // 8)
+            counts[key] = counts.get(key, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    if not ranked:
+        return ()
+    fill = tuple(v * 8 + 4 for v in ranked[0][0])
+    for key, n in ranked[1:]:
+        colour = tuple(v * 8 + 4 for v in key)
+        if n < ranked[0][1] * 0.05:
+            break
+        if _dist2(colour, fill) > 60 * 60:
+            return fill, colour
+    return (fill,)
+
+
+def recolour_sheet(font, fill, outline):
+    """A version's own number sheet (style 0: each club has its own lettering) in the pack's number colours."""
+    own = sheet_colours(font)
+    if not own:
+        return font.convert('RGBA')
+    return recolour(font, own, (fill, outline)[:len(own)], tol=48)
+
+
+def median_picture(pictures):
+    """The per-pixel median of an odd number of same-sized pictures, band by band (min / max only, so it is exact and the
+    same on every PC)."""
+    from PIL import Image, ImageChops
+    mode = pictures[0].mode
+    bands = []
+    for b in range(len(pictures[0].getbands())):
+        column = [p.getchannel(b) for p in pictures]
+        n = len(column)
+        for rnd in range(n):                               # odd-even transposition sort: n rounds sort n values
+            for i in range(rnd % 2, n - 1, 2):
+                lo, hi = ImageChops.darker(column[i], column[i + 1]), ImageChops.lighter(column[i], column[i + 1])
+                column[i], column[i + 1] = lo, hi
+        bands.append(column[n // 2])
+    return Image.merge(mode, bands)
+
+
+# style 0's relief and shine: the median of these clubs' own (art, variant): their folds agree, their embossed crests do not
+RELIEF_FROM = ((36, 0), (37, 0), (180, 0), (183, 0), (187, 0), (190, 0), (280, 0), (283, 0), (290, 0), (320, 0), (325, 0))
+# the shine map's glossy spots most versions carry (crest, league patch, shoulder patches, back tag): flattened
+SHINE_FLAT = ((415, 705, 625, 900), (565, 605, 675, 670), (140, 405, 270, 530), (754, 405, 884, 530), (460, 25, 564, 190))
+
+
 def _corr(a, b):
-    pa, pb = list(a.getdata()), list(b.getdata())
+    pa, pb = list(a.tobytes()), list(b.tobytes())     # one channel ('L'): a byte per pixel
     ma, mb = sum(pa) / len(pa), sum(pb) / len(pb)
     num = sum((x - ma) * (y - mb) for x, y in zip(pa, pb))
     den = math.sqrt(sum((x - ma) ** 2 for x in pa) * sum((y - mb) ** 2 for y in pb))
@@ -623,26 +941,185 @@ def sample_palette(chassis_cm, user_cm):
     return tuple(tuple(round(s[i + 1] / s[0]) for i in range(3)) if s[0] else MASTERS[k] for k, s in enumerate(sums))
 
 
-def crest_of(user_cm, body):
-    """The crest of a player's own colour map as a transparent picture: what differs from the body colour in the crest's box."""
+def kit_palette(chassis_cm, kit_cm, light):
+    """The colours of an pack kit for the pants, socks and menu picture: Palette(body, yoke, trim, pants, None). Each of
+    body, yoke and trim is the kit's median colour where the chassis has that colour (a mean blends the stripes the warp
+    moves a little); a stripe colour (trim of a dark shirt, body of a light one) that came out as the shirt's own colour
+    takes the kit's next common colour; the pants are the darkest colour that covers 4 % of the kit."""
+    from PIL import Image
+    small = (256, 256)
+    base = chassis_cm.convert('RGB').resize(small, Image.BOX)
+    mine = kit_cm.convert('RGB').resize(small, Image.BOX)
+    skip = [tuple(c // 4 for c in box) for box in (CREST,) + SHOULDER]
+    regions, counts, total = [[] for _ in MASTERS], {}, 0
+    bp, mp = base.load(), mine.load()
+    for y in range(small[1]):
+        for x in range(small[0]):
+            if any(b[0] - 3 <= x <= b[2] + 3 and b[1] - 3 <= y <= b[3] + 3 for b in skip):
+                continue
+            u = mp[x, y]
+            key = (u[0] // 16, u[1] // 16, u[2] // 16)
+            counts[key] = counts.get(key, 0) + 1
+            total += 1
+            c = bp[x, y]
+            k = min(range(3), key=lambda i: _dist2(c, MASTERS[i]))
+            if _dist2(c, MASTERS[k]) <= 25 * 25:
+                regions[k].append(u)
+    picked = []                                     # the kit's colours, most common first, each clearly another
+    for key, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+        c = tuple(v * 16 + 8 for v in key)
+        if n >= total * 0.02 and all(_dist2(c, o) > 60 * 60 for o, _n in picked):
+            picked.append((c, n))
+    roles = [tuple(sorted(u[i] for u in got)[len(got) // 2] for i in range(3)) if got else MASTERS[k]
+             for k, got in enumerate(regions)]
+    main, stripe = (2, 0) if light else (0, 2)
+    if _dist2(roles[stripe], roles[main]) < 48 * 48:
+        roles[stripe] = next((c for c, _n in picked if _dist2(c, roles[main]) > 60 * 60), roles[stripe])
+    dark = [c for c, n in picked if n >= total * 0.04] or [roles[1]]
+    pants = min(dark, key=lambda c: (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2], c))
+    return Palette(roles[0], roles[1], roles[2], pants, None)
+
+
+def crest_of(user_cm):
+    """The crest of a colour map as a transparent picture: what differs in the crest's box from the shirt around it (the
+    median colour of the box's edge; the shirt's mean colour would leave a box round the crest on a striped or shaded
+    shirt)."""
     from PIL import Image, ImageChops, ImageFilter
     region = user_cm.convert('RGB').crop(CREST)
-    diff = ImageChops.difference(region, Image.new('RGB', region.size, tuple(body))).convert('L')
-    alpha = diff.point(lambda v: 0 if v < 24 else min(255, v * 4)).filter(ImageFilter.GaussianBlur(0.6))
+    w, h = region.size
+    px = region.load()
+    edge = [px[x, y] for x in range(w) for y in (0, 1, h - 2, h - 1)] + \
+           [px[x, y] for y in range(2, h - 2) for x in (0, 1, w - 2, w - 1)]
+    key = tuple(sorted(c[i] for c in edge)[len(edge) // 2] for i in range(3))
+    diff = ImageChops.difference(region, Image.new('RGB', region.size, key)).convert('L')
+    alpha = diff.point(lambda v: 0 if v < 40 else min(255, (v - 40) * 4)).filter(ImageFilter.GaussianBlur(0.6))
     out = region.convert('RGBA')
     out.putalpha(alpha)
     return out
 
 
-class Maker:
-    """Makes the files of a look from the player's disc. Heavy parts are made once and kept: the chassis, the shirt mask."""
+def _full_size(img):
+    """A colour map as 1024 x 1024 RGB."""
+    from PIL import Image
+    img = img.convert('RGB')
+    return img if img.size == (1024, 1024) else img.resize((1024, 1024), Image.LANCZOS)
 
-    def __init__(self, disc):
+
+class Maker:
+    """Makes the files of a look from the player's disc. Heavy parts are made once and kept: the chassis, the shirt mask,
+    style 0's relief. `look_pack`: the program's pack pictures (art/lookpack.py), for looks with pack kits."""
+
+    def __init__(self, disc, look_pack=None):
         self.disc = disc
+        self.look_pack = look_pack
         self.chassis = Chassis(disc)
         self._mask = None
+        self._figure = None
         self._previews = {}
         self._layout = {}
+        self._relief0 = None
+
+    def _has(self, inner):
+        has = getattr(self.disc, 'has', None)
+        return True if has is None else has(inner)
+
+    def style0_relief(self):
+        """(file, its name part) of a style-0 jersey whose relief and shine are the median of `RELIEF_FROM` (the clubs'
+        shared folds without their embossed crests), made once; None when the disc has fewer than three of them."""
+        if self._relief0 is None:
+            found = []
+            for art, variant in RELIEF_FROM:
+                raw = self.disc.render(JERSEY.format(s=0, a=art, v=variant))
+                if raw is not None:
+                    found.append((rpsgl.Rpsgl(raw), f"0_{art}_{variant}"))
+            if len(found) % 2 == 0:
+                found = found[:-1]
+            self._relief0 = False
+            if len(found) >= 3:
+                base, name = found[0]
+                base.replace(f"jersey_{name}_0_nm", median_picture([f.image(f"jersey_{n}_0_nm") for f, n in found]))
+                base.replace(f"jersey_{name}_sm",
+                             flatten(median_picture([f.image(f"jersey_{n}_sm") for f, n in found]), SHINE_FLAT))
+                self._relief0 = (base, name)
+        return self._relief0 or None
+
+    def chassis_cm(self, light):
+        return self.chassis.jersey(light).image(f"jersey_{STYLE}_{CHASSIS_ART}_{CHASSIS[light]}_cm")
+
+    def cut_paths(self, look, variant):
+        """The files a version written in its own cut writes (an pack kit, or the player's picture in the classic cut):
+        the jersey, the pants, socks and menu picture the disc has."""
+        return [p for p in (t.format(s=look.style, a=look.art, v=variant) for t in (JERSEY, PANT, SOCK, PREVIEW))
+                if self._has(p)]
+
+    def pack_paths(self, look, kit):
+        """The files one pack kit writes: the jersey, the pants, socks and menu picture."""
+        return self.cut_paths(look, kit.variant)
+
+    def pack_files(self, look, kit):
+        """{path: bytes} of one version in the pack's kit (see the module's text)."""
+        light = kit.light
+        mine = _full_size(self.look_pack.picture(kit.member))
+        palette = kit_palette(self.chassis_cm(light), mine, light)
+        palette = palette._replace(font=number_roles(*kit.numbers, light) if kit.numbers
+                                   else (palette.yoke, palette.yoke, palette.trim))
+        # the menu picture is the pack's own (pack_preview), in both cuts
+        return self.cut_files(look, kit.variant, light, mine, palette, kit.numbers,
+                              lambda raw: self.pack_preview(raw, kit, light, palette, mine))
+
+    def cut_files(self, look, variant, light, mine, palette, numbers, preview):
+        """{path: bytes} of one version with the colour map `mine` (1024 x 1024 RGB) in the team's cut: style 1 on the
+        chassis' relief and number sheet, the classic cut in the version's own file with a clean relief and its own number
+        sheet (recoloured to `numbers` (fill, outline) when given). Pants and socks have one layout in both cuts: the
+        chassis' in `palette`; `preview(raw)` makes the menu picture from the disc's."""
+        art, style = look.art, look.style
+        inner = JERSEY.format(s=style, a=art, v=variant)
+        raw = self.disc.render(inner)
+        if raw is None:
+            return {}
+        if style != STYLE:                          # the classic cut: the version's own file, a clean relief, own numbers
+            f = rpsgl.Rpsgl(raw)
+            name = f"{style}_{art}_{variant}"
+            if f"jersey_{name}_cm" not in f.rasters:
+                return {}
+            f.replace(f"jersey_{name}_cm", mine)
+            relief = self.style0_relief() if style == 0 else None
+            if relief is not None:
+                src, base = relief
+                for part in ('0_nm', 'sm'):
+                    if f"jersey_{name}_{part}" in f.rasters:
+                        f.copy(f"jersey_{name}_{part}", src, f"jersey_{base}_{part}")
+            if numbers and f"font_{name}_cm" in f.rasters:
+                f.replace(f"font_{name}_cm", recolour_sheet(f.image(f"font_{name}_cm"), *numbers))
+            out = {inner: f.build()}
+        else:
+            out = {inner: jersey_file(raw, art, variant, self.chassis, light, palette, None, colour_map=mine)}
+        for path_t, make in ((PANT, pant_file), (SOCK, sock_file)):
+            inner = path_t.format(s=style, a=art, v=variant)
+            raw = self.disc.render(inner)
+            if raw is not None:
+                out[inner] = make(raw, art, variant, self.chassis, light, palette, style)
+        inner = PREVIEW.format(s=style, a=art, v=variant)
+        raw = self.disc.find(inner)
+        if raw is not None:
+            out[inner] = preview(raw)
+        return out
+
+    def pack_preview(self, raw, kit, light, palette, colour_map):
+        """The Select Jerseys picture (bytes of the version's .big `raw`) of a pack kit: the pack's own menu picture of the kit
+        on the game's figure (menu_picture), or, for a kit the pack has none for, the chassis' picture in the kit's colours
+        with the crest of its colour map."""
+        from . import install
+        member = (kit.menu or '').split('#')[0]
+        if member and self.look_pack.has(member):
+            return install.art_file(raw, self.menu_preview(self.look_pack.picture(member)))
+        return preview_file(self.preview_of_chassis(light), self.mask(), palette, crest_of(colour_map), raw)
+
+    def menu_preview(self, kit_menu):
+        """the pack's menu picture of a kit on the game's figure (menu_picture; the figure is made once)."""
+        if self._figure is None:
+            self._figure = menu_figure(self.preview_of_chassis(False), self.mask())
+        return menu_picture(self.preview_of_chassis(False), self.mask(), kit_menu, self._figure)
 
     def preview_of_chassis(self, light):
         if light not in self._previews:
@@ -659,8 +1136,11 @@ class Maker:
         key = next((k for k in f.rasters if k.startswith('jersey') and k.endswith('_nm')), None)
         return None if key is None else f.image(key).getchannel('A').resize((128, 128), Image.BOX)
 
-    def standard(self, art, variant):
-        """Is this version painted on the shared shirt layout (its relief map agrees with the chassis' by 90 %)?"""
+    def standard(self, art, variant, style=STYLE):
+        """Is this version painted on the shared shirt layout (its relief map agrees with the chassis' by 90 %)? Never in
+        the classic cut (style 0)."""
+        if style != STYLE:
+            return False
         key = (art, variant)
         if key not in self._layout:
             raw = self.disc.render(JERSEY.format(s=STYLE, a=art, v=variant))
@@ -672,13 +1152,17 @@ class Maker:
             self._layout[key] = ok
         return self._layout[key]
 
-    def thumbnail(self, art, variant, light, kind, logo=None, colours=None, picture=None):
+    def thumbnail(self, art, variant, light, kind, logo=None, colours=None, picture=None, menu=None, style=STYLE):
         """A small picture of what a version will look like: 'game' the disc's own menu picture, 'colours' made from
-        `colours` ((primary, secondary)) and `logo`, 'file' made from the player's own colour map `picture`."""
-        if kind == 'game' or (kind == 'file' and not self.standard(art, variant)):
+        `colours` ((primary, secondary)) and `logo`, 'file' made from the player's own colour map `picture`; with `menu`
+        (the pack's own menu picture of a pack kit, kind PACK or 'file') the picture the install makes from it. `style`:
+        the team's cut."""
+        if menu is not None:
+            return self.menu_preview(menu)
+        if kind == 'game' or (kind == 'file' and not self.standard(art, variant, style)):
             if kind == 'file':
                 return picture.convert('RGB').resize((256, 256))
-            raw = self.disc.find(PREVIEW.format(s=STYLE, a=art, v=variant))
+            raw = self.disc.find(PREVIEW.format(s=style, a=art, v=variant))
             return None if raw is None else preview_picture(raw)
         if kind == 'colours':
             kit = kit_for(*colours)
@@ -686,12 +1170,12 @@ class Maker:
         chassis_cm = self.chassis.jersey(light).image(f"jersey_{STYLE}_{CHASSIS_ART}_{CHASSIS[light]}_cm")
         body, yoke, trim = sample_palette(chassis_cm, picture)
         return preview_image(self.preview_of_chassis(light), self.mask(), Palette(body, yoke, trim, yoke, (yoke,) * 2 + (trim,)),
-                             crest_of(picture, body))
+                             crest_of(picture))
 
-    def own_colour_map(self, art, variant):
-        """The disc's own colour map of a version (1024 x 1024), the starting point to paint on."""
-        raw = self.disc.render(JERSEY.format(s=STYLE, a=art, v=variant))
-        return None if raw is None else rpsgl.Rpsgl(raw).image(f"jersey_{STYLE}_{art}_{variant}_cm")
+    def own_colour_map(self, art, variant, style=STYLE):
+        """The disc's own colour map of a version (1024 x 1024) in the team's cut, the starting point to paint on."""
+        raw = self.disc.render(JERSEY.format(s=style, a=art, v=variant))
+        return None if raw is None else rpsgl.Rpsgl(raw).image(f"jersey_{style}_{art}_{variant}_cm")
 
     def own_centre(self, art):
         raw = self.disc.render(CENTRE.format(a=art))
@@ -703,12 +1187,17 @@ class Maker:
         for variant, _light in look.versions:
             out += [t.format(s=STYLE, a=look.art, v=variant) for t in (JERSEY, PANT, SOCK, PREVIEW, DECAL)]
         for variant, _light, _path in look.files:
+            if look.style != STYLE:
+                out += self.cut_paths(look, variant)
+                continue
             out.append(JERSEY.format(s=STYLE, a=look.art, v=variant))
             if self.standard(look.art, variant):
                 out += [t.format(s=STYLE, a=look.art, v=variant) for t in (PANT, SOCK, PREVIEW)]
+        for kit in look.pack:
+            out += self.pack_paths(look, kit)
         if look.centre != 'game':
-            out.append(CENTRE.format(a=look.art))
-            if has_ice_picture(look.art):
+            out += [p for p in (CENTRE.format(a=look.art),) if self._has(p)]   # the national teams' arenas have none
+            if _ice_picture_wanted(look):
                 out.append(ICE_PICTURE.format(a=look.art))
         return out
 
@@ -739,7 +1228,14 @@ class Maker:
         for variant, light, path in look.files:
             mine = Image.open(path)
             mine.load()
-            mine = mine.convert('RGB').resize((1024, 1024), Image.LANCZOS) if mine.size != (1024, 1024) else mine.convert('RGB')
+            mine = _full_size(mine)
+            if look.style != STYLE:                 # the classic cut: as the pack's kits go (cut_files), in the picture's colours
+                palette = kit_palette(self.chassis_cm(light), mine, light)
+                palette = palette._replace(font=(palette.yoke, palette.yoke, palette.trim))
+                out.update(self.cut_files(look, variant, light, mine, palette, None,
+                                          lambda raw, palette=palette, mine=mine: preview_file(
+                                              self.preview_of_chassis(light), self.mask(), palette, crest_of(mine), raw)))
+                continue
             inner = JERSEY.format(s=STYLE, a=art, v=variant)
             raw = self.disc.render(inner)
             if raw is None:
@@ -762,8 +1258,10 @@ class Maker:
             inner = PREVIEW.format(s=STYLE, a=art, v=variant)
             raw = self.disc.find(inner)
             if raw is not None:
-                out[inner] = preview_file(self.preview_of_chassis(light), self.mask(), palette, crest_of(mine, body), raw)
-        if look.centre != 'game' and has_ice_picture(art):
+                out[inner] = preview_file(self.preview_of_chassis(light), self.mask(), palette, crest_of(mine), raw)
+        for kit in look.pack:
+            out.update(self.pack_files(look, kit))
+        if look.centre != 'game' and _ice_picture_wanted(look):
             raw = self.disc.render(ICE_PICTURE.format(a=art))
             if raw is not None:
                 out[ICE_PICTURE.format(a=art)] = ice_picture_file(raw, art, look.logos[1])
@@ -772,7 +1270,9 @@ class Maker:
             raw = self.disc.render(inner)
             if raw is not None:
                 picture = None
-                if look.centre != 'make':
+                if look.centre.startswith('pack:'):
+                    picture = self.look_pack.picture(look.centre[5:].split('#')[0])
+                elif look.centre != 'make':
                     picture = Image.open(look.centre)
                     picture.load()
                     picture = picture.convert('RGBA').resize((1024, 1024), Image.LANCZOS) if picture.size != (1024, 1024) \
@@ -798,26 +1298,29 @@ def jersey_file(raw, art, variant, chassis, light, palette, logo, colour_map=Non
     return f.build()
 
 
-def pant_file(raw, art, variant, chassis, light, palette):
+def pant_file(raw, art, variant, chassis, light, palette, style=STYLE):
     f = rpsgl.Rpsgl(raw)
     src, v = chassis.pant(light), CHASSIS[light]
-    base, mine = f"pant_{STYLE}_{CHASSIS_ART}_{v}", f"pant_{STYLE}_{art}_{variant}"
+    base, mine = f"pant_{STYLE}_{CHASSIS_ART}_{v}", f"pant_{style}_{art}_{variant}"
     f.replace(f"{mine}_cm", recolour(src.image(f"{base}_cm"), PANT_MASTERS, (palette.pants, palette.trim)))
     f.copy(f"{mine}_nm", src, f"{base}_nm")
     f.copy(f"{mine}_sm", src, f"{base}_sm")
     return f.build()
 
 
-def sock_file(raw, art, variant, chassis, light, palette):
+def sock_file(raw, art, variant, chassis, light, palette, style=STYLE):
     f = rpsgl.Rpsgl(raw)
     src, v = chassis.sock(light), CHASSIS[light]
-    f.replace(f"sock_{STYLE}_{art}_{variant}_cm",
+    f.replace(f"sock_{style}_{art}_{variant}_cm",
               recolour(src.image(f"sock_{STYLE}_{CHASSIS_ART}_{v}_cm"), MASTERS, (palette.body, palette.yoke, palette.trim)))
     return f.build()
 
 
 # --- choosing and installing the looks -------------------------------------------------------------------------------
-LOOKS_DRAWING = '#2'               # a change in how the pictures are drawn redraws every installed look once
+LOOKS_DRAWING = '#6'               # a change in how the pictures are drawn redraws every installed look once
+# '#4' (2026-10-18): the pack's own menu pictures for the pack kits; '#5': the DXT5 blocks and alpha-weighted mips of
+# art/dds.py (dds.mipmaps, Rpsgl.replace(coverage=)), docs/notes/centre-ice-quality.md; '#6': the centre ice flattened
+# onto the ice's white, opaque or clear (dds.flatten; lab round 32)
 NEW_TEAMS = {22: 'UTA', 30: 'SEA', 31: 'VGK'}        # slot -> NHL.com code (the logo)
 # the versions that use the shared layout, with the roster's own flag for a light jersey (`stockteamjerseys`: the same in
 # the game's own roster and the community's): Utah style 1 v0 v3 dark, v1 v4 light; Seattle v3 v4 dark, v2 v5 light;
@@ -862,6 +1365,21 @@ def parse_colour(text, fallback):
         return tuple(fallback)
 
 
+def window_team(R, slot):
+    """(the slot whose Jerseys and ice window opens when the player picks slot `slot`, why none opens or None): a
+    custom team its own (its create-a-team look, custom_kit.py), a team wearing another team's jerseys (the Winter
+    Classic teams, EASHL 2) that team's, else its own where `editable`."""
+    from .. import custom_kit
+    if custom_kit.is_custom(slot) and slot < R.T.cur_rec:
+        return slot, None
+    why = editable(R, slot)
+    if why and isinstance(slot, int) and 0 <= slot < R.T.cur_rec:
+        owner = jersey_owner(R, slot)
+        if owner != slot and editable(R, owner) is None:
+            return owner, None
+    return slot, why
+
+
 def team_colours(R, slot):
     """A team's two colours as the roster has them: (primary, secondary)."""
     T = R.T
@@ -875,54 +1393,283 @@ def team_arena(R, slot):
         return ""
 
 
+def shown_centre(R, slot):
+    """The art id of the centre-ice file the game shows at slot `slot`'s home games (ARENA_ICE_LEAGUES)."""
+    T = R.T
+    league = T.get(slot, 'league')
+    if league == NATIONAL_LEAGUE:
+        return NATIONAL_ICE
+    if league in ARENA_ICE_LEAGUES:
+        try:
+            return R.f['OEtS'].get(T.get(slot, 'arenaid'), 'arenaartid')
+        except (KeyError, IndexError):
+            pass
+    return T.get(slot, 'artid')
+
+
+def centre_owners(R):
+    """{art id of a centre-ice file: how many teams' home games show it} for every team of roster `R`."""
+    owners = {}
+    for slot in range(R.T.cur_rec):
+        art = shown_centre(R, slot)
+        owners[art] = owners.get(art, 0) + 1
+    return owners
+
+
+def ice_group(R, slot):
+    """(art id of the centre-ice file, [slots]) when slot `slot`'s home games show a centre ice that other teams' home
+    games show too and none of them is an NHL team: the national teams (501), the DEL's clubs (their arena's 197), EASHL
+    1 and 2 (255). The player's own picture goes onto that file for all of them (owner, 2026-10-20). None otherwise."""
+    if not isinstance(slot, int) or not 0 <= slot < R.T.cur_rec or slot in NHL:
+        return None
+    shown = shown_centre(R, slot)
+    members = [s for s in range(R.T.cur_rec) if shown_centre(R, s) == shown]
+    if len(members) < 2 and R.T.get(slot, 'league') != NATIONAL_LEAGUE or any(s in NHL for s in members):
+        return None
+    return shown, members
+
+
+def ice_note(R, slot):
+    """The window's note on a shared centre ice (ice_group), or None."""
+    group = ice_group(R, slot)
+    if group is None:
+        return None
+    league = R.T.get(slot, 'league')
+    if league == NATIONAL_LEAGUE:
+        return "All national teams play on this ice: a change shows at every national team's home games."
+    if league == 4:
+        return "All DEL clubs play on this ice: a change shows at every DEL club's home games."
+    names = [R.team_name(s) for s in group[1]]
+    return f"{', '.join(names[:-1])} and {names[-1]} play on this ice: a change shows at all their home games."
+
+
+def own_ice(R, slot, owners):
+    """Why a new centre ice of a club outside the NHL (slot `slot`: the pack's or the player's own) would not show at its
+    home games, or None when it would: the game shows another file there, or one that other teams' home games show too
+    (`owners`, centre_owners). A picture of the player's own on a shared ice goes to the group's file instead
+    (ice_group, looks_from)."""
+    shown = shown_centre(R, slot)
+    if R.T.get(slot, 'league') == NATIONAL_LEAGUE:
+        return "the national teams all play on the game's international centre ice"
+    if owners.get(shown, 0) > 1:
+        return "its home games show a centre ice that other teams' home games show too"
+    if shown != R.T.get(slot, 'artid'):
+        return "its home games show its arena's centre ice"
+    return None
+
+
 def _ink(colour):
     """A colour for the arena's name that can be read on ice-white."""
     return colour if 0.3 * colour[0] + 0.59 * colour[1] + 0.11 * colour[2] < 150 else (32, 32, 32)
 
 
-def looks_from(R, edits_by_slot, logo_links, nhl_logos, pack=None, cache=None):
-    """The looks to install: Utah, Seattle and Vegas as the update makes them, and every team the player gave a look in the
-    Roster editor (edits.json 'uniforms' / 'ice', see edits.py). `R` is the new roster; `logo_links` {slot: logo link}.
-    A version the player left alone stays the game's own (except for the three teams, where it is made from the colours)."""
-    from .. import builder
+PackTeam = namedtuple('PackTeam', 'art style kits centre why')
+# a team of the look pack in the player's roster: its art id and cut, {variant: PackKit}, the centre ice ('pack:...' or
+# None) and why it is left out (None when it is not)
+PLAIN_KIT = Kit(Palette(*(((0, 0, 0),) * 4), ((0, 0, 0),) * 3), Palette(*(((0, 0, 0),) * 4), ((0, 0, 0),) * 3))
+
+
+def pack_team(R, slot, look_pack):
+    """What the look pack has for slot `slot` of roster `R` (a PackTeam), or None when it has nothing for it."""
+    team = (look_pack.teams if look_pack is not None else {}).get(slot)
+    if team is None:
+        return None
+    art = R.T.get(slot, 'artid')
+    if not look_pack.holds(slot, R):
+        return PackTeam(art, None, {}, None, f"the team in its place is not {team.get('name')} (its league was left out "
+                                              "of the update?)")
+    style = art_style(R, art)
+    if style != team.get('style'):
+        return PackTeam(art, style, {}, None, "its jerseys in the roster are cut another way")
+    places = pack_versions(R, art, style)
+    kits = {}
+    for role, entry in sorted((team.get('kits') or {}).items()):
+        member = look_pack.jersey_member(slot, role)
+        if role in places and look_pack.has(member):
+            variant, light = places[role]
+            numbers = tuple(tuple(c) for c in entry['numbers']) if entry.get('numbers') else None
+            menu = look_pack.menu_member(slot, role)
+            kits[variant] = PackKit(variant, light, member, numbers, look_pack.crc(member),
+                                    f"{menu}#{look_pack.crc(menu)}" if look_pack.has(menu) else None)
+    member = look_pack.ice_member(slot)
+    centre = f"pack:{member}#{look_pack.crc(member)}" if team.get('ice') and look_pack.has(member) else None
+    why = None if kits or centre else "the roster lists none of its jerseys"
+    return PackTeam(art, style, kits, centre, why)
+
+
+def default_use(slot, variant, light, kits):
+    """What a version of an NHL team becomes when the player chose nothing: the pack's kit when the look pack has one for it
+    (`kits` {variant: PackKit}), else made from the colours (Utah, Seattle, Vegas), else the game's own."""
+    if variant in kits:
+        return PACK
+    return 'colours' if (variant, light) in DEFAULT_VERSIONS.get(slot, ()) else 'game'
+
+
+def default_ice(slot, centre):
+    """The centre ice of an NHL team when the player chose nothing: the pack's (`centre` not None), else drawn from the logo
+    (Utah, Seattle, Vegas), else the game's own."""
+    return PACK if centre else 'logo' if slot in NEW_TEAMS else 'game'
+
+
+def _choose(slot, versions_listed, choice, kits, style=STYLE, drawn=True):
+    """(versions made from the colours, the player's pictures, the pack's kits) of a team's versions: the player's choice
+    `choice` {variant: use} or what the update does by itself (default_use). 'colours' needs the shared layout's cut and
+    a logo where the look is one of Utah's, Seattle's, Vegas's (`drawn`)."""
+    versions, files, packed = [], [], []
+    for variant, light, _d in versions_listed:
+        use = choice.get(str(variant)) or default_use(slot, variant, light, kits)
+        if use == PACK and variant not in kits:          # no pack in this program: as if the player chose nothing
+            use = default_use(slot, variant, light, {})
+        if use == PACK:
+            packed.append(kits[variant])
+        elif use == 'colours' and drawn and style == STYLE:
+            versions.append((variant, light))
+        elif use.startswith('file:'):
+            files.append((variant, light, use[5:]))
+    return versions, files, packed
+
+
+def _centre(slot, ice, pack_centre):
+    """The centre ice a team's look gets: 'make', 'game', the pack's ('pack:...') or the player's picture (a path)."""
+    use = ice.get('use') or default_ice(slot, pack_centre)
+    if use == PACK and not pack_centre:
+        use = default_ice(slot, None)
+    return 'make' if use == 'logo' else 'game' if use == 'game' else pack_centre if use == PACK else use[5:]
+
+
+def _logos(link, pack, cache):
     from . import install
-    out = []
-    for slot in sorted(set(NEW_TEAMS) | {s for s in edits_by_slot if 0 <= s < 32}):
-        e = edits_by_slot.get(slot) or {}
-        mine, ice = e.get('uniforms') or {}, e.get('ice') or {}
-        default = slot in NEW_TEAMS
-        if default:
-            arena, _city, primary, secondary = builder.NHL_LOOK[slot]
+    return team_logo(link, pack, cache), team_logo(install.plain_logo_url(link), pack, cache)
+
+
+def _nhl_look(R, slot, team, e, logo_links, nhl_logos, pack, cache):
+    """The look of NHL team `slot` (every version the window offers; Utah, Seattle and Vegas made from the colours)."""
+    from .. import builder
+    kits = team.kits if team is not None else {}
+    pack_centre = team.centre if team is not None else None
+    mine, ice = e.get('uniforms') or {}, e.get('ice') or {}
+    default = slot in NEW_TEAMS
+    if default:
+        arena, _city, primary, secondary = builder.NHL_LOOK[slot]
+    else:
+        primary, secondary = team_colours(R, slot)
+        arena = team_arena(R, slot)
+    c = mine.get('colours') or {}
+    primary, secondary = parse_colour(c.get('primary'), primary), parse_colour(c.get('secondary'), secondary)
+    arena = ice.get('arena') or arena
+    link = c.get('crest') or logo_links.get(slot) or (nhl_logos or {}).get(NEW_TEAMS.get(slot, ''))
+    drawn = True                                # can versions be made from the colours (is there a logo)?
+    if link is None and default:
+        drawn = False
+    logos = (None, None)
+    if link:
+        try:
+            logos = _logos(link, pack, cache)
+        except Exception:
+            if default:
+                drawn = False
+    if not drawn and not kits and not pack_centre:
+        return None
+    versions, files, packed = _choose(slot, team_versions(R, slot), mine.get('versions') or {}, kits,
+                                      drawn=drawn or not default)
+    centre = _centre(slot, ice, pack_centre)
+    if centre == 'make' and not drawn:
+        centre = 'game'
+    if not versions and not files and not packed and centre == 'game':
+        return None
+    return Look(slot, kit_for(primary, secondary), logos, arena, _ink(secondary), tuple(versions), tuple(files), centre,
+                tuple(packed), STYLE)
+
+
+def _club_look(R, slot, team, e, logo_links, pack, cache, owners, no_ice, shared=None):
+    """The look of a team outside the NHL the player chose jerseys or ice for (its home and away versions, its cut). The
+    player's own picture on a shared centre ice (ice_group) goes into `shared` {art id: (slot, picture)} instead: the
+    lowest slot of a group that set one wins."""
+    art, style = team_art(R, slot)
+    usable = team is not None and not team.why
+    kits = team.kits if usable else {}
+    pack_centre = team.centre if usable else None
+    mine, ice = e.get('uniforms') or {}, e.get('ice') or {}
+    c = mine.get('colours') or {}
+    primary, secondary = team_colours(R, slot)
+    primary, secondary = parse_colour(c.get('primary'), primary), parse_colour(c.get('secondary'), secondary)
+    arena = ice.get('arena') or team_arena(R, slot)
+    versions, files, packed = _choose(slot, team_versions(R, slot), mine.get('versions') or {}, kits, style)
+    centre = _centre(slot, ice, pack_centre)
+    group = ice_group(R, slot) if centre != 'game' else None
+    why = None
+    if group and centre not in ('make', pack_centre) and shared is not None:
+        if group[0] in shared:
+            why = f"{R.team_name(shared[group[0]][0])} set this shared ice already"
         else:
-            primary, secondary = team_colours(R, slot)
-            arena = team_arena(R, slot)
-        c = mine.get('colours') or {}
-        primary, secondary = parse_colour(c.get('primary'), primary), parse_colour(c.get('secondary'), secondary)
-        arena = ice.get('arena') or arena
-        link = c.get('crest') or logo_links.get(slot) or (nhl_logos or {}).get(NEW_TEAMS.get(slot, ''))
-        if link is None and default:
-            continue
-        logos = (None, None)
-        if link:
-            try:
-                logos = (team_logo(link, pack, cache), team_logo(install.plain_logo_url(link), pack, cache))
-            except Exception:
-                if default:
-                    continue
-        listed = roster_versions(R, slot) or [(v, light, False) for v, light in DEFAULT_VERSIONS.get(slot, ())]
-        choice = mine.get('versions') or {}
-        versions, files = [], []
-        for variant, light, _d in listed:
-            use = choice.get(str(variant)) or ('colours' if default and (variant, light) in DEFAULT_VERSIONS[slot] else 'game')
-            if use == 'colours':
-                versions.append((variant, light))
-            elif use.startswith('file:'):
-                files.append((variant, light, use[5:]))
-        use = ice.get('use') or ('logo' if default else 'game')
-        centre = 'make' if use == 'logo' else 'game' if use == 'game' else use[5:]
-        if not versions and not files and centre == 'game':
-            continue
-        out.append(Look(slot, kit_for(primary, secondary), logos, arena, _ink(secondary), tuple(versions), tuple(files), centre))
+            shared[group[0]] = (slot, centre)
+        centre = 'game'
+    elif group and centre == 'make':
+        why = "a centre ice shared with other teams takes only a picture of your own"
+    elif centre != 'game':
+        why = own_ice(R, slot, owners)
+    if why:
+        centre = 'game'
+        if no_ice is not None:
+            no_ice.append((slot, why))
+    logos = (None, None)
+    link = c.get('crest') or logo_links.get(slot)
+    if link and (versions or centre == 'make'):     # a logo only where something is drawn with it
+        try:
+            logos = _logos(link, pack, cache)
+        except Exception:
+            pass
+    if not versions and not files and not packed and centre == 'game':
+        return None
+    return Look(art, kit_for(primary, secondary), logos, arena, _ink(secondary), tuple(versions), tuple(files), centre,
+                tuple(packed), style)
+
+
+def _pack_look(R, slot, team, owners, no_ice):
+    """The look of a team outside the NHL the player left alone: the pack's home and away kits and centre ice."""
+    centre = team.centre or 'game'
+    why = own_ice(R, slot, owners) if team.centre else None
+    if why:
+        centre = 'game'
+        if no_ice is not None:
+            no_ice.append((slot, why))
+    if not team.kits and centre == 'game':
+        return None
+    return Look(team.art, PLAIN_KIT, (None, None), '', (32, 32, 32), (), (), centre,
+                tuple(kit for _v, kit in sorted(team.kits.items())), team.style)
+
+
+def looks_from(R, edits_by_slot, logo_links, nhl_logos, pack=None, cache=None, look_pack=None, skipped=None, no_ice=None):
+    """The looks to install: Utah, Seattle and Vegas as the update makes them, every team of any league the player gave a
+    look in the Roster editor (edits.json 'uniforms' / 'ice', see edits.py; only where `editable`) and every team the
+    look pack `look_pack` (this season's jerseys, art/lookpack.py) has. `R` is the new roster; `logo_links` {slot: logo link}.
+    A version the player left alone gets the pack's kit when there is one, else stays the game's own (Utah, Seattle, Vegas:
+    made from the colours). A team of the pack that cannot have its kits goes into `skipped` as (slot, why); a club
+    outside the NHL whose new centre ice the game would not show at its home games (own_ice) keeps the game's own and goes
+    into `no_ice` as (slot, why). The player's own picture on a centre ice several teams share (ice_group: the national
+    teams, the DEL, EASHL) is a look of its own at that file's art id, with nothing but the ice."""
+    out, shared = [], {}
+    in_pack = set(look_pack.teams) if look_pack is not None else set()
+    edited = {s for s in edits_by_slot if editable(R, s) is None}
+    owners = centre_owners(R) if any(s not in NHL for s in in_pack | edited) else {}
+    for slot in sorted(set(NEW_TEAMS) | {s for s in edited | in_pack if s in NHL}) + \
+            sorted(s for s in edited | in_pack if s not in NHL):
+        team = pack_team(R, slot, look_pack)
+        if team is not None and team.why and skipped is not None:
+            skipped.append((slot, team.why))
+        e = edits_by_slot.get(slot) or {} if slot in edited else {}
+        if slot in NHL:
+            look = _nhl_look(R, slot, team, e, logo_links, nhl_logos, pack, cache)
+        elif e:
+            look = _club_look(R, slot, team, e, logo_links, pack, cache, owners, no_ice, shared)
+        elif team.why:
+            look = None
+        else:
+            look = _pack_look(R, slot, team, owners, no_ice)
+        if look is not None:
+            out.append(look)
+    for art, (_slot, picture) in sorted(shared.items()):
+        out.append(Look(art, PLAIN_KIT, (None, None), '', (32, 32, 32), (), (), picture, (), STYLE))
     return out
 
 
@@ -934,10 +1681,14 @@ def look_paths(look, maker=None):
     paths = []
     for variant, _light in look.versions:
         paths += [t.format(s=STYLE, a=look.art, v=variant) for t in (JERSEY, PANT, SOCK, PREVIEW, DECAL)]
-    paths += [JERSEY.format(s=STYLE, a=look.art, v=variant) for variant, _l, _p in look.files]
+    paths += [JERSEY.format(s=look.style, a=look.art, v=variant) for variant, _l, _p in look.files]
+    for kit in look.pack:
+        paths.append(JERSEY.format(s=look.style, a=look.art, v=kit.variant))
+        if look.style == STYLE:
+            paths += [t.format(s=STYLE, a=look.art, v=kit.variant) for t in (PANT, SOCK, PREVIEW)]
     if look.centre != 'game':
         paths.append(CENTRE.format(a=look.art))
-        if has_ice_picture(look.art):
+        if _ice_picture_wanted(look):
             paths.append(ICE_PICTURE.format(a=look.art))
     return paths
 
@@ -956,31 +1707,34 @@ def look_digest(look):
     return _digest(look.art, [list(map(list, p[:4])) + [list(map(list, p.font))] for p in look.kit], logos, look.arena,
                    list(look.ice_colour), [list(v) for v in look.versions],
                    [[v, light, _file_hash(path)] for v, light, path in look.files],
-                   look.centre if look.centre in ('make', 'game') else _file_hash(look.centre), LOOKS_DRAWING)
+                   look.centre if look.centre in ('make', 'game') or look.centre.startswith('pack:')
+                   else _file_hash(look.centre), LOOKS_DRAWING,
+                   [[k.variant, k.light, k.member, [list(c) for c in k.numbers or ()], k.crc, k.menu] for k in look.pack],
+                   look.style)
 
 
-def install_looks(rpcs3, title_id, looks, say=print, also=()):
+def install_looks(rpcs3, title_id, looks, say=print, also=(), look_pack=None):
     """Make the files of `looks` from the player's disc and write them into the game folder(s) (RPCS3 closed), with kept
     copies of anything replaced and the manifest "Restore the game's own pictures" uses. Returns how many files were
     written; a look that is installed already is skipped, and a file an earlier run wrote that no look wants any more
-    is put back as the game had it."""
+    is put back as the game had it. `look_pack`: the pack's pictures, for looks with pack kits."""
     from . import install
     from .lab import Disc
     install.check(rpcs3, title_id)
     targets = [title_id] + [t for t in also if t != title_id]
     writer = install._Writer([rpcs3.game_folder(t) for t in targets])
-    maker = Maker(Disc(rpcs3.game_disc(title_id)))
-    written = 0
+    maker = Maker(Disc(rpcs3.game_disc(title_id)), look_pack)
+    written, looks = 0, list(looks)
     try:
         wanted = set()
-        for look in looks:
+        for n, look in enumerate(looks, 1):
             paths = look_paths(look, maker)
             wanted.update(paths)
             source = f"looks:{look_digest(look)}"
             if all(writer.current(tuple(p.split('/')), source) for p in paths):
-                say(f"Jerseys and ice: slot {look.art} is installed already")
+                say(f"Jerseys and ice: team {n} of {len(looks)} is installed already")
                 continue
-            say(f"Jerseys and ice: making the look of slot {look.art}")
+            say(f"Jerseys and ice: making team {n} of {len(looks)}")
             files = maker.files(look)
             if not files:
                 raise install.ArtError("The game's 3D textures were not found on your disc, so nothing was written.")

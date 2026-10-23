@@ -19,9 +19,12 @@ def _safe(method):
 
 
 class Api:
-    def __init__(self, host, update, editor=None, uniforms=None, equipment=None):
+    def __init__(self, host, update, editor=None, uniforms=None, equipment=None, lines=None, strategy=None,
+                 calendar=None, office=None, prospects=None, career=None):
         self._host, self._update, self._editor, self._uniforms = host, update, editor, uniforms
-        self._equipment = equipment
+        self._equipment, self._lines, self._strategy = equipment, lines, strategy
+        self._calendar, self._office, self._prospects = calendar, office, prospects
+        self._career = career
 
     # --- the page -------------------------------------------------------------------------------
     @_safe
@@ -47,8 +50,23 @@ class Api:
 
     @_safe
     def tab(self, name):
-        if name == 'editor' and self._editor is not None:
-            self._editor.opened()
+        """The page shows tab `name` (setup, update, patch, roster, lines, strategy, jerseys, calendar, office,
+        prospects)."""
+        if self._editor is not None:
+            self._editor.show_tab('roster' if name == 'editor' else str(name))
+
+    # --- the team list (left of the team tabs) ---------------------------------------------------------
+    @_safe
+    def rail_league(self, league):
+        self._editor.set_league(league)
+
+    @_safe
+    def rail_team(self, team):
+        self._editor.pick_team(team)
+
+    @_safe
+    def rail_step(self, step):
+        self._editor.rail_step(int(step))
 
     # --- the Update tab -------------------------------------------------------------------------
     @_safe
@@ -102,6 +120,18 @@ class Api:
     @_safe
     def remove_photos(self):
         self._update.remove_photos()
+
+    @_safe
+    def patch(self):
+        self._update.patch()
+
+    @_safe
+    def unpatch(self):
+        self._update.unpatch()
+
+    @_safe
+    def set_patch_switch(self, key, on):
+        self._update.set_patch_switch(key, bool(on))
 
     @_safe
     def set_save_mode(self, mode):
@@ -200,6 +230,39 @@ class Api:
     def modal_close(self):
         self._editor.close_modal()
 
+    @_safe
+    def face_open(self):
+        self._editor.face_open()
+
+    @_safe
+    def face_search(self, text):
+        self._editor.face_search(str(text or ''))
+
+    @_safe
+    def face_pick_player(self, who):
+        self._editor.face_pick_player(str(who))
+
+    @_safe
+    def face_pick_generic(self, head):
+        self._editor.face_pick_generic(head)
+
+    # --- a created look -----------------------------------------------------------------------------
+    @_safe
+    def look_open(self, look=None):
+        self._editor.look_open(look if isinstance(look, dict) else None)
+
+    @_safe
+    def look_set(self, part, value):
+        self._editor.look_set(str(part), value)
+
+    @_safe
+    def look_random(self):
+        self._editor.look_random()
+
+    @_safe
+    def look_done(self):
+        self._editor.look_done()
+
     # --- Equipment ----------------------------------------------------------------------------------
     @_safe
     def equipment_open(self):
@@ -233,6 +296,64 @@ class Api:
     def equipment_mask_template(self):
         self._equipment.mask_template()
 
+    # --- Lines ----------------------------------------------------------------------------------------
+    @_safe
+    def lines_open(self):
+        self._lines.open()
+
+    @_safe
+    def lines_tab(self, tab):
+        self._lines.set_tab(tab)
+
+    @_safe
+    def lines_slot(self, slot):
+        self._lines.pick_slot(slot)
+
+    @_safe
+    def lines_place(self, who):
+        self._lines.place(who)
+
+    @_safe
+    def lines_letter(self, who, letter=None):
+        self._lines.set_letter(who, letter)
+
+    @_safe
+    def lines_apply(self):
+        self._lines.apply()
+
+    @_safe
+    def lines_undo(self):
+        self._lines.undo()
+
+    @_safe
+    def lines_close(self):
+        self._lines.close()
+
+    # --- Strategies -----------------------------------------------------------------------------------
+    @_safe
+    def strategy_open(self):
+        self._strategy.open()
+
+    @_safe
+    def strategy_set(self, field, value):
+        self._strategy.set(field, value)
+
+    @_safe
+    def strategy_reset(self, field=None):
+        self._strategy.reset(field)
+
+    @_safe
+    def strategy_apply(self):
+        self._strategy.apply()
+
+    @_safe
+    def strategy_undo(self):
+        self._strategy.undo()
+
+    @_safe
+    def strategy_close(self):
+        self._strategy.close()
+
     # --- Jerseys and ice ----------------------------------------------------------------------------
     @_safe
     def uniforms_open(self):
@@ -262,8 +383,17 @@ class Api:
         self._uniforms.set_arena(text)
 
     @_safe
-    def uniforms_template(self, variant=None):
-        self._uniforms.template(variant)
+    def uniforms_template(self, variant=None, which='game'):
+        self._uniforms.template(variant, which)
+
+    @_safe
+    def uniforms_kit(self, action, first=None, second=None, third=None):
+        args = [a for a in (first, second, third) if a is not None]
+        self._uniforms.kit(action, *args)
+
+    @_safe
+    def uniforms_kit_picture(self):
+        self._uniforms.kit_picture()
 
     @_safe
     def uniforms_apply(self):
@@ -276,3 +406,123 @@ class Api:
     @_safe
     def uniforms_close(self):
         self._uniforms.close()
+
+    # --- Calendar -------------------------------------------------------------------------------------
+    @_safe
+    def calendar_month(self, step):
+        self._calendar.month(int(step))
+
+    @_safe
+    def calendar_day(self, date=None):
+        self._calendar.day(date or None)
+
+    @_safe
+    def calendar_today(self):
+        self._calendar.today()
+
+    @_safe
+    def calendar_mode(self, mode):
+        self._calendar.mode(str(mode))
+
+    @_safe
+    def calendar_season(self, on):
+        self._calendar.season(bool(on))
+
+    # --- Front office -----------------------------------------------------------------------------------
+    @_safe
+    def office_sort(self, key):
+        self._office.sort(str(key))
+
+    @_safe
+    def office_group(self, group):
+        self._office.group(group)
+
+    @_safe
+    def contract_open(self, key):
+        self._editor.contract_open(str(key))
+
+    @_safe
+    def contract_change(self, field, value):
+        self._office.contract_change(str(field), value)
+
+    @_safe
+    def contract_close(self):
+        self._office.contract_close()
+
+    @_safe
+    def contract_apply(self):
+        self._office.contract_apply()
+
+    @_safe
+    def contract_reset(self):
+        self._office.contract_reset()
+
+    # --- Draft & Pro -------------------------------------------------------------------------------------
+    @_safe
+    def prospects_show(self, view):
+        self._prospects.show(view)
+
+    @_safe
+    def prospects_step(self, step):
+        self._prospects.step(int(step))
+
+    @_safe
+    def prospects_pick(self, key, typed=None):
+        self._prospects.pick(str(key), typed)
+
+    @_safe
+    def prospects_add(self):
+        self._prospects.add()
+
+    @_safe
+    def prospects_set(self, field, value):
+        self._prospects.set(str(field), value)
+
+    @_safe
+    def prospects_remove(self, key):
+        self._prospects.remove(str(key))
+
+    @_safe
+    def prospects_make_open(self):
+        self._prospects.make_open()
+
+    @_safe
+    def prospects_make_set(self, field, value):
+        self._prospects.make_set(str(field), value)
+
+    @_safe
+    def prospects_make(self):
+        self._prospects.make()
+
+    @_safe
+    def prospects_close(self):
+        self._prospects.close()
+
+    @_safe
+    def prospects_import(self):
+        self._prospects.import_class()
+
+    @_safe
+    def prospects_export(self):
+        self._prospects.export_class()
+
+    # --- Be a Pro careers (Draft & Pro) ------------------------------------------------------------------------------
+    @_safe
+    def career_look(self):
+        self._career.look(fresh=True)
+
+    @_safe
+    def career_open(self, folder):
+        self._career.open(str(folder))
+
+    @_safe
+    def career_set(self, field, value):
+        self._career.set(str(field), value)
+
+    @_safe
+    def career_undo(self):
+        self._career.undo()
+
+    @_safe
+    def career_save(self):
+        self._career.save()

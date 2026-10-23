@@ -1,21 +1,35 @@
 """Build the data pack the updater ships with and downloads (legacy_roster/data/datapack.json.gz).
 
     python tools/build_datapack.py                     rebuild from the caches in tools/cache
-    python tools/build_datapack.py --refresh ratings   crawl nhlratings.net first (slow, polite)
+    python tools/build_datapack.py --refresh ratings   refresh the current ratings list first (slow, polite; private/)
     python tools/build_datapack.py --refresh iihf      download the IIHF roster PDFs first
     python tools/build_datapack.py --refresh shl,chl   fetch club leagues first (a league or one part: ohl)
     python tools/build_datapack.py --research DIR      reuse the lab's research folder as the cache
 
 The pack holds everything the updater does not fetch live:
-    ea_ratings   EA ratings of NHL players
+    ratings_list the current ratings of NHL players (name, team, overall, attributes)
     iihf         rosters for the national teams the base roster leaves empty
     leagues      club rosters per league, already placed into the game's team slots (tools/club_slots.json)
+                 (the AHL's: the 32 clubs' rosters of the maintainer's private source, tools/cache/ahl_rosters.json,
+                 with each player's NHL organisation; the feed only adds photos and letters: --refresh ahl_rosters)
     nhl          a snapshot of the NHL rosters, used only when the user is offline
     nhl_last     everyone who played in the NHL last season (birthdate, size, hand, team now): who is
                  retired and who is an unsigned free agent (refreshed with nhl)
     drafts       every NHL draft pick since FIRST_DRAFT (refreshed with nhl)
     schedule     every regular-season game of the season (date, home, away): the game's calendar
                  (refreshed with nhl, or alone: --refresh schedule)
+    ahl_schedule every AHL regular-season game (date, home slot, away slot): the 32-team game patch's farm
+                 calendar and the AHL's calendar on other rosters (refreshed with ahl, or alone: --refresh ahl_schedule)
+    schedules    every regular-season game of the other club leagues, per league part (shl, liiga, extraliga, del,
+                 nl, norway, ohl, qmjhl, whl): [date, home, away], a club as its team slot, or as its name in the feed
+                 when the game has no slot for it (refreshed with the league, or alone: --refresh schedules, or one
+                 league's: --refresh shl_schedule)
+    contracts    the real 2026-27 NHL contracts (--refresh contracts [--db FILE]; legacy_roster/contracts.py)
+    ratings_full the current ratings, player types and tendencies of every player, all leagues
+                 (--refresh ratings_full [--db FILE], no network)
+
+ratings_list, contracts, ratings_full and the AHL's rosters are made by the maintainer's private tools (private/, kept
+out of git, DEVELOPING.md). Without them those parts are taken over from the pack being replaced, as they are.
 
 Before writing, every part is compared with the pack being replaced: a part that is gone or has
 lost more than 40% of its entries stops the build (a feed that changed its layout looks like that).
@@ -34,9 +48,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from legacy_roster import datasource  # noqa: E402
+from legacy_roster import contracts, datasource  # noqa: E402
 from legacy_roster.layout import API_TO_SLOT  # noqa: E402
-from providers import czech, ea_ratings, hockeytech, iihf, liiga, nhl_facts, penny_del, sportality, swiss, wiki_logo  # noqa: E402
+from providers import (czech, hockeytech, iihf, liiga, nhl_facts, penny_del, sportality, swiss,  # noqa: E402
+                       wiki_logo)
+
+PRIVATE = os.path.join(ROOT, 'private')        # the makers of three parts, kept out of git (DEVELOPING.md)
+sys.path.insert(2, PRIVATE)
+try:
+    import contracts_db  # noqa: E402
+    import ratings_full  # noqa: E402
+    import ratings_list  # noqa: E402
+    import club_rosters_db  # noqa: E402
+except ImportError:
+    contracts_db = ratings_full = ratings_list = club_rosters_db = None
+PRIVATE_PARTS = ('ratings_list', 'contracts', 'ratings_full')
 
 # one feed per part of a league (club_slots.json); a part's cache is tools/cache/<part>.json
 FEEDS = {'liiga': liiga.fetch, 'extraliga': czech.fetch,
@@ -47,11 +73,20 @@ FEEDS = {'liiga': liiga.fetch, 'extraliga': czech.fetch,
          'ohl': functools.partial(hockeytech.fetch, client='ohl'),
          'qmjhl': functools.partial(hockeytech.fetch, client='lhjmq'),
          'whl': functools.partial(hockeytech.fetch, client='whl')}
+# each part's regular-season calendar: [[date, home club, away club]] with the clubs as `FEEDS` names them
+SCHEDULES = {'liiga': lambda season: liiga.schedule(season), 'extraliga': lambda season: czech.schedule(season),
+             'shl': lambda season: sportality.schedule(season, league='shl'),
+             'del': lambda season: penny_del.schedule(season), 'nl': lambda season: swiss.schedule(season),
+             'norway': lambda season: sportality.schedule(season, league='norway'),
+             'ohl': functools.partial(hockeytech.schedule, client='ohl'),
+             'qmjhl': functools.partial(hockeytech.schedule, client='lhjmq'),
+             'whl': functools.partial(hockeytech.schedule, client='whl')}
 CACHE = os.path.join(ROOT, 'tools', 'cache')
-OUT = os.path.join(ROOT, 'legacy_roster', 'data', 'datapack.json.gz')
+OUT =os.path.join(ROOT, 'legacy_roster', 'data', 'datapack.json.gz')
 SLOTS = os.path.join(ROOT, 'tools', 'club_slots.json')
 SEASON = 2026
 MIN_FULL_RATINGS = 300          # fewer fully rated players means the ratings parser broke (Oct 2026: 373)
+MIN_FULL_PLAYERS = 5000         # fewer players in ratings_full means its reader broke (Oct 2026: 6,968)
 MAX_DROP = 0.4                  # a part that loses more than this share of its entries stops the build
 MIN_AGE, MAX_AGE = 15, 45       # club players outside these ages are typos in the feed
 LEAGUE_MIN_AGE = {'ahl': 17}    # juniors may be 15 (exceptional status), AHL players not
@@ -113,9 +148,10 @@ def parts_of(conf, key):
     return [(key, conf['league_id'], conf['slots'])]
 
 
-def build_league(key, conf, refresh):
+def build_league(key, conf, refresh, db=None):
     """The pack entry of one club league from its parts' caches (fetched first if asked), or None."""
     teams, left_out, extra, former, dates = [], [], [], [], []
+    orgs = False
     for part, league_id, slots in parts_of(conf, key):
         cache = os.path.join(CACHE, f"{part}.json")
         if key in refresh or part in refresh:
@@ -123,6 +159,18 @@ def build_league(key, conf, refresh):
             clubs = FEEDS[part](SEASON, sources=[c['source'] for c in slots.values()])
             with open(cache, 'w', encoding='utf-8') as f:
                 json.dump(clubs, f, ensure_ascii=False)
+        if part == 'ahl':
+            # the 32 clubs' rosters of the private source, each player's NHL organisation with them (owner,
+            # 2026-10-22); the feed's photos and letters go into it when it is made (private/)
+            rosters = os.path.join(CACHE, 'ahl_rosters.json')
+            if club_rosters_db and (key in refresh or 'ahl_rosters' in refresh):
+                made = club_rosters_db.extract(db or club_rosters_db.contracts_db.DB,
+                                               clubs=[c['source'] for c in slots.values()], feed_path=cache)
+                club_rosters_db.report(made)
+                with open(rosters, 'w', encoding='utf-8') as f:
+                    json.dump(made, f, ensure_ascii=False)
+            if os.path.exists(rosters):
+                cache, orgs = rosters, True
         if not os.path.exists(cache):
             return None
         with open(cache, encoding='utf-8') as f:
@@ -164,10 +212,45 @@ def build_league(key, conf, refresh):
     former = [p for p in former if shared[p['photo']] < MAX_SHARED_PHOTO]
     entry = {'label': conf['label'], 'country': conf.get('country'), 'teams': teams, 'left_out': left_out,
              'extra': extra, 'former': former}
+    if orgs:
+        entry['orgs'] = True                    # each player names the NHL organisation that holds his rights
     if 'parts' not in conf:
         entry['league_id'] = conf['league_id']
     source = {'label': f"{conf['label']} rosters", 'date': min(dates), 'count': sum(len(t['players']) for t in teams)}
     return entry, source
+
+
+def build_schedules(slot_map, refresh):
+    """The pack part `schedules` from the caches tools/cache/<part>_schedule.json (fetched first if asked) and its
+    source entry, or None. A club becomes its team slot (any part of its league: the OHL's games against QMJHL clubs);
+    a club the game has no slot for keeps its name. Stops when a slot's club plays no game (a renamed club)."""
+    part_slots = {part: (key, slots) for key, conf in slot_map.items() for part, _id, slots in parts_of(conf, key)}
+    found, dates = {}, []
+    for part, fetch in SCHEDULES.items():
+        league, slots = part_slots[part]
+        cache = os.path.join(CACHE, f"{part}_schedule.json")
+        if {'schedules', f"{part}_schedule", part, league} & refresh:
+            os.makedirs(CACHE, exist_ok=True)
+            games = fetch(SEASON)
+            with open(cache, 'w', encoding='utf-8') as f:
+                json.dump(games, f, ensure_ascii=False)
+        if not os.path.exists(cache):
+            continue
+        with open(cache, encoding='utf-8') as f:
+            games = json.load(f)
+        slot_of = {c['source']: int(k) for p, (lg, s) in part_slots.items() if lg == league for k, c in s.items()}
+        idle = sorted(c['source'] for c in slots.values() if not any(c['source'] in g[1:] for g in games))
+        if idle:
+            raise SystemExit(f"{part} schedule: no game for {', '.join(idle)} (a club renamed in the feed? "
+                             "tools/club_slots.json)")
+        found[part] = [[date, slot_of.get(home, home), slot_of.get(away, away)] for date, home, away in games]
+        dates.append(file_date(cache))
+        named = sorted({c for g in found[part] for c in g[1:] if isinstance(c, str)})
+        print(f"{part} schedule: {len(games)} games" + (f", no slot for {', '.join(named)}" if named else ''))
+    if not found:
+        return None
+    return found, {'label': f"League calendars {SEASON}-{(SEASON + 1) % 100:02d}", 'date': min(dates),
+                   'count': sum(len(g) for g in found.values())}
 
 
 def check_drops(old, new, accept):
@@ -179,9 +262,12 @@ def check_drops(old, new, accept):
             problems.append(f"{key}: in the previous pack ({src['count']} entries), missing now")
         elif src['count'] and now['count'] < (1 - MAX_DROP) * src['count']:
             problems.append(f"{key}: {now['count']} entries, the previous pack had {src['count']}")
-    full = sum(1 for p in new.get('ea_ratings') or [] if len(p['attrs']) >= 10)
-    if 'ea_ratings' in new and full < MIN_FULL_RATINGS:
-        problems.append(f"ea_ratings: only {full} players with full attributes (expected {MIN_FULL_RATINGS} or more)")
+    full = sum(1 for p in new.get('ratings_list') or [] if len(p['attrs']) >= 10)
+    if 'ratings_list' in new and full < MIN_FULL_RATINGS:
+        problems.append(f"ratings_list: only {full} players with full attributes (expected {MIN_FULL_RATINGS} or more)")
+    count = len((new.get('ratings_full') or {}).get('players') or [])
+    if 'ratings_full' in new and count < MIN_FULL_PLAYERS:
+        problems.append(f"ratings_full: only {count} players (expected {MIN_FULL_PLAYERS} or more)")
     if problems and not accept:
         sys.exit("Not written -- a feed may have changed its layout:\n   " + "\n   ".join(problems) +
                  "\nCheck the provider; if the drop is real, run again with --accept-drops.")
@@ -192,25 +278,29 @@ def check_drops(old, new, accept):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--refresh', default='',
-                    help="comma list: ratings, iihf, nhl (also nhl_last, drafts and schedule), or a league (liiga, extraliga, shl, del, nl, norway, ahl, "
-                         "chl) or one part of it (ohl, qmjhl, whl)")
+                    help="comma list: ratings, iihf, nhl (also nhl_last, drafts and schedule), ahl_schedule, contracts, "
+                         "ratings_full, ahl_rosters, schedules (every league's calendar) or <part>_schedule, or a league "
+                         "(liiga, extraliga, shl, del, nl, norway, ahl, chl; rosters and calendar) or one part of it "
+                         "(ohl, qmjhl, whl)")
+    ap.add_argument('--db', default=contracts_db.DB if contracts_db else None,
+                    help="the database file for --refresh contracts / ratings_full / ahl_rosters (private/)")
     ap.add_argument('--research', help="lab research folder to use as the cache (work/research)")
     ap.add_argument('--accept-drops', action='store_true', help="write the pack even if a part shrank or vanished")
     ap.add_argument('--out', default=OUT)
     args = ap.parse_args()
     refresh = {x.strip() for x in args.refresh.split(',') if x.strip()}
-    ratings_cache = os.path.join(args.research, 'nhl27') if args.research else os.path.join(CACHE, 'nhl27')
+    ratings_cache = None if ratings_list is None else         os.path.join(args.research, ratings_list.RESEARCH) if args.research else ratings_list.CACHE
     iihf_cache = os.path.join(args.research, 'iihf2026') if args.research else os.path.join(CACHE, 'iihf')
     pack = {'format': datasource.PACK_FORMAT, 'season': SEASON, 'sources': {},
             'generated': f"{datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}"}
 
-    if 'ratings' in refresh:
-        ea_ratings.crawl(ratings_cache)
-    if os.path.isdir(ratings_cache):
-        players = ea_ratings.compact(ea_ratings.parse(ratings_cache))
-        pack['ea_ratings'] = players
-        pack['sources']['ea_ratings'] = {
-            'label': f"EA {ea_ratings.GAME} ratings", 'date': file_date(os.path.join(ratings_cache, '_slugs.json')),
+    if 'ratings' in refresh and ratings_list:
+        ratings_list.crawl(ratings_cache)
+    if ratings_cache and os.path.isdir(ratings_cache):
+        players = ratings_list.compact(ratings_list.parse(ratings_cache))
+        pack['ratings_list'] = players
+        pack['sources']['ratings_list'] = {
+            'label': "Current ratings", 'date': file_date(os.path.join(ratings_cache, '_slugs.json')),
             'count': len(players)}
         full = sum(1 for p in players if len(p['attrs']) >= 10)
         print(f"ratings: {len(players)} players ({full} with full attributes)")
@@ -226,7 +316,7 @@ def main():
         slot_map = {k: v for k, v in json.load(f).items() if not k.startswith('_')}
     pack['leagues'] = {}
     for key, conf in slot_map.items():
-        built = build_league(key, conf, refresh)
+        built = build_league(key, conf, refresh, args.db)
         if built is None:
             continue
         pack['leagues'][key], pack['sources'][key] = built
@@ -263,8 +353,71 @@ def main():
                      'schedule': f"NHL.com schedule {SEASON}-{(SEASON + 1) % 100:02d}"}[key]
             pack['sources'][key] = {'label': label, 'date': file_date(cache), 'count': len(pack[key])}
 
-    if os.path.exists(args.out):
-        check_drops(datasource.read_pack(args.out), pack, args.accept_drops)
+    # the AHL's calendar for the game patch's farm league, clubs as their team slots (tools/club_slots.json)
+    cache = os.path.join(CACHE, 'ahl_schedule.json')
+    if 'ahl' in refresh or 'ahl_schedule' in refresh:
+        os.makedirs(CACHE, exist_ok=True)
+        with open(cache, 'w', encoding='utf-8') as f:
+            json.dump(hockeytech.schedule(SEASON), f, ensure_ascii=False)
+    if os.path.exists(cache):
+        with open(cache, encoding='utf-8') as f:
+            games = json.load(f)
+        slot_of = {v['source']: int(k) for k, v in slot_map['ahl']['slots'].items()}
+        missing = sorted({club for g in games for club in g[1:] if club not in slot_of})
+        if missing:
+            raise SystemExit(f"ahl_schedule: no slot for {', '.join(missing)} (tools/club_slots.json)")
+        pack['ahl_schedule'] = [[date, slot_of[home], slot_of[away]] for date, home, away in games]
+        pack['sources']['ahl_schedule'] = {'label': f"AHL schedule {SEASON}-{(SEASON + 1) % 100:02d}",
+                                           'date': file_date(cache), 'count': len(games)}
+
+    # the other club leagues' calendars (schedule.apply_league writes them into the roster's league tables)
+    built = build_schedules(slot_map, refresh)
+    if built:
+        pack['schedules'], pack['sources']['schedules'] = built
+
+    # the real contracts (only their numbers)
+    cache = os.path.join(CACHE, 'contracts.json')
+    if 'contracts' in refresh and contracts_db:
+        deals = contracts_db.extract(args.db)
+        contracts_db.report(deals)
+        os.makedirs(CACHE, exist_ok=True)
+        with open(cache, 'w', encoding='utf-8') as f:
+            json.dump(deals, f, ensure_ascii=False)
+    if os.path.exists(cache):
+        with open(cache, encoding='utf-8') as f:
+            pack['contracts'] = json.load(f)
+        pack['sources']['contracts'] = {'label': f"Contracts {SEASON}-{(SEASON + 1) % 100:02d}",
+                                        'date': file_date(cache), 'count': len(pack['contracts'])}
+        mixed = contracts.misplaced(pack['contracts'], datasource.flatten_nhl(pack.get('nhl') or {}))
+        if mixed:
+            raise SystemExit("contracts: the deals of " + ', '.join(f"{a} are {b}'s players" for a, b in mixed.items())
+                             + ": a team number is mixed up in the source (private/contracts_db.py SOURCE_SLOT)")
+
+    # the current ratings, player types and tendencies of every player (only their numbers)
+    cache = os.path.join(CACHE, 'ratings_full.json')
+    if 'ratings_full' in refresh and ratings_full:
+        part = ratings_full.extract(args.db)
+        ratings_full.report(part)
+        os.makedirs(CACHE, exist_ok=True)
+        with open(cache, 'w', encoding='utf-8') as f:
+            json.dump(part, f, ensure_ascii=False)
+    if os.path.exists(cache):
+        with open(cache, encoding='utf-8') as f:
+            pack['ratings_full'] = json.load(f)
+        pack['sources']['ratings_full'] = {'label': "Current ratings, player types and tendencies",
+                                            'date': file_date(cache), 'count': len(pack['ratings_full']['players'])}
+
+    old = datasource.read_pack(args.out) if os.path.exists(args.out) else None
+    for key in PRIVATE_PARTS:                  # no private maker and no cache: keep what the pack has
+        if key not in pack and old and key in old:
+            pack[key], pack['sources'][key] = old[key], old['sources'][key]
+            print(f"{key}: kept from the pack being replaced (no maker in private/)")
+    old_ahl = ((old or {}).get('leagues') or {}).get('ahl')
+    if old_ahl and old_ahl.get('orgs') and not (pack['leagues'].get('ahl') or {}).get('orgs'):
+        pack['leagues']['ahl'], pack['sources']['ahl'] = old_ahl, old['sources']['ahl']
+        print("ahl: kept from the pack being replaced (the rosters' maker is in private/)")
+    if old:
+        check_drops(old, pack, args.accept_drops)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     raw = json.dumps(pack, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
     with gzip.GzipFile(args.out, 'wb', mtime=0) as f:

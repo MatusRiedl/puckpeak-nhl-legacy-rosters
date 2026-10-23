@@ -1,4 +1,4 @@
-"""Build the photo pack that goes inside the photo edition of the program (legacy_roster/data/photopack.zip).
+"""Build the photo pack the program downloads (private/packs/photos.zip; tools/publish_packs.py puts it on the server).
 
     .venv\\Scripts\\python tools\\build_photopack.py            every photo and logo the data pack links
     .venv\\Scripts\\python tools\\build_photopack.py --quality 80
@@ -7,8 +7,8 @@ Needs Pillow. Downloads every player photo and club logo the bundled data pack l
 today's NHL.com headshots and the NHL logos), draws them exactly as the program would
 (art/images.py) and stores the results as WebP in one zip (layout in art/photopack.py).
 A picture already in the previous pack under the same key is copied over, not downloaded again,
-unless --fresh is given. Run it after refreshing the data pack, before building the exes.
-The zip is a release file: it stays out of git.
+unless --fresh is given. Run it after refreshing the data pack, then publish it.
+The zip never goes into git or into the program.
 """
 import argparse
 import concurrent.futures
@@ -24,7 +24,9 @@ sys.path.insert(0, ROOT)
 
 from legacy_roster import datasource  # noqa: E402
 from legacy_roster.art import images, install  # noqa: E402
-from legacy_roster.art.photopack import PATH, PhotoPack, file_name, key_for  # noqa: E402
+from legacy_roster.art.photopack import PhotoPack, file_name, key_for  # noqa: E402
+
+OUT = os.path.join(ROOT, 'private', 'packs', 'photos.zip')
 
 LOGO_SIZE = 512
 
@@ -64,7 +66,15 @@ def draw_photo(url, quality):
     small = images.portrait(photo, (256, 128))
     if big is None or small is None:
         return None
+    if images.stand_in(small):          # NHL.com's grey silhouette: no photo of him yet, the game keeps his own
+        raise install.NoPicture(install.STAND_IN)
     return webp(big.crop((0, 0, 512, 256)), quality=quality), webp(small, quality=quality)
+
+
+def stand_in(pack, name):
+    """Is the pack's portrait `name` a grey stand-in (packs built before 2026-10-20 have 7)?"""
+    from PIL import Image
+    return images.stand_in(Image.open(io.BytesIO(pack.zip.read(f"p/{name}_s.webp"))))
 
 
 def draw_logo(url):
@@ -77,7 +87,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--quality', type=int, default=85, help="WebP quality of the portraits (default 85)")
     ap.add_argument('--fresh', action='store_true', help="download everything again")
-    ap.add_argument('--out', default=PATH)
+    ap.add_argument('--out', default=OUT)
     args = ap.parse_args()
     pack = datasource.read_pack(datasource.BUNDLED_PACK)
     print("NHL rosters from NHL.com ...")
@@ -85,6 +95,7 @@ def main():
     photos, logos = links(pack, teams)
     print(f"{len(photos)} photos and {len(logos)} logos linked")
     old = None if args.fresh else PhotoPack.open(args.out)
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     tmp = args.out + '.tmp'
     index = {'built': f"{datetime.date.today():%Y-%m-%d}", 'portraits': {}, 'logos': {}}
     failed = []
@@ -93,7 +104,7 @@ def main():
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             for key, url in photos.items():
                 name = file_name(key)
-                if old and old.portraits.get(key) == name:
+                if old and old.portraits.get(key) == name and not stand_in(old, name):
                     z.writestr(f"p/{name}_b.webp", old.zip.read(f"p/{name}_b.webp"))
                     z.writestr(f"p/{name}_s.webp", old.zip.read(f"p/{name}_s.webp"))
                     index['portraits'][key] = name

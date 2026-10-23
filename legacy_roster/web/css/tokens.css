@@ -61,6 +61,15 @@
   --btn-hover: #16324d;
   --off: #3a4b5e;
 
+  /* gold: "important, look here" (the pictures row, Patch / Unpatch); apart from the amber of warnings */
+  --gold: #f2b933;
+  --gold-hi: #ffd166;
+  --gold-deep: #c98d12;
+  --gold-bg: rgba(242, 185, 51, .10);
+  --gold-bd: #8a6a22;
+  --gold-glow: rgba(242, 185, 51, .35);
+  --gold-text: #1d1503;
+
   /* the game's Help bar and its highlighted buttons */
   --steel-1: #9fb4c9;
   --steel-2: #5b7693;

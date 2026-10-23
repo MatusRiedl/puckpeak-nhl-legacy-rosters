@@ -1,12 +1,17 @@
 """Photos and logos: download, draw and install the pictures, and take them away again.
 
-    install(rpcs3, title_id, portraits, logos)   after an update with "Photos and logos" on
+    install(rpcs3, title_id, portraits, logos)   after an update with "Photos and logos" on, or with the
+                                                 player's own pictures only (menus=False: Roster editor's Save)
+    prefetch(links, rpcs3, title_id)             before the roster is planned: which photos cannot be made
+                                                 (no face, no download, NHL.com's grey stand-in)
+    scan_claims(rpcs3)                           the picture numbers every roster and picture file on this PC uses
+    give_back(numbers)                           take our pictures off numbers someone else uses
     remove()                                     the "Restore the game's own pictures" button
 
 The pictures go, as loose files, into the game's own folder on RPCS3's hard disk
 (dev_hdd0/game/<TITLEID>/USRDIR/fe/ion/artassets/...); the game reads a loose file there before
 the one on the disc (tested in the game on 2026-10-03). Each art file is made from one of the
-player's own disc (a template) with only the picture swapped, so nothing from EA is shipped, and
+player's own disc (a template) with only the picture swapped, so nothing of the game's is shipped, and
 the photos and logos are downloaded on the player's PC from the leagues' public sites.
 
 The European (BLES02153) and North American (BLUS31540) versions each have their own folder; their
@@ -67,15 +72,21 @@ class ArtError(RuntimeError):
     """Something the player has to fix (RPCS3 running, game not found); the message says what."""
 
 
-def _paths():
-    return datasource.app_dir('art', 'installed.json'), datasource.app_dir('art', 'backup')
+# Each kind of file we install keeps its own list and kept copies (a store: a folder of the program's own files), so
+# one kind is taken away without the other: the pictures ('art', "Restore the game's own pictures"), the game patch's
+# files ('patch', patchinstall.py: its db files and RPCS3's patch file).
+ART_STORE, PATCH_STORE = 'art', 'patch'
 
 
-def load_manifest():
+def _paths(store=ART_STORE):
+    return datasource.app_dir(store, 'installed.json'), datasource.app_dir(store, 'backup')
+
+
+def load_manifest(store=ART_STORE):
     """{'games': {game folder: {file key: {'source': link, 'backup': path or None,
     'stamp': [size, time] of the file as written}}}}. 'stamp' tells a file of ours from one put
     there later (another picture pack); manifests before 0.6 have none."""
-    path, _ = _paths()
+    path, _ = _paths(store)
     try:
         with open(path, encoding='utf-8') as f:
             m = json.load(f)
@@ -86,8 +97,8 @@ def load_manifest():
     return m
 
 
-def _save_manifest(m):
-    path, _ = _paths()
+def _save_manifest(m, store=ART_STORE):
+    path, _ = _paths(store)
     tmp = path + '.tmp'
     with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(m, f, indent=0, sort_keys=True)
@@ -144,10 +155,17 @@ def _cacheable(url):
     return not url.startswith(('file:', 'badge:'))        # the player's own pictures are on his PC already
 
 
-def make_portrait(url, templates, pack=None, cache=None):
-    """{kind: art file bytes} for one photo link (None when the photo shows no head). A picture
-    this PC drew before (`cache`) or the program's photo pack has is used as it is; anything else
-    is downloaded, drawn, and kept in the cache."""
+class NoPicture(ValueError):
+    """A photo link that gives no picture of the player (a league's grey stand-in)."""
+
+
+STAND_IN = "only a grey stand-in, no photo of him yet"
+
+
+def _pictures(url, sizes, pack=None, cache=None):
+    """{size: portrait} for one photo link (None when the photo shows no head; NoPicture for a stand-in). A
+    picture this PC drew before (`cache`) or the program's photo pack has is used as it is; anything else is
+    downloaded, drawn, and kept in the cache."""
     from . import images
     cache = cache if cache and _cacheable(url) else None
     if cache and cache.headless(url):
@@ -155,20 +173,61 @@ def make_portrait(url, templates, pack=None, cache=None):
     stores = [s for s in (cache, pack) if s]
     photo = None
     drawn, out = {}, {}
-    for kind in PORTRAIT_KINDS:
-        size = _template_size(templates[kind])
-        pic = next((p for p in (s.portrait(url, size) for s in stores) if p is not None), None)
+    for size in sizes:
+        pic = next((p for p in (s.portrait(url, size) for s in stores) if p is not None and not images.stand_in(p)),
+                   None)
         if pic is None:
             photo = photo or _download(url)
             pic = drawn[size] = images.portrait(photo, size)
-        if pic is None:
-            if cache:
-                cache.put_portrait(url, None, None)
-            return None
-        out[kind] = art_file(templates[kind], pic)
+            if pic is None:
+                if cache:
+                    cache.put_portrait(url, None, None)
+                return None
+            if _cacheable(url) and images.stand_in(pic):      # not remembered: the league may put his photo
+                raise NoPicture(STAND_IN)                          # under the same link (own pictures may be grey)
+        out[size] = pic
     if cache and (512, 512) in drawn and (256, 128) in drawn:
         cache.put_portrait(url, drawn[(512, 512)], drawn[(256, 128)])
     return out
+
+
+def make_portrait(url, templates, pack=None, cache=None):
+    """{kind: art file bytes} for one photo link (None when the photo shows no head, see _pictures)."""
+    sizes = {kind: _template_size(templates[kind]) for kind in PORTRAIT_KINDS}
+    pics = _pictures(url, list(dict.fromkeys(sizes.values())), pack, cache)
+    return None if pics is None else {kind: art_file(templates[kind], pics[size]) for kind, size in sizes.items()}
+
+
+def prefetch(links, rpcs3, title_id, say=print, pack=None, cache=None, workers=WORKERS):
+    """Before a build gives players their pictures (portraits.plan): {photo link: why} for the links that make no
+    picture, so those players keep the one they have. The others are drawn into the picture cache now (nothing
+    goes into the game folder), so the install after the save finds them there."""
+    from . import images
+    if not links:
+        return {}
+    disc = Disc(rpcs3.game_disc(title_id))
+    sizes = list(dict.fromkeys(_template_size(disc.portrait(k, PORTRAIT_TEMPLATE)) for k in PORTRAIT_KINDS))
+    pack = PhotoPack.open() if pack is None else pack or None
+    cache = PictureCache() if cache is None else cache or None
+    done = {e.get('source') for files in load_manifest()['games'].values() for key, e in files.items()
+            if key.startswith('/'.join(ART + (PORTRAIT_KINDS[0],)))}
+
+    def why(url):
+        if url + PORTRAIT_DRAWING in done:
+            return None
+        stores = [s for s in ((cache if _cacheable(url) else None), pack) if s]
+        small = next((p for p in (s.portrait(url, sizes[-1]) for s in stores) if p is not None), None)
+        if small is not None and not images.stand_in(small):
+            return None
+        try:
+            return None if _pictures(url, sizes, pack, cache) is not None else "no head found in it"
+        except Exception as err:       # a photo that will not download or decode
+            return str(err) or type(err).__name__
+
+    say(f"Photos and logos: checking {len(links)} photos")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        found = dict(zip(links, pool.map(why, links)))
+    return {url: text for url, text in found.items() if text}
 
 
 def plain_logo_url(url):
@@ -223,12 +282,13 @@ class _Writer:
     """Writes files into one or more game folders (the versions of the game being updated) and
     keeps the manifest of everything written."""
 
-    def __init__(self, game_dirs):
-        self.manifest = load_manifest()
+    def __init__(self, game_dirs, store=ART_STORE):
+        self.store = store
+        self.manifest = load_manifest(store)
         self.game_dirs = list(game_dirs)
         for d in self.game_dirs:
             self.manifest['games'].setdefault(d, {})
-        _, self.backups = _paths()
+        _, self.backups = _paths(store)
         os.makedirs(self.backups, exist_ok=True)
 
     def current(self, rel, url):
@@ -294,7 +354,7 @@ class _Writer:
                 os.remove(path)
 
     def save(self):
-        _save_manifest(self.manifest)
+        _save_manifest(self.manifest, self.store)
 
 
 def stamp(path):
@@ -317,10 +377,12 @@ def _inside(path, folder):
     return path.startswith(folder.rstrip(os.sep) + os.sep)
 
 
-def check(rpcs3, title_id):
-    """Raise ArtError, with what to do, when the pictures cannot be installed now."""
+def check(rpcs3, title_id, own=False):
+    """Raise ArtError, with what to do, when the pictures cannot be installed now. `own`: only the player's own
+    pictures (the Roster editor's), which go in with photos and logos off too."""
     if savedata.running_rpcs3():
-        raise ArtError("Close RPCS3 first: photos and logos can only be installed while the game is closed. "
+        raise ArtError("Close RPCS3 first: your own pictures go into the game while it is closed." if own else
+                       "Close RPCS3 first: photos and logos can only be installed while the game is closed. "
                        "Or switch \"Photos and logos\" off.")
     if not rpcs3.game_disc(title_id):
         raise ArtError("RPCS3 does not say where your copy of the game is, so the photos cannot be made. "
@@ -330,45 +392,141 @@ def check(rpcs3, title_id):
                        "own pictures\" first.")
 
 
+def _game_dirs(rpcs3, manifest):
+    """Every game folder pictures may be in: the ones the manifest names and this RPCS3's (both versions)."""
+    dirs = {}
+    for d in list(manifest['games']) + [rpcs3.game_folder(t) for t in savedata.GAMES]:
+        dirs.setdefault(os.path.normcase(os.path.abspath(d)), d)
+    return list(dirs.values())
+
+
+def scan_claims(rpcs3):
+    """Who uses which portrait number on this PC (portraits.Claims): the people every roster save of every RPCS3 user
+    shows (the game folder is shared by them all), and the portrait files in the game folders, ours or another
+    pack's. Only reads."""
+    from ..roster import Roster
+    from .portraits import NEW_IDS, Claims, birth_of, loose_key, person_key
+    rosters = {}
+    home = os.path.join(rpcs3.dev_hdd0, 'home')
+    folders = {os.path.normcase(os.path.abspath(rpcs3.savedata)): rpcs3.savedata}
+    for user in sorted(os.listdir(home)) if os.path.isdir(home) else []:
+        folder = os.path.join(home, user, 'savedata')
+        folders.setdefault(os.path.normcase(os.path.abspath(folder)), folder)
+    for folder in folders.values():
+        for slot in savedata.list_rosters(folder):
+            try:
+                P = Roster(savedata.read_roster(slot)).P
+            except Exception:          # a damaged or foreign save: nobody's pictures to protect
+                continue
+            for r in range(P.cur_rec):
+                if P.get(r, 'hasportrait'):
+                    who = loose_key(person_key(P.get(r, 'PedH'), P.get(r, 'RMbQ'), birth_of(P, r)))
+                    rosters.setdefault(P.get(r, 'artid'), set()).add(who)
+    m = load_manifest()
+    theirs, mine, urls = set(), set(), {}
+    for d in _game_dirs(rpcs3, m):
+        files = m['games'].get(d, {})
+        for kind in PORTRAIT_KINDS:
+            base = os.path.join(d, *ART, kind)
+            for sub in sorted(os.listdir(base)) if os.path.isdir(base) else []:
+                folder = os.path.join(base, sub)
+                for name in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+                    if not (name.startswith('p') and name.endswith('.big') and name[1:-4].isdigit()):
+                        continue
+                    aid, entry = int(name[1:-4]), files.get('/'.join(ART + (kind, sub, name)))
+                    if entry and ours(entry, os.path.join(folder, name)):
+                        mine.add(aid)
+                        if entry.get('backup') and aid in NEW_IDS:     # we covered another pack's file
+                            theirs.add(aid)
+                        source = str(entry.get('source', ''))
+                        if source.endswith(PORTRAIT_DRAWING) and kind == PORTRAIT_KINDS[0]:
+                            urls[aid] = source[:-len(PORTRAIT_DRAWING)]
+                    elif aid in NEW_IDS:
+                        theirs.add(aid)
+    return Claims(rosters, theirs, mine, urls)
+
+
+def give_back(numbers, say=print):
+    """Take our portraits off these numbers (portraits.forget_conflicts: someone else's) in every game folder: the
+    file another pack had there comes back from its kept copy, else ours is deleted. Returns how many numbers."""
+    if not numbers:
+        return 0
+    m = load_manifest()
+    writer = _Writer(list(m['games']))
+    for aid in sorted(numbers):
+        for kind in PORTRAIT_KINDS:
+            writer.drop(ART + (kind, portrait_folder(aid), f"p{aid}.big"))
+    writer.save()
+    say(f"Photos and logos: {len(numbers)} picture numbers given back to the rosters that had them first")
+    return len(numbers)
+
+
 def install_names(disc, writer, names, say):
-    """The game's text files with the roster's team names (loc.py), one per language, made from
-    the disc's own each time (so nothing piles up). Returns how many files were written."""
+    """The game's text files with the roster's team names and the Puck Peak texts (loc.py), one per
+    language, made from the disc's own each time (so nothing piles up). Returns how many files were written."""
     import hashlib as _h
     from . import loc
-    source = 'names:' + _h.sha1((loc.NAMES_VERSION + json.dumps(names, sort_keys=True, default=sorted)).encode()).hexdigest()
-    written = 0
-    for lang in loc.LANGUAGES:
-        rel = ('fe', 'loc', f"nhl_{lang}.db")
-        if writer.current(rel, source):
-            continue
+    source = 'names:' + _h.sha1((loc.NAMES_VERSION + json.dumps(names, sort_keys=True, default=sorted)
+                                 + loc.PROMO_VERSION + json.dumps(loc.PROMO, sort_keys=True)).encode()).hexdigest()
+    rels = {lang: ('fe', 'loc', f"nhl_{lang}.db") for lang in loc.LANGUAGES}
+    todo = [lang for lang in loc.LANGUAGES if not writer.current(rels[lang], source)]
+    if not todo:
+        return 0
+    files = {}
+    for lang in loc.LANGUAGES:        # all of them: a promo text's room is the longest any language keeps
         original = disc.text_file(lang)
-        if original is None:
+        if original is not None:
+            files[lang] = loc.LocFile(original)
+    room = loc.promo_limits(files.values())
+    written = 0
+    for lang in todo:
+        text = files.get(lang)
+        if text is None:
             continue
-        text = loc.LocFile(original)
         limits = text.limits()
-        if loc.apply_names(text, names):
-            over = text.over_limit(limits)
+        if loc.apply_names(text, names) + loc.apply_promo(text):
+            over = text.over_limit(limits) + loc.promo_over(text, room)
             if over:               # never install a text the game's buffers cannot hold
-                say(f"Photos and logos: team names NOT written in {lang}: {over[0][0]} is {over[0][1]} bytes "
-                    f"(the game allows {over[0][2]})")
+                say(f"Photos and logos: team names and Puck Peak texts NOT written in {lang}: {over[0][0]} is "
+                    f"{over[0][1]} bytes (the game allows {over[0][2]})")
                 continue
-            writer.write(rel, text.build(), source)
+            writer.write(rels[lang], text.build(), source)
             written += 1
     if written:
-        say(f"Photos and logos: team names written in {written} languages")
+        say(f"Photos and logos: team names and Puck Peak texts written in {written} languages")
     return written
 
 
+def install_menus(disc, writer, say, mode=None):
+    """The main menu without the entries that died with the game's servers (menus.py: HUT, View Player Hub, Leaderboards,
+    Lobby), made from the disc's own menu file. Returns how many files were written."""
+    from . import menus
+    mode = mode or menus.HIDE
+    source = 'menus:' + menus.MENUS_VERSION + str(mode)
+    if writer.current(menus.REL, source):
+        return 0
+    try:
+        files = menus.hidden_files(disc, mode)
+    except (ValueError, KeyError, OSError) as err:     # a menu file that does not look like the game's own: left alone
+        say(f"Photos and logos: the main menu was left as it is ({err})")
+        return 0
+    for rel, data in sorted(files.items()):
+        writer.write(rel, data, source)
+    say("Photos and logos: the main menu leaves out the online entries that no longer work")
+    return len(files)
+
+
 def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=None, names=None, also=(),
-            cache=None, skipped=None):
+            cache=None, skipped=None, menus=True):
     """Make and install the pictures. `portraits` {artid: photo link}, `logos` {team artid:
     (logo link, colours)} (from portraits.plan()). Pictures come from the program's photo pack
     (`pack`; default: the bundled one, if this edition has it; False: none) or are downloaded.
     `names` (portraits.names()) go into the game's text files. Templates come from the disc of
     `title_id`; `also` are further versions of the game (title ids) that get every file as well.
-    `skipped` (a list) gets (what, link, why) of every picture that could not be made.
+    `skipped` (a list) gets (what, link, why) of every picture that could not be made. `menus`: the main menu
+    without its dead entries goes in too (not with the player's own pictures alone).
     Returns (written, already there, failed)."""
-    check(rpcs3, title_id)
+    check(rpcs3, title_id, own=not menus)
     if os.path.exists(lab.manifest_path()):
         lab.remove(say=lambda msg: None)  # the one-off art test, if it is still installed
     say("Photos and logos: reading picture templates from your game")
@@ -378,11 +536,13 @@ def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=
     writer = _Writer([rpcs3.game_folder(t) for t in targets])
     pack = PhotoPack.open() if pack is None else pack or None
     cache = PictureCache() if cache is None else cache or None
-    if names:
-        try:
+    try:
+        if names:
             install_names(disc, writer, names, say)
-        finally:
-            writer.save()
+        if menus:
+            install_menus(disc, writer, say)
+    finally:
+        writer.save()
 
     jobs = []           # (description, function, [(relative path, key in the result)], link, source in the manifest)
     bundled = kept = 0
@@ -448,7 +608,8 @@ def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=
 
 def remove(say=print):
     """Put every file the photos and logos replaced back and delete the ones they added.
-    Returns how many files were handled."""
+    Returns how many files were handled. The game patch's files are not pictures: they stay (patchinstall.remove)."""
+    move_entries('db/', ART_STORE, PATCH_STORE)
     m = load_manifest()
     lab_count = lab.remove(say=lambda msg: None) if os.path.exists(lab.manifest_path()) else 0
     if not any(m['games'].values()):
@@ -459,6 +620,48 @@ def remove(say=print):
         return lab_count
     if savedata.running_rpcs3():
         raise ArtError("Close RPCS3 first: photos and logos can only be removed while the game is closed.")
+    n = _put_back(m)
+    path, _ = _paths()
+    os.remove(path)
+    say(f"The game's own pictures are back: {n} files put back as they were.")
+    return n
+
+
+def remove_store(store):
+    """Put every file of `store` back as it was (kept copies return, our files go) and forget the store's list. RPCS3
+    must be closed (the caller checks). Returns how many files were handled."""
+    m = load_manifest(store)
+    n = _put_back(m)
+    path, _ = _paths(store)
+    if os.path.exists(path):
+        os.remove(path)
+    return n
+
+
+def move_entries(prefix, source, target):
+    """Hand the files whose key starts with `prefix` from one store's list to another's, kept copies included (the game
+    patch's db files, which `cli team32-test` wrote with the pictures before 0.18). Returns how many moved."""
+    src, dst = load_manifest(source), load_manifest(target)
+    _, backups = _paths(target)
+    moved = 0
+    for game_dir, files in src['games'].items():
+        for key in [k for k in files if k.startswith(prefix)]:
+            entry = files.pop(key)
+            if entry.get('backup') and os.path.exists(entry['backup']):
+                os.makedirs(backups, exist_ok=True)
+                kept = os.path.join(backups, os.path.basename(entry['backup']))
+                shutil.move(entry['backup'], kept)
+                entry['backup'] = kept
+            dst['games'].setdefault(game_dir, {})[key] = entry
+            moved += 1
+    if moved:
+        _save_manifest(dst, target)
+        _save_manifest(src, source)
+    return moved
+
+
+def _put_back(m):
+    """Put every file of the list `m` back (see remove) and take away the folders we made and left empty."""
     n = 0
     for game_dir, files in sorted(m['games'].items()):
         for key, entry in sorted(files.items()):
@@ -477,7 +680,4 @@ def remove(say=print):
                 except OSError:
                     break
                 folder = os.path.dirname(folder)
-    path, _ = _paths()
-    os.remove(path)
-    say(f"The game's own pictures are back: {n} files put back as they were.")
     return n

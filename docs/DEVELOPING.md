@@ -14,7 +14,7 @@ for data refreshes and releases; [ROADMAP.md](ROADMAP.md) for what is done and w
 | pytest | tests | `python -m pip install pytest` (any Python that can import the package) |
 | **A base roster save** | most tests, screenshots | see below |
 
-**The base roster cannot be in git.** It is another modder's work on top of EA's data. Tests
+**The base roster cannot be in git.** It is another modder's work on top of the game's data. Tests
 and `tools/window_shot.py` look for a roster save folder (with `SYS-DATA`, `PARAM.SFO`,
 `ICON0.PNG`) of the 2025-26 community family at `work/backup/BLES021530202/`, or wherever
 `LEGACY_ROSTER_BASE` points. `work/` is git-ignored. On a fresh clone, ask the project owner
@@ -35,6 +35,22 @@ python -m legacy_roster list   --rpcs3 <path to rpcs3.exe>
 python -m legacy_roster update --rpcs3 <path> --dry-run   # build and check, write nothing
 ```
 
+**Picture packs.** The window and `update --photos` download `photos.zip` and `looks.zip` from the file server
+(`legacy_roster/packs.py`) into `%LOCALAPPDATA%\NHLLegacyRosterUpdater\packs\`. While developing:
+- `$env:LEGACY_ROSTER_PACKS='<folder>'`: take the packs from a folder of your own (for example `private\packs`) instead
+  of downloading them;
+- `$env:LEGACY_ROSTER_FILES_URL='http://localhost:8000/'`: another server for the packs and the data pack (a copy, a
+  test); `LEGACY_ROSTER_PACK_URL` moves the data pack alone;
+- `python -m legacy_roster packs status|download|remove`: what this PC has.
+No test reads this PC's packs: `tests/conftest.py` gives every test an empty packs folder (and drops
+`LEGACY_ROSTER_PACKS`); the download tests serve packs of their own from a local http server.
+
+**`private/`** (git-ignored, the maintainer's PC only): the picture packs (`private/packs/`), the tools that make the
+look pack and three data pack parts, their tests (`python -m pytest private/tests`) and `private/NOTES.md`. Without it
+everything else works: `tools/build_datapack.py` keeps those parts as the bundled pack has them. Nothing in a tracked
+file may name where the game's content came from: `python tools/clean_check.py` (also `tests/test_clean.py`,
+`build.ps1`) lists every such word with its file and line.
+
 ## Layout
 
 ```
@@ -47,6 +63,7 @@ legacy_roster/   the program (see ARCHITECTURE.md for what each module does)
   art/disc.py art/bigf.py art/refpack.py art/dds.py art/lab.py     menu art: the game's file format, the art test
   verify.py                                                        integrity checks
   datasource.py savedata.py pipeline.py                            data, saves, the job
+  frontoffice.py seasonsave.py                                     contracts and cap by team; the player's Season saves (read only)
   window/ (pywebview)  app/ (controllers)  web/ (the page)          the window (0.10)
   editor/card.py                                                   the player card's checks (both windows)
   progress.py cli.py __main__.py                                   progress bar, command line, start
@@ -58,7 +75,11 @@ tools/           maintainer scripts, not part of the exe
   capacity.py         records and pool room an update needs (read only)
   names_report.py     slots that still show an old name (read only)
   window_shot.py      picture of the window in any state
+  build_photopack.py  the photo pack (private/packs/photos.zip)
+  publish_packs.py    the packs and the data pack onto the file server (owner's go-ahead)
+  clean_check.py      no tracked or shipped file names where the game's content came from
 tests/           pytest suite
+private/         the maintainer's own tools, packs and notes (git-ignored; see above)
 packaging/       build.ps1 (exe), launcher*.py, make_assets.py (images)
 docs/            this folder
 work/            the original lab scripts and backups (git-ignored, local only; leave untouched)
@@ -79,10 +100,18 @@ python -m pytest -q                 # about a minute (every league is built twic
 | `test_leagues.py` | every club league in the pack, built together: real names and listed players (allowing for spelling, NHL call-ups, players another league keeps, skipped players, line-up fillers), playable clubs, contracts, plausible ratings per league, pools moved and nobody lost (on a team or a free agent), free agents without contracts but with their rights, AHL players on NHL contracts belong to the parent club, second run identical, a league added later, running out of records, twins, birthdate matching |
 | `test_providers.py` | every feed parser on small samples (no network): HockeyTech rows, Sportality players, DEL roster page, National League players, places to countries |
 | `test_datasource.py` | the newest readable pack wins; a pack for a newer program is skipped |
-| `test_art.py` | RefPack round trips; art files read and take a new image (parts, trailer kept); 32-bit logos exact; the art test installs into a fake RPCS3 and removes itself, restoring a file that was there before (synthetic art, no EA data); the logo styles incl. the favourite-team `r`, only for NHL teams; pictures downloaded once (cache) and originals always kept (another pack's file, a lost list of installed files) |
+| `test_art.py` | RefPack round trips; art files read and take a new image (parts, trailer kept); 32-bit logos exact; the art test installs into a fake RPCS3 and removes itself, restoring a file that was there before (synthetic art, none of the game's data); the logo styles incl. the favourite-team `r`, only for NHL teams; pictures downloaded once (cache) and originals always kept (another pack's file, a lost list of installed files) |
+| `test_pictures.py` | player pictures on a PC with several rosters: people compared across rosters (patch years, Alex / Alexander, twins), a number another roster or a pack's file uses never given out, ours on it forgotten and given back (kept copy back, else deleted), own pictures alone change only their players and go in with Photos off (a second update identical), a photo that cannot be made leaves the row as it was, NHL.com's grey stand-in refused (own black-and-white pictures not) |
 | `test_savedata.py` | finding RPCS3 (relocated `dev_hdd0`, several users, folder inside RPCS3, plain-word errors), listing, installing without touching the source, folder numbering, names; an RPCS3 with no roster but the game listed (the game's own roster, PARAM.SFO from scratch byte-identical to a real one, the disc's icon) |
-| `test_app.py` | the window's controllers without a window (FakeHost, a pretend RPCS3): the Update tab's state, the editor's Apply / Undo, an unapplied card taken on Save, a bad card on switching player, search, team, My edits, a new player, Jerseys and ice |
+| `test_app.py` | the window's controllers without a window (FakeHost, a pretend RPCS3): the Update tab's state, the editor's Apply / Undo, an unapplied card taken on Save, a bad card on switching player, search, team, My edits, a new player, Jerseys and ice, the game patch row (question, two switches, Unpatch), a patch roster not saved from the editor |
+| `test_gamepatch.py` | the game patch: every entry's words, the player entry = the lab entries, the roster fits and their checks, the db files (some need `LEGACY_ROSTER_DISC`) |
+| `test_contracts.py` | the money scale's units ($17M = 2334 / 3400), default deals, rescaling, a deal with an extension, the 2026-27 deals in a normal build (McDavid, payrolls in reach of the cap) and in a game-patch build (real dollars, one rescale), verify catching a wrong cap hit / extension / 0 seasons |
+| `test_patchinstall.py` | patching a fake RPCS3: only our lines of `patch_config.yml` change and come back byte for byte, another `<TITLE>_patch.yml` is kept, refused while RPCS3 runs, photos' undo leaves the db files; `update(game_patch=)` passes every patch check, a second run is identical, a patch roster with the row off is refused, Restore default unpatches |
 | `test_editor_card.py` | the player card's checks: ratings below 40 the game gives are kept, error texts, unchanged vs changed, rename, new player, change notes |
+| `test_calendar_office.py` | the Calendar and Front office controllers without a window: the roster's calendar on a month page, an organisation's contracts and cap, the contract window, a made-up Season / Be a GM save |
+| `test_contract_edits.py` | contracts set by hand (edits.json `contract`): written after the real deals, checked by verify, a second run identical |
+| `test_seasonsave.py` | a made-up Season / Be a GM save (no game data) read back as calendar, records and standings |
+| `test_lines_strategy.py` | the editor's own lines and strategies (`lines.check_lineup` / `set_lineup`, `strategy.py`, `edits.apply_teams`) |
 | `test_window.py` | the pusher sends each slice once; every page file is local and every import resolves; every `call('x')` in the page exists on `Api` |
 | `test_progress.py` | progress mapping replays a real update's messages in order; every other message is a known remark (`progress.REMARKS`) |
 
@@ -100,14 +129,37 @@ Before calling a change done:
    RPCS3 (never your real saves) into a state and has Microsoft Edge (headless, nothing shows) draw the page with
    that state put into it. Same picture on every PC, at any scaling:
    ```
-   .venv\Scripts\python tools\window_shot.py ready  shot.png --show-path C:\Games\RPCS3\rpcs3.exe
-   .venv\Scripts\python tools\window_shot.py done   shot.png --all          # runs a real offline update
-   .venv\Scripts\python tools\window_shot.py editor shot.png --scale 1.5 --screen-lines 768
-   .venv\Scripts\python tools\window_shot.py ready  x --browser            # the page in your browser, to try CSS live
+   .venv\Scripts\python tools\window_shot.py setup    shot.png --show-path C:\Games\RPCS3\rpcs3.exe
+   .venv\Scripts\python tools\window_shot.py done     shot.png --all          # runs a real offline update
+   .venv\Scripts\python tools\window_shot.py roster   shot.png --scale 1.5 --screen-lines 768
+   .venv\Scripts\python tools\window_shot.py calendar shot.png --size 940x640 # the smallest window
+   .venv\Scripts\python tools\window_shot.py ready    shot.png --tab patch    # another tab than the state's own
+   .venv\Scripts\python tools\window_shot.py ready    x --browser             # the page in your browser, to try CSS live
    ```
-   Check 1, 1.5 and 2 `--scale` and `--screen-lines 768`. The pretend RPCS3 has an EU and
-   an NA roster (flags, "Save for"); `--disc <your game image>` (read only) lets the Roster editor's
-   card show real portraits and adds the game's own roster to the list. `--show-path` also replaces the
+   **States** (the tab they show):
+
+   | Tab | States |
+   |---|---|
+   | Setup | `none` (RPCS3 not set), `setup` (a roster picked), `delete` (the question before a roster goes to the Recycle Bin), `export-ready` |
+   | Update | `ready`, `updating`, `done` (a real offline update), `details` (done, the details open), `failed`, `downloading` (the picture packs coming in), `full` (11 EU rosters, one more than the game lists), `export` |
+   | Game patch | `patch` (not patched), `patched` (an older patch, a roster tagged "32 teams") |
+   | Roster | `roster` (also `editor`), `equipment`, `face` (`SHOT_FACE` typed); `SHOT_GOALIE=1` picks a goalie |
+   | Lines, Strategy, Jerseys & ice | `lines` (`SHOT_TAB=pp|pk|ot|so|letters`: another part), `strategy` (also `strategies`), `jerseys` (also `uniforms`) |
+   | Calendar | `calendar` (`SHOT_DAY=YYYY-MM-DD` opens that day, `SHOT_MODE=league` all games) |
+   | Front office | `office`, `contract` (the contract window for the first player, the cap hit raised by $1M) |
+
+   The team states show Edmonton, or `--team <slot>` (36 Charlotte, 135 Canada). **Options**: `--tab ID` shows another
+   tab than the state's own (`setup`, `update`, `patch`, `roster`, `lines`, `strategy`, `jerseys`, `calendar`,
+   `office`); `--size WxH` the page's size in the window's units instead of the one `--screen-lines` gives (`940x640`:
+   the smallest window); `--scale`, `--screen-lines`, `--disc`, `--show-path`, `--all`, `--saves`, `--live`,
+   `--browser` (`python tools\window_shot.py -h` and the file's docstring).
+   Check 1, 1.5 and 2 `--scale`, `--screen-lines 768` and `--size 940x640`. The pretend RPCS3 has an EU and
+   an NA roster (flags, "Save for"); `--disc <your game image>` (read only) lets the Roster tab's
+   card show real portraits, the Jerseys & ice and Equipment windows the game's pictures, and adds the game's own roster
+   to the list (with it, `done` also installs the pictures, which downloads the packs: slow). The base roster has the
+   game's own 2015-16 calendar: for a picture of the real one, point `LEGACY_ROSTER_BASE` at a copy updated with the
+   calendar step (`python -m legacy_roster update --savedata <a copy of the base's folder> --offline`, with
+   `LOCALAPPDATA` set to a scratch folder so the reports stay out of your own). `--show-path` also replaces the
    temporary and home folders in the pictured texts (backup paths name the user). `--live` opens the real
    window and paints it with PrintWindow; WebView2 draws on the GPU, so that picture can come out blank or
    cut: trust the headless pictures.
@@ -194,10 +246,14 @@ that structure.
 
 ### Change the window
 
-- What the window knows and may do is in the controllers (`app/update.py`, `app/editor.py`,
-  `app/uniforms.py`): add a field to `snapshot()`, a method for the action, and call
-  `self.changed()` after changing state (it is pushed to the page on the next tick). Take the
-  controller's `lock` in every method the page can call (each call comes on its own thread).
+- The window is nine tabs in one row (Setup, Game patch, Update, then the team tabs Roster, Lines, Strategy,
+  Jerseys & ice, Calendar, Front office); ARCHITECTURE.md "The window" has the map: which page, controller and slice
+  each tab has, the shared team list and the followers.
+- What the window knows and may do is in the controllers (`app/update.py`, `app/editor.py`, `app/uniforms.py`,
+  `app/equipment.py`, `app/lines.py`, `app/strategy.py`, `app/calendar.py`, `app/office.py`, `app/season.py`): add a
+  field to `snapshot()`, a method for the action, and call `self.changed()` after changing state (it is pushed to the
+  page on the next tick). Take the controller's `lock` in every method the page can call (each call comes on its own
+  thread).
 - The page's call goes into `window/api.py` (one line per method; `tests/test_window.py` checks that
   every `call('x')` in the page has one). The look is `web/js/*.js` (React through `htm` templates,
   no build step: edit and reload) and `web/css/*.css`; shared pieces (Button, Toggle, Segmented,
@@ -209,9 +265,41 @@ that structure.
 - Images: `.venv\Scripts\python packaging\make_assets.py "<puck-peak>\assets"` rebuilds the
   header logos (`logo_100/125/150/200.png`, one per screen scaling) and `app.ico` from Puck
   Peak's `BB.png` and favicon. The results are committed.
-- A picture for the README: `tools/window_shot.py done docs/window.png --all --show-path
-  "C:\Games\RPCS3\rpcs3.exe"`, then scale it to about 1000 px wide. Never publish a picture
-  that shows a real user name, desktop or other programs.
+- Pictures for the README (`docs/shot_*.png`): `tools/window_shot.py <state> docs/shot_<name>.png --size 1064x961
+  --show-path "C:\Games\RPCS3\rpcs3.exe"` (`done` → `shot_done`, `roster` → `shot_editor`, `equipment`, `jerseys` →
+  `shot_uniforms`, `calendar`, `office`, `prospects-pro` → `shot_prospects`; `--disc` for the game's pictures, but not
+  for `done`: with the disc its update also makes the photos and the picture catches it half way). `calendar` and
+  `office` come from an updated copy of the base roster (`update --savedata <copy> --source <folder> --in-place
+  --offline` with a scratch `LOCALAPPDATA`, then `LEGACY_ROSTER_BASE` = that folder; `SHOT_DAY=2026-10-24` opens a
+  day), so they show the real calendar and contracts. Look at every picture before it goes in: never publish one that
+  shows a real user name, a personal path, the desktop or other programs.
+- **Mockups of new screens** can be made in `private/mockup/` (git-ignored, never in the exe): `python
+  private/mockup/serve.py --open` serves its files over `legacy_roster/web/` (a file in `private/mockup` wins, every
+  other one is the real page's, only read), so a clickable draft uses the real CSS, fonts and shared pieces. `--shots`
+  makes pictures of it, `--test` clicks through it in a hidden browser. Show the owner the mockup before building.
+
+### Add a team tab
+
+A team tab shows the team picked in the shared team list on the left. To add one:
+
+1. **A follower controller** in `app/<name>.py`, without window code: `__init__(self, host, editor, ...)` with an
+   `RLock`, ending with `editor.follow_with('<tab>', self)`; `follow(team)` (its tab came into view or the team
+   changed: remember the team, `shown = True`, do the work, `self.host.changed(SLICE)`), `hide()` (another tab shows:
+   `shown = False`, do nothing more), `roster_changed()` (a roster was read again: drop everything kept for teams) and
+   `snapshot()` (its slice, `{'team': None, 'why': ...}` without a team). Optional: `drafts()` (teams with changes not
+   applied yet, marked in the list) and `rail_numbers()` (`{slot: {'text', 'tone', 'tip'}}`, the number next to each
+   team; `EditorController.rail_view` asks it for the tabs it names). Never call the editor's followers with the
+   editor's lock held; a follower takes its own lock first.
+2. **Register it** in `window/main.py`: make it after the editor, `host.register('<slice>', x.snapshot)`, pass it to
+   `Api` and put it in the `controllers` dict (and in `tools/window_shot.py`'s `controllers()`).
+3. **Its calls** in `window/api.py` (`@_safe`, one line each, `<tab>_<action>`).
+4. **The tab**: its id in `TEAM_TABS` and `RAIL_TIPS` (`app/editor.py`) and in `TABS`, `TEAM_TABS` and `TIPS` (the Help
+   bar's line) in `web/js/main.js`; a page module `web/js/<name>.js` exporting the tab (`useSlice('<slice>')` in
+   `main.js`, a `tpane('<tab>', ...)` next to the others); its styles in `web/css/teams.css`. The Save bar shows under
+   every team tab but the Calendar (`main.js`).
+5. **Test** the controller with a stand-in host (the small `Host` in `tests/test_calendar_office.py`, or
+   `tests/test_app.py`'s FakeHost), add a `window_shot.py` state
+   (`TEAM_STATES`), and look at it at 100 %, 150 %, 200 %, on a 768-line screen and at `--size 940x640`.
 
 ## macOS and Linux
 
@@ -233,7 +321,8 @@ Creates `.venv` if needed, installs PyInstaller, pywebview, CustomTkinter, Pillo
 `cacert.pem` goes into the exe as `legacy_roster\data\cacert.pem`, see "Things that are not
 obvious"), and writes
 `dist\NHLLegacyRosterUpdater.exe` (window: `legacy_roster\web` added as data, `--collect-all` webview, pythonnet,
-clr_loader and customtkinter; about 120 MB with the photo pack) and
+clr_loader and customtkinter; about 26 MB: no picture pack goes inside, `build.ps1` refuses a zip in
+`legacy_roster\data` and any `tools\clean_check.py` hit) and
 `dist\NHLLegacyRosterUpdater-cli.exe` (without Tk or pywebview). Both carry Pillow for "Photos and logos";
 its image readers are named with `--hidden-import` because Pillow loads them by name.
 Close a running copy first: Windows does not let a running exe be replaced (the script stops
@@ -258,9 +347,9 @@ with a message). `build/` and `dist/` are git-ignored.
 
 - **Hard limits**: 252 team records (table full, team ids 8 bits), league id per team fixed,
   40 entries per team, `proteam`/`draftteam` 5 bits (the team in slot 31, Vegas, cannot hold
-  rights). See FORMAT.md section 5.
+  rights; a roster for the game patch gives `proteam` 6 bits, `gamepatch.rights_wide`). See FORMAT.md section 5.
 - **Birth years** are stored as year − 1910 in this roster family (stock: − 1900). Records nobody
-  updated since EA's 2015 database still hold − 1900 and read ten years young. Their draft year
+  updated since the game's 2015 database still hold − 1900 and read ten years young. Their draft year
   (stored − 1900 everywhere) gives them away: `donors.real_birth_year`. About 1,250 teamless
   records are like that.
 - **Second runs must be byte-identical**, and the club leagues taught what breaks that. Each of these
@@ -268,14 +357,14 @@ with a message). `build/` and `dist/` are git-ignored.
   - a record left teamless without being a free agent (it becomes a donor next time);
   - a player listed by two feeds (keep him with the first league: `b.placed`);
   - a feed listing a player twice;
-  - estimating ratings EA would set once the record exists (`b.ea_rating_for`);
+  - estimating ratings the list would set once the record exists (`b.list_rating_for`);
   - fillers chosen from people who only become available later in the run;
   - a player retired after the first new player was made (his record is spare only for the next
     update): retire in `settle_free_agents`, the NHL step or `retire_leftovers` only;
   - a free agent the rule would retire (`would_retire`): the next update retires him. So a national
     team never takes one, a rising-star swap never drops one, and places on NHL copies and national
     teams do not stop a retirement (Pietrangelo, on Vegas and its copy);
-  - spare records chosen before the ratings step: a retired player EA still rates drops below the
+  - spare records chosen before the ratings step: a retired player the ratings list still rates drops below the
     legend line (Henrique), so `donors.refresh()` runs after it;
   - a feed match that depends on records the same run creates (the DEL's age-only "Nicolas
     Krämmer" became a second record of the game's "Nico", and the IIHF squad then named the new one).
@@ -283,15 +372,24 @@ with a message). `build/` and `dist/` are git-ignored.
   - a step that changes a club after its league's step (it must happen inside the step, the way the
     next run will see it: `_place_prospects` puts prospects into `leftovers`); and a prospect placed
     on a slot that was a pool until this run is not that pool's player (`joined`);
-  - EA's rating matched by name alone (no birthdate) only reaches NHL and AHL players: a player who
+  - The list's rating matched by name alone (no birthdate) only reaches NHL and AHL players: a player who
     leaves the AHL for Europe counts by his attributes from then on (`Builder.unrate_name_only`);
-  - ties in line-ups broken by the entry's row, which moves between runs: break them by player id.
+  - ties in line-ups broken by the entry's row, which moves between runs: break them by player id;
+  - a new player of the edits ranked by his reused record's old quality (the next run's Builder rates him by his
+    attributes): `edits._set_ratings` sets `b.quality` for him;
+  - a new player arriving with his reused record's old number and bumping a team-mate (the next run's league step gives
+    the listed number back to the team-mate): without a number of his own he takes a free one (`edits._move(wins=False)`).
 
   `diff2`-style checking helps: build twice, compare every table field by field, and print the
   second run's change log; the rows it still writes name the culprit.
 
   `test_a_second_run_with_club_leagues_changes_nothing` catches them. To find the cause, build twice
   and compare the tables record by record.
+- **Picture numbers are shared by every roster on the PC.** A portrait is the file `p<artid>.big` in the game folder,
+  read by every roster of that game version (and every RPCS3 user). Before 0.10.4's testers it was enough to be
+  consistent inside one roster; now `portraits.plan` also asks `Claims` (every roster save, every portrait file) and
+  compares people with `same_person` (no birth year: patch rosters shift it). Keep `Registry.id_for` from handing out
+  anything in `Claims.used()`; tests build without claims, so the byte-identical second runs do not see them.
 - **Records are the scarce resource**:
   - goalies most of all (a skater record can switch position, a goalie's cannot);
   - with every league on, every spare record is used;
@@ -316,7 +414,7 @@ with a message). `build/` and `dist/` are git-ignored.
 - **Name fields** are limited in UTF-8 bytes, not characters (`Builder.set_text`).
 - **Matching**: twins share last name and birthdate, so first names must agree; club matching
   requires the birthdate (the DEL, which gives ages, matches by full name and birth year);
-  EA name-only matching is limited to NHL and AHL teams; `norm()` spells out ø, æ, ß, ł (otherwise
+  Ratings-list name-only matching is limited to NHL and AHL teams; `norm()` spells out ø, æ, ß, ł (otherwise
   "Øby-Olsen" loses a letter). Each rule came from a real mismatch.
 - **Draft data** (`draft.py`): `draftposition` is the overall pick, `draftteam` slot + 1 (Vegas cannot
   be stored), a junior not drafted yet has his draft year and round 0. `real_birth_year` must not

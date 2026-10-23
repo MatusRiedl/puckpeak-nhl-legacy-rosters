@@ -1,6 +1,6 @@
 """Starting from the game's own roster (stock.py): made from the player's disc, prepared, updated.
 
-These need the game's disc (EA's data, never part of the project): set LEGACY_ROSTER_DISC to a disc
+These need the game's disc (the game's data, never part of the project): set LEGACY_ROSTER_DISC to a disc
 image or extracted game folder of NHL Legacy Edition (EU or NA), read only. Without it they skip."""
 import os
 from collections import Counter
@@ -24,7 +24,7 @@ def stock_bytes():
 
 @pytest.fixture(scope='module')
 def stock_built(stock_bytes, pack):
-    data = Data(nhl_players=_nhl(pack), ea_ratings=pack['ea_ratings'], iihf=pack['iihf'], season_year=pack['season'],
+    data = Data(nhl_players=_nhl(pack), ratings_list=pack['ratings_list'], iihf=pack['iihf'], season_year=pack['season'],
                 leagues=pack['leagues'], nhl_logos=pack.get('nhl_logos'), nhl_last=pack.get('nhl_last'),
                 drafts=pack.get('drafts'))
     return pipeline.build(stock_bytes, data, pipeline.steps_for(pack)), data

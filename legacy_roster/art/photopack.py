@@ -1,14 +1,13 @@
-"""The photos and logos that come inside the program (photopack.zip), and the ones this PC has
-drawn itself (PictureCache).
+"""The photo pack (photos.zip: the photos and logos already drawn) and the ones this PC has drawn itself
+(PictureCache).
 
-The owner decided (2026-10-03) that players should not each have to download every photo, and
-(2026-10-04) that there is one program, with the pictures inside: the exe carries a zip of the
-pictures already drawn (`tools/build_photopack.py`). Only pictures missing from it (new players)
-are downloaded, and each of those is kept on the PC (PictureCache), so it is downloaded once.
-Run from source without the zip, `PhotoPack.open()` returns None and the cache and downloads do
-the work. The command-line exe has no zip either.
+The owner decided (2026-10-03) that players should not each have to download every photo one by one. The pack
+(`tools/build_photopack.py`) is downloaded from the program's file server while "Photos, logos and team names" is on
+(packs.py, 0.32.0; before, it was inside the exe). Only pictures missing from it (new players) are downloaded one by
+one, and each of those is kept on the PC (PictureCache), so it is downloaded once. Without the pack (not downloaded
+yet, offline), `PhotoPack.open()` returns None and the cache and downloads do the work.
 
-    photopack.zip
+    photos.zip
         index.json          {"built": "2026-10-03", "portraits": {key: name}, "logos": {key: name}}
         p/<name>_b.webp     the portrait's top 512 x 256 (drawn by images.portrait at 512 x 512)
         p/<name>_s.webp     the small portrait, 256 x 128
@@ -24,7 +23,6 @@ import os
 import re
 import zipfile
 
-PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'photopack.zip')
 NHL_HEADSHOT = re.compile(r'assets\.nhle\.com/mugs/.*/(\d+)\.png')
 
 
@@ -82,9 +80,10 @@ class PhotoPack(_Pictures):
 
     @classmethod
     def open(cls, path=None):
-        """The bundled pack, or None (the plain edition has none, or it cannot be read)."""
-        path = path or PATH
-        if not os.path.exists(path):
+        """The pack at `path` (default: the downloaded one, packs.path), or None (none yet, or it cannot be read)."""
+        from .. import packs
+        path = path or packs.path('photos')
+        if not path or not os.path.exists(path):
             return None
         try:
             return cls(path)

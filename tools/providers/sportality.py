@@ -4,7 +4,8 @@ The site's season filter names the season and the league's series; the regular-s
 lists the clubs; one request per club gives the roster (name, number, G/D/F, nationality) and one
 request per player adds birthdate, height, weight and shooting side. Forwards are not split into
 centre and wings; captains are not marked. Roster entries carry a portrait (a cut-out PNG); the
-club logos are SVG only, so they come from Wikipedia (wiki_logo.py).
+club logos are SVG only, so they come from Wikipedia (wiki_logo.py). The same schedule gives the
+season's calendar (`schedule`).
 """
 from .web import ISO2, get_json
 
@@ -18,22 +19,61 @@ def api(site, path):
     return get_json(f"{site}/api/sports-v2/{path}")
 
 
-def clubs_of_season(site, series_code, season_year):
-    """{club name: team id} of the league's regular season starting in `season_year`."""
+def regular_games(site, series_code, season_year):
+    """The game records of the league's regular season starting in `season_year`. The schedule is asked for the
+    regular season's game type only (pre-season friendlies have their own); a record of another season, series or
+    game type (`ssgtUuid`) is left out all the same."""
     f = api(site, 'season-series-game-types-filter')
     season = next((s['uuid'] for s in f['season'] if s['code'] == str(season_year)), None)
     series = next((s['uuid'] for s in f['series'] if s['code'] == series_code), None)
     regular = next((g['uuid'] for g in f['gameType'] if g['code'] == 'regular'), None)
     if not (season and series and regular):
         raise ValueError(f"{site}: no {series_code} regular season {season_year} in the site's filter")
-    games = api(site, f"game-schedule?seasonUuid={season}&seriesUuid={series}&gameTypeUuid={regular}")['gameInfo']
+    found = api(site, f"game-schedule?seasonUuid={season}&seriesUuid={series}&gameTypeUuid={regular}")
+    asked = found.get('ssgtUuid')
+    return [g for g in found['gameInfo'] if not asked or g.get('ssgtUuid', asked) == asked]
+
+
+def club_name(team):
+    """A game record's club as `fetch` and tools/club_slots.json name it."""
+    return (team['names'].get('long') or team['names'].get('full') or team['code']).strip()
+
+
+def clubs_of_season(site, series_code, season_year):
+    """{club name: team id} of the league's regular season starting in `season_year`."""
     clubs = {}
-    for game in games:
+    for game in regular_games(site, series_code, season_year):
         for side in ('homeTeamInfo', 'awayTeamInfo'):
             t = game[side]
             if t.get('uuid'):
-                clubs[(t['names'].get('long') or t['names'].get('full') or t['code']).strip()] = t['uuid']
+                clubs[club_name(t)] = t['uuid']
     return clubs
+
+
+def schedule(season_year, league='shl', log=print):
+    """[[date, home club, away club]] of every regular-season game of the season that starts in `season_year` (the
+    local date of the game; clubs by their name, as `fetch` names them), sorted by start time and home club. Games
+    without two clubs yet (a place still to be decided) are left out."""
+    site, series = SITES[league]
+    games, seen = [], set()
+    for g in regular_games(site, series, season_year):
+        home, away = g.get('homeTeamInfo') or {}, g.get('awayTeamInfo') or {}
+        start = g.get('startDateTime') or ''          # local time, 'YYYY-MM-DD HH:MM:SS'; rawStartDateTime is UTC
+        key = g.get('uuid') or (start, home.get('uuid'), away.get('uuid'))
+        if key in seen or not (home.get('uuid') and away.get('uuid')) or len(start) < 10:
+            continue
+        seen.add(key)
+        games.append((start, club_name(home), club_name(away)))
+    if not games:
+        raise ValueError(f"{site}: no {series} regular-season games {season_year} in the schedule")
+    out = [[start[:10], home, away] for start, home, away in sorted(games)]
+    per_club = {}
+    for _date, home, away in out:
+        for club in (home, away):
+            per_club[club] = per_club.get(club, 0) + 1
+    log(f"{league} schedule {season_year}: {len(out)} games, {len(per_club)} clubs, "
+        f"{min(per_club.values())}-{max(per_club.values())} per club, {out[0][0]} to {out[-1][0]}")
+    return out
 
 
 def photo_of(listed, width=PHOTO_WIDTH):

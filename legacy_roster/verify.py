@@ -7,15 +7,16 @@ update made worse is reported.
 """
 from collections import Counter
 
-from . import layout as L
-from . import schedule
+from . import contracts, custom_kit, draftclass, equipment, faces, gamepatch, layout as L
+from . import ratings, schedule, sticks, strategy
 from .art.portraits import person_key
-from .matching import match
+from .matching import closest, match
 from .roster import Roster
+from .schema import ASIS_RANGE, FULL_ASIS, FULL_RATED, FULL_TABLE, FULL_TAG, RATING_RANGE, SLOT_TAG
 from .tdb import check_chain
 
 FULL_LINEUP = list(range(32)) + list(range(133, 154))     # teams that must dress a legal 20
-TEAM_FLAWS = ('slot twice', 'dressed', 'lineup', 'slots', 'too many', 'entry ids')   # keyed by team id
+TEAM_FLAWS = ('slot twice', 'goalie', 'dressed', 'lineup', 'slots', 'too many', 'entry ids')   # keyed by team id
 
 
 _ALL_STAR_SLOTS = {30: 'Seattle Kraken', 31: 'Vegas Golden Knights'}
@@ -47,6 +48,59 @@ def contract_violations(R):
     return bad
 
 
+def style_problems(R, source):
+    """The player types (playerstyle, `sFgQ`): every roster entry carries the type of its player's skater or goalie
+    record, and a type the update changed or gave a new player (or a player moved between forward and defence) is one
+    of his kind's (ratings.STYLE_CHOICES; Builder.set_style). What the source already had is not blamed."""
+    def records(X):
+        out = {}
+        for tname in ('yvSd', 'yuHm'):
+            t = X.f[tname]
+            for i in range(t.cur_rec):
+                out[t.get(i, 'zIBw')] = t.get(i, 'sFgQ')
+        return out
+
+    def unlike(X, rec):
+        pids = (X.link_to_pid.get(X.U.get(e, 'TWSX')) for e in range(X.U.cur_rec))
+        return {pid for e, pid in enumerate(pids) if pid in rec and X.U.get(e, 'sFgQ') != rec[pid]}
+
+    now, before = records(R), records(source)
+    out = [f"{R.name(R.p_by_id[pid])}: a roster place shows another player type than his record"
+           for pid in sorted(unlike(R, now) - unlike(source, before)) if pid in R.p_by_id]
+    kind_before = {source.P.get(i, 'zIBw'): ratings.style_class(source.P.get(i, 'aljv')) for i in range(source.P.cur_rec)}
+    words = {'F': 'forward', 'D': 'defenceman', 'G': 'goalie'}
+    for prow in range(R.P.cur_rec):
+        pid = R.P.get(prow, 'zIBw')
+        style, kind = now.get(pid), ratings.style_class(R.P.get(prow, 'aljv'))
+        if style is None or (before.get(pid) == style and kind_before.get(pid) == kind):
+            continue
+        if style not in ratings.STYLE_CHOICES[kind]:
+            out.append(f"{R.name(prow)} has player type {style}, which no {words[kind]} has")
+    return out
+
+
+def rating_problems(R, source):
+    """The ratings and tendencies the full ratings are written into (schema.FULL_RATED, FULL_ASIS; Builder.rate_full):
+    every value one the game's own players hold (a rating 0-63, that is 36-99; fighting 0-3, consistency 0-2, paddle
+    down 0-1, the three biases 0-15). A value the source already had for the same player is not blamed."""
+    out = []
+    for kind, tname in FULL_TABLE.items():
+        t, s = R.f[tname], source.f[tname]
+        tags = FULL_TAG[kind]
+        ranges = ([(tags[n], n, RATING_RANGE) for n in FULL_RATED[kind]]
+                  + [(tags[n], n, ASIS_RANGE[n]) for n in FULL_ASIS[kind] if n in ASIS_RANGE])
+        before = {s.get(i, 'zIBw'): i for i in range(s.cur_rec)}
+        for i in range(t.cur_rec):
+            pid, j = t.get(i, 'zIBw'), before.get(t.get(i, 'zIBw'))
+            for tag, name, (lo, hi) in ranges:
+                v = t.get(i, tag)
+                if not lo <= v <= hi and (j is None or s.get(j, tag) != v):
+                    prow = R.p_by_id.get(pid)
+                    who = R.name(prow) if prow is not None else f"player {pid}"
+                    out.append(f"{who}: {name.removeprefix('c_')} {v} is outside {lo}-{hi}")
+    return out
+
+
 def multi_club(R):
     """pids on two different club teams (mirror copies count as one team)."""
     U = R.U
@@ -59,13 +113,24 @@ def multi_club(R):
     return {pid for pid, ts in teams.items() if len(ts) > 1}
 
 
-def structure(R, full_lineup=FULL_LINEUP):
+def layout_mirrors(R):
+    """The custom copies of NHL teams `R`'s layout keeps in step (layout.mirrors): none in the game's own roster; a
+    roster of no known layout is checked as the community's."""
+    try:
+        return L.mirrors(L.check_base(R))
+    except L.LayoutError:
+        return L.MIRRORS
+
+
+def structure(R, full_lineup=FULL_LINEUP, mirrors=None):
     """Structural flaws of a roster as {key: message}; keys do not depend on record order.
 
-    Teams in `full_lineup` must be playable: 20 dressed with every line slot filled.
+    Teams in `full_lineup` must be playable: 20 dressed with every line slot filled. `mirrors`: the copies that must
+    equal their NHL team (default: those of `R`'s own layout, layout_mirrors).
     Also returns per-team line-up facts for the report."""
     U, P, Q = R.U, R.P, R.Q
     flags = [n for n, f in U.fields.items() if f.bits == 1 and n != 'jZSh']
+    goal_tags = {SLOT_TAG['g1'], SLOT_TAG['g2']}
     out, teams = {}, {}
     by_team = {}
     for i in range(U.cur_rec):
@@ -81,6 +146,11 @@ def structure(R, full_lineup=FULL_LINEUP):
         for i in ents:
             if bool(U.get(i, 'jZSh')) != any(U.get(i, f) for f in flags):
                 out[('dressed', t, pid(i))] = f"{_team(R, t)}: {R.name(R.p_by_id[pid(i)])} dressed flag and line slots disagree"
+        for i in ents:          # goalies play in goal only, and only goalies do (the Roster editor's Lines keep it)
+            goalie = P.get(R.p_by_id[pid(i)], 'aljv') == 4
+            if any(U.get(i, f) for f in flags if (f in goal_tags) != goalie):
+                out[('goalie', t, pid(i))] = (f"{_team(R, t)}: {R.name(R.p_by_id[pid(i)])} "
+                                              f"{'is a goalie in a skater slot' if goalie else 'is a skater in goal'}")
         dressed = [i for i in ents if U.get(i, 'jZSh')]
         pos = Counter('CLRDG'[P.get(R.p_by_id[pid(i)], 'aljv')] for i in dressed)
         teams[t] = {'players': len(ents), 'dressed': len(dressed), 'slots': len(held), 'positions': dict(pos)}
@@ -96,7 +166,7 @@ def structure(R, full_lineup=FULL_LINEUP):
     # mirrors identical to their primary team
     def sig(t):
         return {pid(i): tuple(U.get(i, f) for f in flags + ['jZSh', 'lcCm', 'tRVs']) for i in by_team.get(t, [])}
-    for prim, ms in L.MIRRORS.items():
+    for prim, ms in (layout_mirrors(R) if mirrors is None else mirrors).items():
         for m in ms:
             if sig(prim) != sig(m):
                 out[('mirror', m)] = f"{_team(R, m)} (team {m}) is not an exact copy of {_team(R, prim)}"
@@ -147,7 +217,30 @@ def structure(R, full_lineup=FULL_LINEUP):
 NO_MARKER = b'\x00\x00\xff\xff'      # a table header's word at 0x18 when no row was removed last
 
 
-def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_moves=(), calendar=None, calendar_source=None):
+def contract_edit_problems(R, deals, scale):
+    """Problems of the contracts the player set by hand ({player row: deal}, real dollars; `scale` the roster's money
+    scale): the fields are not that deal, the deal is one the game cannot hold (NHL bounds in an NHL organisation, free
+    amounts with another club: contracts.edit_problems), or the player is on no club (contracts.contract_home). The
+    contract's team (cPbu.team) is checked for everyone (contract_violations)."""
+    scale = contracts.GAME if scale is None else scale
+    clubs = contracts.contract_clubs(R) if deals else set()
+    out = []
+    for prow, deal in sorted((deals or {}).items()):
+        name = R.name(prow)
+        if any(R.P.get(prow, f) != v for f, v in contracts.terms(deal, scale).items()):
+            out.append(f"{name}: the contract in the roster is not the contract set by hand")
+        teams = {t for _, t in R.teams_of(prow)}
+        home = contracts.contract_home(R.P, prow, teams, clubs)
+        if home is None:
+            out.append(f"{name}: a contract set by hand, but he is on no club and with no NHL organisation")
+            continue
+        out += [f"{name}: {text}" for text in contracts.edit_problems(deal, nhl=home[1])]
+    return out[:20]
+
+
+def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_moves=(), calendar=None, calendar_source=None,
+           farm_patch=False, depth=None, money=None, deals=None, crests=None, contract_edits=None, prospects=None,
+           league_calendars=None):
     """Check `built` (bytes of a SYS-DATA) against `source` (the Roster it was built from).
 
     `nhl_players`: the official rosters the build used; when given, every listed player must be
@@ -157,6 +250,28 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     `league_moves`: team slots allowed to change league (only the in-game league test, lab.py).
     `calendar`: what schedule.apply returned when the calendar step ran: the schedule tables are then checked
     (schedule.check); otherwise they must be the source's (or `calendar_source`'s: the game's own calendar put back).
+    `farm_patch`: a roster made for the 32-team game patch (only `cli team32-test`): the farm teams and the farm calendar
+    follow the patched Season's farm league (gamepatch.check_farm) instead of the source's, the 32 NHL teams are in
+    the four divisions, 8 in each, Utah, Seattle and Vegas named (gamepatch.check_divisions), and the All-Star places and the calendar's one All-Star
+    row are right (gamepatch.check_all_star), the next seasons' calendar is the same 32-team calendar
+    (gamepatch.check_future), every team plays 84 games in calendar tables grown to hold them (gamepatch.check_games),
+    and every farm club (Vegas: its own roster) holds enough of its NHL team's players for call-ups (gamepatch.check_rights),
+    and Coachella Valley / Henderson are in the AHL (gamepatch.check_league_fit; without `farm_patch` they may only move to
+    the Custom league).
+    `depth` ({player row: NHL slot}): players NHL.com does not list who may be on that NHL roster (called up to fill a
+    line-up, Builder.call_ups). `money`: the roster's money scale (contracts.scale_of): every deal the update wrote or
+    moved is one the game can hold (contracts.problems). `deals` (data pack `contracts`, the real 2026-27 deals): a player
+    NHL.com does not list may be on the NHL roster of the organisation he is under contract with
+    (Builder.contract_keeps), and only that one.
+    `crests` ({slot: art id}): custom teams whose own crest picture the photos install (the Roster editor's kit): that art
+    id is theirs alone (custom_kit.problems, which also checks the custom teams' designs and colour table).
+    `contract_edits` ({player row: deal}): contracts the player set by hand (edits.apply_contracts): each player holds
+    exactly that deal on the roster's scale, one the game can hold (contracts.edit_problems), and is with an NHL
+    organisation (contract_edit_problems).
+    `prospects` (draftclass.apply): the player's draft-class players: each is eligible for his class, undrafted, on a
+    European or CHL club and has a potential inside his growth tier's band (draftclass.problems).
+    `league_calendars` ({part: what schedule.apply_league returned}): the club leagues' calendars the update wrote, each
+    one the game can play (schedule.check_league); every other league's table stays the source's.
     Returns (problems, info); the save must not be used if there are problems."""
     edited_keys, edited_rows = edited or (set(), set())
     rebuilt = set(rebuilt)
@@ -167,25 +282,68 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
         return [f"the save cannot be read back: {err}"], {}
     U, P, T = R.U, R.P, R.T
 
-    # hard limits of the game: no new teams, no team changes league
+    # hard limits of the game: no new teams, no team changes league. The one exception (owner, 2026-10-19): Coachella
+    # Valley and Henderson (gamepatch.LEAGUE_SLOTS) are in the AHL's Pacific on a roster for the game patch (stage Y) and
+    # in the Custom league on any other (the unpatched game lists a created team under Custom only)
     if T.cur_rec != source.T.cur_rec:
         problems.append(f"team count changed from {source.T.cur_rec} to {T.cur_rec}")
     else:
+        own_league = gamepatch.AHL_PACIFIC if farm_patch else gamepatch.CUSTOM_GROUPS
         for t in range(T.cur_rec):
-            if T.get(t, 'jjMx') != source.T.get(t, 'jjMx') and t not in league_moves:
-                problems.append(f"{_team(R, t)} changed league")
+            if T.get(t, 'jjMx') == source.T.get(t, 'jjMx') or t in league_moves:
+                continue
+            if t in gamepatch.LEAGUE_SLOTS and gamepatch.league_of(R, t) == own_league:
+                continue
+            problems.append(f"{_team(R, t)} changed league")
+    # the art ids Coachella Valley and Henderson get (layout.OWN_ART) belong to them alone: another team with one would
+    # show their logo and jerseys
+    for t in range(T.cur_rec):
+        art = T.get(t, 'artid')
+        if art in L.OWN_ART.values() and L.OWN_ART.get(t) != art:
+            problems.append(f"{_team(R, t)} has art id {art}, which is kept for another team")
+    # an NHL team's farm team (ttOk.ahlaffiliate, slot + 1) is an AHL club of slots 32-61 that serves no other NHL team
+    # (the AHL step pairs them by the list's organisations, clubs.pair_farms)
+    farms = {n: T.get(n, gamepatch.AFFILIATE) - 1 for n in range(30) if T.get(n, gamepatch.AFFILIATE)}
+    problems += [f"{_team(R, n)} names slot {f} as its farm team" for n, f in farms.items() if not 32 <= f < 62]
+    problems += [f"farm team {_team(R, f)} serves {list(farms.values()).count(f)} NHL teams"
+                 for f in sorted(set(farms.values())) if list(farms.values()).count(f) > 1]
+    # the custom teams' looks (the Roster editor's kit, custom_kit.py): designs the game draws, logos it has, its colour
+    # table's rows as they were, a crest picture on one team only
+    problems += custom_kit.problems(R, source, crests)
 
     # no table keeps the "last removed row" marker the community roster has in the entry and link tables
     # (Season mode crashed on the player it names, owner 2026-10-06)
     problems += [f"table {name} still names a removed row (the update clears it)" for name in R.f.tables
                  if bytes(R.f[name].header[0x18:0x1C]) != NO_MARKER]
 
+    # every table keeps the room the game gives it (its own database + maxinsert of db/nhlng-meta.xml); only a roster for
+    # the game patch has more calendar rows, whose meta file gives the game that room (gamepatch.check_games)
+    grown = gamepatch.CALENDAR_TABLES if farm_patch or (calendar or {}).get('variant') == schedule.ALL_PATCH else ()
+    problems += [f"table {name} has room for {R.f[name].max_rec} rows, the game gives it {source.f[name].max_rec}"
+                 for name in R.f.tables if name in source.f.tables and name not in grown
+                 and R.f[name].max_rec != source.f[name].max_rec]
+
+    # team strategies (the Roster editor's Strategies): every value one the game's menus offer (strategy.py)
+    if strategy.TABLE in R.f.tables and strategy.TABLE in source.f.tables:
+        problems += sorted(strategy.out_of_range(R, source).values())
+
     # the calendar: the schedule tables are the source's, or what the calendar step wrote and the game's rules allow
+    if farm_patch:
+        problems += (gamepatch.check_farm(R) + gamepatch.check_divisions(R) + gamepatch.check_all_star(R)
+                     + gamepatch.check_future(R) + gamepatch.check_games(R) + gamepatch.check_rights(R)
+                     + gamepatch.check_league_fit(R))
+    written = league_calendars or {}
+    for part, expected in sorted(written.items()):
+        problems += schedule.check_league(R, part, expected)
+    written_tags = tuple(schedule.LEAGUES[part][0] for part in written)
     if calendar is not None:
-        problems += schedule.check(R, source, calendar)
+        problems += schedule.check(R, source, calendar, others=written_tags + (
+            (gamepatch.FARM_TABLE, gamepatch.FUTURE_TABLE) if farm_patch else ()))
     else:
         base = calendar_source or source
-        problems += [f"schedule table {tag} changed" for tag in ('ihmS', 'Iwiq', 'byED') if
+        kept = ('ihmS', 'Iwiq', 'byED') + tuple(tag for tag in schedule.LEAGUE_TAGS if tag not in written_tags
+                                                 and not (farm_patch and tag == gamepatch.FARM_TABLE))
+        problems += [f"schedule table {tag} changed" for tag in kept if
                      R.f[tag].cur_rec != base.f[tag].cur_rec or any(
                          R.f[tag].record_bytes(i) != base.f[tag].record_bytes(i) for i in range(base.f[tag].cur_rec))]
 
@@ -213,13 +371,21 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
             if slots != [L.API_TO_SLOT[p['team']]]:
                 problems.append(f"{p['first']} {p['last']} on {slots}, expected {L.API_TO_SLOT[p['team']]}")
         api_rows = {p['row'] for p in api}
+        held = {}       # player row -> the NHL slot of the organisation holding his deal: the source's record of him
+        name = lambda roster, row: (roster.P.get(row, 'PedH'), roster.P.get(row, 'RMbQ'))
+        for roster in (source, R):              # (still his: not reused for someone else) or the new roster's
+            for d in closest(match(roster, [dict(d, birth=tuple(d['birth'])) for d in deals or ()])):
+                row = d['row']
+                if row is not None and d['org'] in L.API_TO_SLOT and row < R.P.cur_rec                         and (roster is R or name(R, row) == name(source, row)):
+                    held.setdefault(row, L.API_TO_SLOT[d['org']])
         for t in range(32):
             for _, prow, name, _, _ in R.team_roster(t):
-                if prow not in api_rows and prow not in edited_rows:
+                if prow not in api_rows and prow not in edited_rows and (depth or {}).get(prow) != t                         and held.get(prow) != t:
                     problems.append(f"{name} still on {L.SLOT_TO_API[t]}")
 
-    now, teams = structure(R, set(FULL_LINEUP) | rebuilt)
-    before, teams_before = structure(source)
+    mirrors = layout_mirrors(source)       # the build keeps its source's layout: the same copies are checked in both
+    now, teams = structure(R, set(FULL_LINEUP) | rebuilt, mirrors)
+    before, teams_before = structure(source, mirrors=mirrors)
     problems += [msg for key, msg in now.items()
                  if key not in before or (key[0] in TEAM_FLAWS and key[1] in rebuilt)]
 
@@ -231,6 +397,27 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     # nobody on two different club teams
     for p in multi_club(R) - multi_club(source):
         problems.append(f"{R.name(R.p_by_id[p])} is on two club teams")
+    # player types and faces (the Roster editor's Type and Face): only values the game's own players have; a created
+    # look only on the records the game's Create Player uses, with its choices, its player listed through the
+    # record's own link
+    problems += style_problems(R, source) + faces.problems(R, source) + faces.look_problems(R, source)
+    problems += faces.link_problems(R, source)
+    # sticks (sticks.team_sticks, the editor): only models the game can draw, or ones the roster already carried
+    problems += sticks.problems(R, also=sticks.worn(source))
+    # helmets, gloves, skates and goalie gear (equipment.fix_models): the same
+    problems += equipment.model_problems(R, also=equipment.worn(source))
+    # ratings and tendencies (the full ratings, the estimate, the editor): only values the game's own players hold
+    problems += rating_problems(R, source)
+    if money is not None:
+        problems += contracts.problems(R, source, money)
+    problems += contract_edit_problems(R, contract_edits, money)
+    # contract status: the game shows a contract (Team Rosters' CONT / SAL) only for status 1 (contracts.status_fit)
+    problems += contracts.status_problems(R, source)
+    # the UFA year: birth year + 27 (contracts.ufa_fit), so that Be a GM shows UFA / RFA after a deal's last season
+    problems += contracts.ufa_problems(R, source)
+    # the player's draft classes (draftclass.apply): eligible, undrafted, on a European / CHL club, a potential the game
+    # keeps; a patch roster holds birth years as real - 1911 (gamepatch.year_shift)
+    problems += draftclass.problems(R, prospects, base=1911 if farm_patch else 1910)
 
     # not fatal, but worth telling the user: AHL teams that lost players and cannot ice a full line-up
     # (when the AHL step did not rebuild them)
@@ -241,3 +428,91 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
             'empty_national_teams': [_team(R, t) for t in range(133, 154) if not teams[t]['players']],
             'teams': teams}
     return problems, info
+
+
+def career_problems(before, after, allowed=(), sizes=None):
+    """What is wrong with a changed Be a Pro career (`after`, bytes) next to the bytes it was read from (`before`).
+    `allowed`: the kinds of edit made (careersave.EDITABLE: 'name', 'xp'); `sizes`: the DATA files it was read from.
+
+    Only the allowed bytes of the pro (chunk 8, chunk 24) and the allowed fields of his own database rows may differ;
+    every other chunk, table, row, count and room, and the old bytes after the last chunk stay as they were. The
+    values are ones the game can hold, the save reads back as written, and its checksums are right."""
+    from . import careersave as K
+    try:
+        old, new = K.Career(before), K.Career(after)
+    except K.CareerError as e:
+        return [f"the changed career cannot be read: {e}"]
+    problems = []
+    unknown = set(allowed) - set(K.EDITABLE)
+    if unknown:
+        return [f"no career edit called {', '.join(sorted(unknown))}"]
+    if len(after) != len(before) or new.end != old.end or new.tail != old.tail:
+        problems.append("the changed career has another size")
+    if sizes is not None:
+        try:
+            K.pieces(after, sizes)
+        except K.CareerError:
+            problems.append("the changed career does not fit its DATA files")
+    if new.build() != bytes(after):
+        problems.append("the changed career does not read back as written")
+    known = check_chain(bytes(before[:old.end]))           # (0x10 stops at the chunks: Career checks it)
+    problems += [p for p in check_chain(bytes(after[:new.end])) if '0x10' not in p and p not in known]
+
+    # the chunks: the same kinds and lengths; only the allowed bytes of chunks 8 and 24
+    ranges = {K.PRO_CHUNK: [r for k in allowed for r in K.EDITABLE[k]['pro']],
+              K.XP_CHUNK: [r for k in allowed for r in K.EDITABLE[k]['xp']]}
+    if [(c.kind, len(c.body)) for c in old.chunks] != [(c.kind, len(c.body)) for c in new.chunks]:
+        problems.append("the changed career's parts differ")
+    else:
+        for a, b in zip(old.chunks, new.chunks):
+            free = ranges.get(a.kind, [])
+            moved = [i for i in range(len(a.body)) if a.body[i] != b.body[i]
+                     and not any(lo <= i < hi for lo, hi in free)] if a.body != b.body else []
+            if moved:
+                problems.append(f"part {a.kind} of the career changed where no edit may (from byte {moved[0]:#x})")
+
+    # the database: the same tables, counts and room; only the allowed fields of the pro's own rows
+    fields = {}
+    for k in allowed:
+        for tag, names in K.EDITABLE[k]['rows'].items():
+            fields.setdefault(tag, set()).update(names)
+    if old.db.order != new.db.order:
+        problems.append("the changed career's tables differ")
+    else:
+        for tag in old.db.order:
+            a, b = old.db.tables[tag], new.db.tables[tag]
+            if (a.header[4:], a.field_defs, a.tail) != (b.header[4:], b.field_defs, b.tail):   # 0: the chain's CRC
+                problems.append(f"table {a.real_name} changed its size or fields")
+                continue
+            if a.records == b.records:
+                continue
+            mine = old._row(tag) if tag in fields else None
+            for i in range(a.max_rec):
+                if a.record_bytes(i) == b.record_bytes(i):
+                    continue
+                changed = {n for n in a.fields if a.get(i, n) != b.get(i, n)} if i < a.cur_rec else {'(unused)'}
+                if i != mine or not changed <= fields[tag]:
+                    problems.append(f"table {a.real_name} row {i} changed ({', '.join(sorted(changed))})")
+                    break
+
+    # the values: XP the game can hold, ratings typed in the window's range, names of 1-24 letters equal in chunk 8 and
+    # the bio row
+    pro = new.pro
+    if 'xp' in allowed:
+        problems += [f"XP for {p} is {v} (0 to {K.MAX_XP})" for p, v in pro.xp.items() if not 0 <= v <= K.MAX_XP]
+    if 'ratings' in allowed:
+        was = old.pro.ratings
+        if pro.goalie:
+            problems.append("ratings of a goalie career cannot be changed yet")
+        problems += [f"the pro's {k} is {v} ({K.LOWEST} to {K.HIGHEST})" for k, v in pro.ratings.items()
+                     if v != was.get(k) and not K.LOWEST <= v <= K.HIGHEST]
+    if 'name' in allowed:
+        body, row = new.chunk(K.PRO_CHUNK), new.bio_row()
+        for key, tag in (('first', K.FIRST), ('last', K.LAST)):
+            raw = bytes(body[K.AT[key]:K.AT[key] + K.NAME_SIZE])
+            text = raw.split(b'\0')[0]
+            if not text or b'\0' not in raw or raw[len(text):].strip(b'\0'):
+                problems.append(f"the pro's {key} name is empty or too long")
+            elif row is not None and new.db.tables[K.BIO].get(row, tag) != text.decode('latin1'):
+                problems.append(f"the pro's {key} name differs in his player row")
+    return problems

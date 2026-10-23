@@ -10,7 +10,7 @@ wrapper differs (docs/FORMAT.md section 6, "The game's own roster"):
     one index ('prCe', 16 bytes after its records);
   * the database ends with four 0xDB bytes, and sits in a PS3RosterFile wrapper (tdb.from_db).
 
-from_disc() makes that save: no EA bytes are shipped, it is built on the player's PC from his own
+from_disc() makes that save: no byte of the game's is shipped, it is built on the player's PC from his own
 disc. prepare() then makes the game's 2014-15 layout one the update can work on (layout.check_base
 calls it the 'stock' layout):
   * the All-Star teams in slots 30 and 31 (copies of players of other teams) are emptied: Seattle
@@ -236,7 +236,8 @@ def retire_leftovers(b, leagues):
     from .leagues import clubs
     from .matching import match_club
     R, U = b.R, b.U
-    people = [p for league in leagues.values() for p in clubs.listed(league['teams'])]
+    per_league = [clubs.listed(league['teams']) for league in leagues.values()]
+    people = [p for league in per_league for p in league]
     b.donors.reserve(people)
     match_club(R, people)
     listed = {p['row'] for p in people if p['row'] is not None} | set(b.api_rows)
@@ -250,11 +251,24 @@ def retire_leftovers(b, leagues):
             continue
         leaving.setdefault(b.P.get(prow, 'zIBw'), []).append(e)
     # a club its feed leaves short at a position keeps its best former players there (as the league
-    # step would: clubs._fill_lineup), so they are not retired
-    have = Counter((p['slot'], clubs.group(p['pos'])) for p in people if p['row'] not in b.api_rows)
+    # step would: clubs._fill_lineup), so they are not retired. Counted as the league steps will place them: a listed
+    # player on an NHL roster stays there, one listed by two leagues goes to the first, and a former player under
+    # contract with the parent club stays anyway without filling the line-up (else a second run counts differently)
+    on_nhl = {b.prow_of_entry(e) for e in range(U.cur_rec) if e not in b.deleted and U.get(e, 'BSXd') in L.NHL_PRIMARY}
+    have, first = Counter(), set()
+    for league in per_league:
+        for p in league:
+            if p['row'] is not None:
+                if p['row'] in b.api_rows or p['row'] in on_nhl or p['row'] in first:
+                    continue
+                first.add(p['row'])
+            have[(p['slot'], clubs.group(p['pos']))] += 1
+    parents = clubs.affiliates(R)
     needed = set()
     for pid, ents in sorted(leaving.items(), key=lambda kv: (-b.quality.get(kv[0], 0), kv[0])):
         for e in ents:
+            if b.farm_contract(e, U.get(e, 'BSXd'), parents):
+                continue
             g = (U.get(e, 'BSXd'), clubs.group('CLRDG'[b.P.get(R.p_by_id[pid], 'aljv')]))
             if have[g] < clubs.CORE[g[1]]:
                 have[g] += 1

@@ -1,4 +1,4 @@
-"""EA RefPack ("QFS") compression, used for the images inside the game's art files.
+"""RefPack ("QFS") compression, used for the images inside the game's art files.
 
 Stream: 0x10 0xFB, the unpacked size (3 bytes, big-endian), then commands. Each command copies
 0-3 (or a run of up to 112) literal bytes from the stream and then, for copy commands, a run of

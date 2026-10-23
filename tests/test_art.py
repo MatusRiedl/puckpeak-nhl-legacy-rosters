@@ -11,9 +11,15 @@ import zipfile
 import pytest
 
 from legacy_roster import pipeline, savedata
-from legacy_roster.art import bigf, dds, install, lab, portraits, refpack
+from legacy_roster.art import bigf, dds, install, lab, menus, portraits, refpack
 from legacy_roster.builder import Data
 from legacy_roster.roster import Roster
+
+
+@pytest.fixture(autouse=True)
+def no_menu(monkeypatch):
+    """The fake discs here have no boot.big: the main menu step writes nothing (tests/test_menus.py has it)."""
+    monkeypatch.setattr(menus, 'hidden_files', lambda disc, mode: {})
 
 
 def dds_header(width, height, dxt5=True):
@@ -158,10 +164,10 @@ def test_the_league_test_moves_only_the_named_custom_teams(base_dir, tmp_path, m
 
 # --- photos and logos ------------------------------------------------------------------------------
 def test_photos_give_lasting_portrait_ids(base_bytes, data, tmp_path):
-    """Players with a photo get an id: EA's and the community's are kept, others get one of ours
+    """Players with a photo get an id: the game's and the community's are kept, others get one of ours
     that this PC remembers, so a second run on the output is byte-identical (also with the
     registry lost: the ids in the roster are kept)."""
-    d = Data(nhl_players=data.nhl_players, ea_ratings=data.ea_ratings, iihf=data.iihf, season_year=data.season_year,
+    d = Data(nhl_players=data.nhl_players, ratings_list=data.ratings_list, iihf=data.iihf, season_year=data.season_year,
              nhl_logos={'EDM': 'https://logo/edm.png', 'UTA': 'https://logo/uta.png'})
     assert sum(1 for p in d.nhl_players if p.get('photo')) > 600
     reg = portraits.Registry(str(tmp_path / 'ids.json'))
@@ -172,7 +178,7 @@ def test_photos_give_lasting_portrait_ids(base_bytes, data, tmp_path):
     assert len(photos) > 600 and len(set(photos.values())) == len(photos)
     R = Roster(first.data)
     mcdavid = next(i for i in range(R.P.cur_rec) if R.name(i) == 'Connor McDavid' and R.teams_of(i))
-    assert R.P.get(mcdavid, 'artid') == 9857 and 9857 in photos        # EA's id, file gets today's photo
+    assert R.P.get(mcdavid, 'artid') == 9857 and 9857 in photos        # the game's id, file gets today's photo
     ours = [a for a in photos if a in portraits.NEW_IDS]
     assert ours and all(R.P.get(r, 'hasportrait') for r in range(R.P.cur_rec) if R.P.get(r, 'artid') in ours)
     assert R.T.get(22, 'artid') in logos and logos[R.T.get(22, 'artid')][0] == 'https://logo/uta.png'
@@ -428,7 +434,7 @@ def test_custom_teams_get_city_keys_the_game_can_name(built_with_names):
 
 @pytest.fixture(scope='module')
 def built_with_names(base_bytes, data, tmp_path_factory, pack):
-    d = Data(nhl_players=data.nhl_players, ea_ratings=data.ea_ratings, iihf=data.iihf, season_year=data.season_year,
+    d = Data(nhl_players=data.nhl_players, ratings_list=data.ratings_list, iihf=data.iihf, season_year=data.season_year,
              leagues=pack['leagues'], nhl_logos=pack.get('nhl_logos'))
     registry = portraits.Registry(str(tmp_path_factory.mktemp('art') / 'portrait_ids.json'))
     return pipeline.build(base_bytes, d, pipeline.steps_for(pack), art_registry=registry)

@@ -13,17 +13,19 @@ from . import pipeline as P
 WORDS = {
     'moved': "traded here", 'added': "joined", 'joined': "joined", 'created': "new in the game",
     'national team: added': "added", 'signed to fill the line-up': "signed to fill the line-up",
+    'called up to fill the line-up': "called up to fill the line-up",
     'left NHL roster': "left", 'left the club': "left", 'national team: removed': "removed",
     'national team: left empty': "left empty",
     'position changed': "position", 'number changed': "number",
     'stays to fill the line-up': "stays to fill the line-up", 'skipped': "not added",
+    'stays under contract': "stays (under contract)", 'farm under contract': "joined the farm (under contract)",
     'prospect pool moved': "pool moved", 'prospect pool merged': "pool merged",
     'prospect pool: moved for room': "moved for room", 'prospect pool: no room': "no room",
     'edited': "edited", 'team edited': "team edited", 'edit skipped': "edit skipped",
 }
-ORDER = ['moved', 'added', 'joined', 'national team: added', 'created', 'signed to fill the line-up',
-         'left NHL roster', 'left the club', 'national team: removed', 'position changed', 'number changed']
-TOTALS = {'summary', 'EA ratings', 'contracts'}        # counts, not players: listed as totals
+ORDER = ['moved', 'added', 'joined', 'national team: added', 'created', 'called up to fill the line-up',
+         'signed to fill the line-up', 'stays to fill the line-up', 'stays under contract', 'farm under contract', 'left NHL roster', 'left the club', 'national team: removed', 'position changed', 'number changed']
+TOTALS = {'summary', 'Current ratings', 'Current ratings (second list)', 'contracts'}        # counts, not players: listed as totals
 NHL_NAMES = {code: name for name, code in L.NHL_TEAM_NAMES.items()}
 
 STYLE = """

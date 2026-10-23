@@ -170,20 +170,20 @@ def test_install_writes_a_new_save_and_leaves_the_source_alone(rpcs3, base_bytes
     source = savedata.list_rosters(sd)[0]
     before = {f: open(os.path.join(source.path, f), 'rb').read() for f in savedata.FILES}
     new = savedata.install(sd, source, base_bytes, '2026-10-02 20:45')
-    assert new.folder == 'BLES021530203' and new.name == '2026-10-02 20:45' and new.tool_made
+    assert new.folder == 'BLES021530201' and new.name == '2026-10-02 20:45' and new.tool_made
     assert sorted(os.listdir(new.path)) == sorted(savedata.FILES)
     sfo = Sfo.load(os.path.join(new.path, 'PARAM.SFO'))
-    assert sfo.get('SAVEDATA_DIRECTORY') == 'BLES021530203' and sfo.get('DETAIL') == 'Rosters'
+    assert sfo.get('SAVEDATA_DIRECTORY') == 'BLES021530201' and sfo.get('DETAIL') == 'Rosters'
     assert open(new.sys_data, 'rb').read() == base_bytes
     assert {f: open(os.path.join(source.path, f), 'rb').read() for f in savedata.FILES} == before
-    assert savedata.install(sd, source, base_bytes, 'again').folder == 'BLES021530204'
+    assert savedata.install(sd, source, base_bytes, 'again').folder == 'BLES021530203'
     assert not [n for n in os.listdir(os.path.dirname(sd)) if n.startswith('.roster-updater')]   # no leftovers
 
 
 def test_install_never_removes_a_preexisting_temporary_path(rpcs3, base_bytes):
     sd, _ = savedata.find_savedata(str(rpcs3))
     source = savedata.list_rosters(sd)[0]
-    collision = os.path.join(os.path.dirname(sd), '.roster-updater-BLES021530203')
+    collision = os.path.join(os.path.dirname(sd), '.roster-updater-BLES021530201')
     os.makedirs(collision)
     sentinel = os.path.join(collision, 'keep.txt')
     with open(sentinel, 'w', encoding='utf-8') as f:
@@ -191,7 +191,7 @@ def test_install_never_removes_a_preexisting_temporary_path(rpcs3, base_bytes):
 
     new = savedata.install(sd, source, base_bytes, 'Safe temporary path')
 
-    assert new.folder == 'BLES021530203'
+    assert new.folder == 'BLES021530201'
     assert open(sentinel, encoding='utf-8').read() == 'user data'
     assert sorted(os.listdir(collision)) == ['keep.txt']
 
@@ -225,7 +225,7 @@ def test_a_roster_can_be_saved_for_the_other_version(rpcs3, base_bytes):
     assert again.folder == 'BLUS315400202'
     assert Sfo.load(os.path.join(again.path, 'PARAM.SFO')).get('TITLE') == got.get('TITLE')   # from the NA roster
     eu = savedata.install(sd, source, base_bytes, 'EU too')
-    assert eu.folder == 'BLES021530203' and Sfo.load(os.path.join(eu.path, 'PARAM.SFO')).get('TITLE') == sfo_title(source)
+    assert eu.folder == 'BLES021530201' and Sfo.load(os.path.join(eu.path, 'PARAM.SFO')).get('TITLE') == sfo_title(source)
     assert {f: open(os.path.join(source.path, f), 'rb').read() for f in savedata.FILES} == before
 
 
@@ -251,13 +251,30 @@ def test_the_versions_rpcs3_has(rpcs3, tmp_path):
     assert r.games() == ['BLES02153', 'BLUS31540']        # the NA game is in RPCS3's list
 
 
-def test_next_free_skips_other_titles_and_wraps(tmp_path):
-    for name in ('BLES021530200', 'BLES021530207', 'BLUS315400250', 'BLES021530000'):
+def test_next_free_takes_the_lowest_number_the_game_lists(tmp_path):
+    for name in ('BLES021530200', 'BLES021530201', 'BLES021530207', 'BLUS315400250', 'BLES021530000'):
         (tmp_path / name).mkdir()
-    assert savedata.next_free(str(tmp_path), 'BLES02153') == 'BLES021530208'
-    assert savedata.next_free(str(tmp_path), 'BLUS31540') == 'BLUS315400251'
-    (tmp_path / 'BLES021530299').mkdir()
-    assert savedata.next_free(str(tmp_path), 'BLES02153') == 'BLES021530201'
+    assert savedata.next_free(str(tmp_path), 'BLES02153') == 'BLES021530202'     # a gap is used again
+    assert savedata.next_free(str(tmp_path), 'BLUS31540') == 'BLUS315400201'     # other titles do not count
+    assert savedata.roster_count(str(tmp_path), 'BLES02153') == 3
+    assert savedata.hidden_in_game(str(tmp_path), 'BLES02153') == set()
+
+
+def test_no_new_roster_beyond_the_ten_the_game_lists(tmp_path):
+    for n in range(9):
+        (tmp_path / f'BLES0215302{n:02d}').mkdir()
+    (tmp_path / 'BLES021530212').mkdir()                  # made by an older version: number 12
+    assert savedata.roster_count(str(tmp_path), 'BLES02153') == 10
+    with pytest.raises(savedata.RosterFull) as err:
+        savedata.next_free(str(tmp_path), 'BLES02153')     # 09 is free, but a new one would hide 12
+    assert 'only 10 rosters' in str(err.value)
+    assert savedata.hidden_in_game(str(tmp_path), 'BLES02153') == set()
+    (tmp_path / 'BLES021530215').mkdir()
+    assert savedata.hidden_in_game(str(tmp_path), 'BLES02153') == {'BLES021530215'}
+    for n in range(1, 10):                                 # 01-09 taken, no 00: still full
+        (tmp_path / f'BLUS3154002{n:02d}').mkdir()
+    with pytest.raises(savedata.RosterFull):
+        savedata.next_free(str(tmp_path), 'BLUS31540')
 
 
 def test_names():
@@ -382,6 +399,23 @@ def test_the_same_roster_writes_nothing_and_a_rename_changes_only_the_title(in_p
     made, backup, changed = savedata.update_in_place(sd, slot, same, name="Renamed roster", backup_root=backups)
     assert changed and made.name == "Renamed roster" and open(slot.sys_data, 'rb').read() == same
     assert Sfo.load(os.path.join(slot.path, 'PARAM.SFO')).get('SUB_TITLE') == "Renamed roster"
+
+
+def test_a_copied_folder_gets_its_own_name_back(in_place):
+    """A roster folder copied by hand keeps its original's SAVEDATA_DIRECTORY, and the game then loads the original
+    (lab round 43): an update in place names the folder itself, also when the roster stays the same."""
+    sd, slot, backups = in_place
+    copy = os.path.join(sd, 'BLES021530209')
+    shutil.copytree(slot.path, copy)
+    other = savedata.Slot(copy)
+    same = open(other.sys_data, 'rb').read()
+    title = Sfo.load(os.path.join(copy, 'PARAM.SFO')).get('SUB_TITLE')
+    assert Sfo.load(os.path.join(copy, 'PARAM.SFO')).get('SAVEDATA_DIRECTORY') == slot.folder
+    made, backup, changed = savedata.update_in_place(sd, other, same, backup_root=backups)
+    sfo = Sfo.load(os.path.join(copy, 'PARAM.SFO'))
+    assert changed and sfo.get('SAVEDATA_DIRECTORY') == 'BLES021530209' and sfo.get('SUB_TITLE') == title
+    assert Sfo.load(os.path.join(slot.path, 'PARAM.SFO')).get('SAVEDATA_DIRECTORY') == slot.folder   # the original stays
+    assert not savedata.update_in_place(sd, other, same, backup_root=backups)[2]                      # now nothing to do
 
 
 def test_an_update_in_place_is_refused_when_it_should_be(in_place, monkeypatch):

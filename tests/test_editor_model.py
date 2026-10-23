@@ -15,6 +15,19 @@ def test_a_roster_reads_into_teams_and_players(base_bytes):
     assert snap.roster(model.FREE_AGENTS)
 
 
+def test_coachella_and_henderson_are_listed_where_the_game_lists_them(base_bytes):
+    from legacy_roster import gamepatch
+    from legacy_roster.roster import Roster
+    snap = model.Snapshot(base_bytes, season_year=2026)              # the unpatched game: Custom Teams
+    assert len(snap.teams_in('AHL')) == 30 and {234, 235} <= set(snap.teams_in('Custom'))
+    R = Roster(base_bytes)
+    gamepatch.league_fit(R)                                          # a roster for the game patch: the AHL
+    for snap in (model.Snapshot(R.f.build(), season_year=2026), model.Snapshot(base_bytes, season_year=2026, farm_ahl=True)):
+        ahl = snap.teams_in('AHL')
+        assert {234, 235} <= set(ahl) and len(ahl) == 32
+        assert not {234, 235} & set(snap.teams_in('Custom'))
+
+
 def test_compare_tells_where_two_rosters_differ(base_bytes, built):
     before, after = model.Snapshot(base_bytes), model.Snapshot(built.data)
     joined = left = 0

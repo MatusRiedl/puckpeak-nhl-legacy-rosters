@@ -1,4 +1,4 @@
-"""Match people from outside data (NHL.com, IIHF, EA ratings, league feeds) to player records."""
+"""Match people from outside data (NHL.com, IIHF, the ratings lists, league feeds) to player records."""
 import difflib
 import unicodedata
 
@@ -71,7 +71,7 @@ def match(R, people):
                 p['row'] = best_row(R, rows)
             continue
         # the full name, with a birth year that can be his: within 2, or ten years late (a record
-        # still in EA's year - 1900). The game's own roster has a Moncton junior Will Smith, born
+        # still in the game's year - 1900). The game's own roster has a Moncton junior Will Smith, born
         # 1996, who is not San Jose's, born 2005 (testers, 0.7.0)
         off = lambda r: min(abs(P.get(r, 'dnFq') + 1910 - p['birth'][0]), abs(P.get(r, 'dnFq') + 1900 - p['birth'][0]))
         rows = [r for r in _same_kind(P, p, by_name.get((fn, ln))) or ()
@@ -92,6 +92,17 @@ def match(R, people):
     return people
 
 
+def closest(people):
+    """`people` as match() left them, without the 'last+year' matches of a record another of them matches more closely:
+    The full ratings have Aku Räty (2001, Edmonton) and Aatu Räty (2002, Vancouver); with only Aatu's record in the roster both took
+    it, and verify read Aatu's deal as Edmonton's. Used by verify only (the builder's picks stay as they are)."""
+    strong = {p['row'] for p in people if p['row'] is not None and p['how'] != 'last+year'}
+    for p in people:
+        if p['how'] == 'last+year' and p['row'] in strong:
+            p['row'], p['how'] = None, 'none'
+    return people
+
+
 def _same_kind(P, p, rows):
     """The records among `rows` of the same kind of player as `p`: goalie or skater."""
     if not rows or not p.get('pos'):
@@ -103,7 +114,7 @@ def _same_kind(P, p, rows):
 def match_club(R, people):
     """Stricter matching for club rosters: a record only counts when the birthdate agrees.
 
-    Sets p['row'] and p['stale']. Records the community roster never touched still carry EA's
+    Sets p['row'] and p['stale']. Records the community roster never touched still carry the game's
     original birth year, which reads ten years late in this roster's convention; such a record
     matches with p['stale'] = True (its ratings date from 2015 and its birth year needs fixing)."""
     by_lb, by_name = build_index(R)

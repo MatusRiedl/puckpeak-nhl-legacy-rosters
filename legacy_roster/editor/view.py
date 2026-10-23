@@ -50,7 +50,7 @@ class EditorTab(ctk.CTkFrame):
         self.edits = edits.load()
         self.teams = edits.load_teams()
         self.pending_photo = None       # a picture chosen for the player on the card, not applied yet
-        self.offset = ratings.overall_offset(app.pack.get('ea_ratings') or []) if app.pack else None
+        self.offset = ratings.overall_offset(app.pack.get('ratings_list') or []) if app.pack else None
         self.season = (app.pack or {}).get('season')
         self.source = None              # (savedata folder, roster folder, file stamp) the view was made from
         self.slot = None                # that roster (savedata.Slot or DiscSlot)
@@ -957,7 +957,7 @@ class EditorTab(ctk.CTkFrame):
                 (slot, backup, changed), _report = r
                 self.set_status((f"Updated \"{slot.name}\" ({slot.folder}, {slot.region})"
                                  + (f"; the old roster is kept in {backup}" if backup else "") + ". In the game: start it; "
-                                 "if it is not the roster in use, Roster Management > Load Roster.") if changed else
+                                 "if it is not the roster in use, Customize > Save/Load/Delete > Load > Rosters.") if changed else
                                 "Nothing to save: the roster is the same.", T.GREEN)
                 self.session, self.session_teams, self.source = set(), set(), None       # read it again
                 self.name_touched = False
@@ -976,8 +976,8 @@ class EditorTab(ctk.CTkFrame):
         def done(r):
             slots, _report = r
             where = " and ".join(f"{s.folder}, {s.region}" for s in slots)
-            self.set_status(f"Saved as \"{slots[0].name}\" ({where}). In the game: Roster Management > "
-                            "Load Roster.", T.GREEN)
+            self.set_status(f"Saved as \"{slots[0].name}\" ({where}). In the game: Customize > Save/Load/Delete > "
+                            "Load > Rosters.", T.GREEN)
             self.app.set_rpcs3(self.app.rpcs3.where, quiet=True)
         self._work("Saving...", job, done)
 

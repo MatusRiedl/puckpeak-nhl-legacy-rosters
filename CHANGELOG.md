@@ -3,6 +3,290 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.50.0 (2026-10-23)
+
+The biggest update yet: everything new since 0.10.4, and a new window. The versions in between (0.20.0 to 0.35.0) were
+test builds and never released; the number jumps so the program's own update check sees 0.50.0 as newer.
+
+### A new window with tabs
+
+- **Ten tabs in one row**, like a game menu, in the order you use them: **Setup**, **Game patch**, **Update**, then **Roster**, **Lines**,
+  **Strategy**, **Jerseys & ice**, **Calendar**, **Front office** and **Draft & Pro**. Each part has a page of its own instead of one
+  crowded page. The program always opens on Setup. Ctrl+1 to Ctrl+9 and Ctrl+0 open a tab, Ctrl+PgUp and Ctrl+PgDn go to the tab
+  on the left or right.
+- **Setup**: pick RPCS3 and the roster to start from, with Open folder and Delete next to each roster, and whether the
+  pictures are downloaded and the program is up to date.
+- **Update**: what to update, "Photos, logos and team names", update in place or make a new roster, and the result.
+- **Game patch**: Patch, Unpatch and the two switches on a page of their own, and for each game version (EU, NA) what is
+  in the game now.
+- **One team list on the left** for the six team tabs. The team you pick stays picked when you change tab, so you can
+  look at a team's lines, then its strategy, its jerseys, its games and its contracts. Each team shows a number that fits
+  the tab: players, games or payroll.
+- **Lines, Strategy and Jerseys & ice are tabs now**, no longer windows on top of the editor. Changes you have not
+  applied yet stay with their team when you click another team.
+- **One Save bar** under Roster, Lines, Strategy, Jerseys & ice and Front office: My edits, update in place or as a new
+  roster, Save (Ctrl+S).
+
+### Calendar (new)
+
+- **A month page**, Monday to Sunday, with arrows for the month before and after. The team you pick has its games marked
+  on each day ("vs EDM" at home in gold, "@ CGY" away in blue); the other days show how many games there are.
+- **Click a day** to see all its games. **The team's games** are listed on the side, month by month, with games
+  played, home and away; click one to go to its day.
+- **Every league's calendar**: the NHL, the AHL, the SHL, Liiga, the DEL, the Extraliga, the National League, the OHL,
+  the QMJHL and the WHL, as your roster holds them, and Norway's real games (the game has no calendar for Norway). A
+  note says when a roster still has the game's own old calendar of a league.
+- **This season's calendars in the game.** An update with the calendar on now also writes the real 2026-27 calendar of
+  every league whose clubs it updates. Season mode plays all ten leagues (New Season > League Type) from these
+  calendars. Only games between clubs the game has are written (Liiga and the WHL have more clubs than the game).
+- **My season.** Switch the calendar to your latest Season or Be a GM save and it shows the games you have played with
+  their scores (won in gold, lost in blue, OT and SO marked), today's date in your season, the next game and the
+  playoffs. Front office then shows your team's record, points and place, and the standings. The program only reads
+  your save, never changes it, and waits while the game is still saving.
+
+### Front office (new)
+
+- **A team's money at a glance**: payroll, the salary cap and the cap space, for this season and the four after it.
+- **Every player under contract** with the organisation: the NHL roster, the farm club and the prospects, with cap hit,
+  seasons left, one-way or two-way, and an extension he has signed. Sort by any column.
+- **Edit a contract** (from Front office, or from the player card in Roster): cap hit, seasons, one-way or two-way, and
+  an extension. The window shows the team's cap space before and after, and refuses a deal the game does not allow.
+  The new deal goes into My edits and is kept through every later update. Amounts are always real dollars; a roster for
+  the game without the patch holds them scaled to the game's $71.4M cap, as every contract is.
+- **Every club, not only the NHL.** Pick any team: an AHL club, an Extraliga, SHL or junior club, a custom team. Front
+  office shows its own roster with each player's deal as the game's Team Rosters shows it, and its payroll. An AHL club
+  links to its NHL team. **Edit any club player's contract**, and make up your own: outside an NHL organisation any
+  amount from $5,000 up to the NHL's most, one to eight seasons. A free agent can be signed to a team with a deal.
+  National teams are read only (a player's contract belongs to his club).
+
+### Draft & Pro (new)
+
+- **The next four drafts** (2027 to 2030) and **your own Be a Pro player**, each with its list of players.
+- **Add a prospect**, or **make a whole class** at once: 16 to 64 made-up players, a weak, normal or strong class, and a
+  class number (the same number makes the same class again). Made-up names mix first and last names of real players of
+  the same country, never a real player's full name.
+- **Every prospect on the Roster editor's card**: name, number, position, type, birthdate, country, size, face and
+  ratings, plus his **potential in stars** (as the game shows it, 5 stars the best) and the potential number, the two
+  things the game drafts him by. The list reads like a draft board, the best first.
+- **The game's Create Player look** for a player you make (a prospect, your pro or any new player): head shape, skin
+  tone, hairstyle and hair colour, facial hair, eyebrows, eye colour, freckles, scars and a black eye, with the game's
+  own words and its own menu pictures from your disc. Random makes one up. The game has 180 places for created faces;
+  the program leaves a few free for the game's own Create Player and says how many are left.
+- **Share classes.** **Export...** saves a class as a file; **Import...** puts a class file into the draft you have
+  open. Birth dates move to that draft, and a window says who was added, who went to another club and who was skipped.
+- **My pro.** Make your own player, put him on a team and pick him in Be a Pro. In the patched game put him on an NHL
+  team: a Be a CHL Pro career with an undrafted junior does not start yet. The tab says where the game lists him:
+  Career > Live the Life > New Pro > Be a NHL Pro, his team, his position, then step Overall until he shows (it starts
+  on 70-79; a pro with 88 everywhere is on 80-89, one with 98 on 90-99).
+- **Your pro is never lost.** The tab says whether he is in the game already or still waiting for Save (a gold "Not in
+  the game yet" line). A pro or class you made and did not save yet is still saved by the next Save after you restart
+  the program, and closing the window with edits not saved asks first: Save now, Close anyway or Cancel. Be a Pro picks
+  a pro only on an NHL team or a CHL club, so the card offers only those.
+- **Be a Pro careers.** The careers you saved in Live the Life, with your pro's ratings as the career has them. Change
+  his name (Load Pro then lists the career under the new name), his ratings (40 to 99; not for a goalie yet) or the
+  experience points he has to spend in Player Growth and press **Save this career** (RPCS3 closed):
+  the whole career is copied to the program's backups first (the newest 10 are kept), and only what you changed is
+  written.
+- The game drafts juniors and European players without NHL rights, by birth date, so class players play on a CHL or
+  European club. Classes work in the patched game (32 teams, the year 2026). Save writes them into the roster, and every
+  later update keeps them.
+
+### The program
+
+- **A much smaller program.** The pictures are no longer inside it: the program is about 26 MB instead of 173 MB, so a
+  new version downloads in seconds.
+- **Pictures downloaded automatically.** While "Photos, logos and team names" is on, the program downloads its pictures
+  by itself in the background (about 160 MB, once, and again only when they change), and the next update puts them in.
+  The row shows how far it is. Press Update during the download and the update waits for it. Switch it off and nothing
+  is downloaded.
+- **A bigger window.** The program opens big and in the middle of the screen.
+- **"Photos, logos and team names" comes first** in the list of what to update, and stands out in gold.
+- **Less clutter.** "Restore default" is one small red button, so "Update roster" is the one big button; "Restore" on the
+  Photos row puts the game's own pictures back. Patch, Unpatch and Update say
+  so when RPCS3 must be closed.
+- **The game shows at most 10 rosters per version.** Setup now counts them ("7 of 10" for EU and NA) and says to keep
+  10 or fewer. A new roster takes a free place among the 10 (one freed by Delete is used again); when all 10 are in use,
+  "Make new roster" is greyed: delete a roster you no longer play, or update one in place. Before, an 11th roster was
+  saved where the game never shows it. Such a roster is now marked "not in the game".
+- **The right way to load a roster.** The program used to say "Roster Management > Load Roster", which the game does
+  not have. It now says **Customize > Save/Load/Delete > Load > Rosters**.
+- **A roster folder you copied by hand** loaded the roster it was copied from (the copy kept the original's name inside),
+  and the game could call it damaged. Updating the copy in place now gives it its own name.
+- **The command line** has `packs download | status | remove`, and `update --photos` downloads what it needs first.
+- **Fixed: Setup showed an RPCS3 in a temporary folder** and Patch failed. The program no longer takes an RPCS3 from a
+  temporary folder; it looks for the running one or the usual place instead.
+- **Fixed: the window could open empty** (dark, with nothing in it). The window asks for its fonts and pictures all at
+  once and Windows turned some of those requests away. It now takes them all.
+
+### Game patch: 32 teams and the year 2026
+
+- **Patch the game** (the gold button on the Game patch tab) patches NHL Legacy in RPCS3, every version you have, so
+  that Season, Be a GM and Be a Pro have Seattle and Vegas: 32 NHL and 32 AHL teams, 84 games, the year 2026. The tab
+  says whether the game is patched, with **Unpatch** next to it. Point at the **"?"** next to Patch to read everything the
+  patch does: what changes in the game, the two switches, what it writes on your PC, what it means for your rosters
+  and saves, and what Unpatch puts back.
+- **Two switches**, changed at once while the game is patched: **Skip the intro** (straight to the main menu: no
+  intro videos and no Press Start) and **No pop ups at start** (no sign-in boxes when the game starts; online modes still sign in when
+  you open them, so online play through the community servers works with it on).
+- **Puck Peak's news on the main menu, also online.** The patch keeps the main menu's news panel on the Puck Peak
+  lines (they come with Photos, logos and team names) when you are signed in, where the online server's old news showed
+  before. If you patched with an earlier build, press **Patch again**.
+- **Rosters that do not fit the game are marked.** The patched game cannot load a roster made without the patch (it
+  says the roster is "damaged"), and the game without the patch cannot load a 32-team roster. Such a roster shows a red
+  line in Setup, on the Update tab and on the Game patch tab. After Patch or Unpatch the program asks whether to update
+  the roster you picked right away (in place, a backup first).
+- **Every update follows the game.** Patched, it makes a roster for 32 teams from any roster, also the game's own; not
+  patched, a roster for the game as it is. A roster made for the patched game is marked "32 teams"; after Unpatch,
+  updating it makes it a roster for the game as it is again. With the game's own roster, Coachella Valley and
+  Henderson get their real AHL players too, so Seattle and Vegas have their farm clubs there.
+- **Coachella Valley and Henderson in the AHL.** With the patch, Play Now's Select Teams lists them in the AHL with
+  their names and crests, no longer under Custom Teams, and the Roster editor does the same. Without the patch they
+  stay under Custom Teams, where the game needs them. Their names need "Photos, logos and team names".
+  Roster Management's Team Rosters lists them in the AHL too (before, it missed them on a roster made from the game's
+  own): press **Patch** again when the Game patch tab says "patch again".
+- **Vegas calls up from Henderson** (patch 0.23). Henderson's players now hold Vegas's rights, as every farm club's
+  hold their NHL team's: Be a GM lists them under Vegas's "In the System", calls them up and sends them down, and the
+  other teams trade for them. Before, the game had no room to note Vegas's rights, so the update kept a farm club's
+  worth of players on Vegas's own NHL roster and Henderson was filled up with free agents. Press **Patch** again when
+  the Game patch tab says "patch again", then update your 32-team roster: a roster made for the older patch shows a
+  red line ("made for another version of the game patch") until it is updated.
+- **The real salary cap.** Be a GM's cap is $104.0M (the game's own: $71.4M), the floor $76.9M, the most one player
+  can earn $20.8M and the lowest salary $850,000. The next seasons follow the real numbers: 2027-28 $113.5M, 2028-29
+  $127.5M (the league's estimate), then the cap holds. Contract Status shows the real seasons ("26-27") instead of
+  "15-16". Only with a roster made for the patched game, which holds the real contracts.
+
+### The update
+
+- **Every team can dress 20 after an update.** When NHL.com moves a player to another position (a defenceman listed as
+  a left wing, for example), the update now deals that team's lines again. A team left short of goalies or defencemen
+  calls the missing player up from its farm club, or signs a free agent, and the List of changes says who. Before, such
+  a roster could fail the safety checks ("Ottawa Senators dresses 20 players ... the game needs 2 G and at least 6 D")
+  and was not saved.
+- **Current ratings for every league.** Every player the current ratings cover, in every league, gets them, his player
+  type when it fits his position, and how he likes to play (shoot or pass, attack or defend, carry or dump). About
+  4,600 players of the community roster are covered; the rest are estimated from their stats as before. The result
+  says how many are current and how many estimated. Height, weight and hand come from the ratings only for players
+  NHL.com does not list. Your own Roster editor changes still win.
+- **The AHL's real rosters.** All 32 AHL clubs get this season's real rosters, with each player's real organisation
+  (NHL.com's NHL rosters still come first). Before, the AHL list's own marks put some players with the wrong team
+  (Coachella Valley missed 7 of its players and had 5 others). An AHL club short of a player signs a free agent near
+  its own level: before, Henderson signed the best free agents (Jonathan Toews among them).
+- **A contract for every club player.** A player on a club who has no deal and whose rights no NHL team holds gets a
+  made-up starter deal with his club, by league and how good he is (an AHL-only deal, a National League deal, a junior
+  deal ...): one season from 27 on, else two. The game's Team Rosters shows an amount for him instead of "N/A". An
+  unsigned draft pick stays unsigned. Change any of them in Front office. NHL prospects playing in Europe or junior get
+  their real NHL deal too.
+- **Real contracts for 2026-27.** Every NHL player gets his real deal: what he earns per season, the seasons left,
+  one-way or two-way, and an extension he has signed for next season. The game's own salary cap is $71.4M, so a roster
+  for the normal game holds every deal times 0.6865 (a $17M deal shows as $11.67M) and each team's payroll fits the
+  game's cap as the real one fits the real $104M cap. A roster for the patched game holds the real dollars. The List
+  of changes shows each NHL team's payroll. A player under contract for 2026-27 stays with his team even when NHL.com's
+  roster lists leave him out (Dylan Larkin, for example), instead of becoming a free agent.
+- **Every contract shows in the game.** Roster Management's Team Rosters showed "N/A" instead of the contract for some
+  players who changed teams (Jack Eichel and Noah Hanifin at Vegas). Every player under contract now shows his deal
+  there, in a new Be a GM's Contract Status and in Be a Pro, also a contract you edited. Be a GM also shows UFA and
+  RFA right after a deal ends (before, Mark Stone at 34 showed as a restricted free agent): a player becomes a UFA in
+  the year he turns 27, as in the game's own roster. A Be a GM or Be a Pro started before an update keeps the
+  contracts it started with.
+- **Utah's, Seattle's and Vegas's arenas on the community roster.** A Utah home game said "Arizona Arena, Glendale"
+  and Seattle and Vegas played in Nashville's arena by name. The NHL step now gives them Delta Center, Climate Pledge
+  Arena and T-Mobile Arena on every roster; the community roster's own team colours stay.
+- **Utah's helmets and gloves in Utah's colours.** Since 0.10.0 the NHL step painted the wrong teams (Philadelphia and
+  Washington got Utah's and Seattle's colours, Utah and Vegas got nothing). Utah now wears black, Seattle navy, Vegas
+  steel grey (their usual helmet; gold is their alternate); an update gives Philadelphia, Washington and Seattle their
+  own colours back.
+- **Gear in team colours.** Helmets and gloves of the AHL, junior and European clubs, and the goalies' gear on every
+  team, no longer show colours their team does not wear (blue gear for a red and black team). Gloves, pads and
+  helmets the game could only draw plain blue get a model it draws.
+- **Sticks in team colours.** An NHL player whose stick shows a colour his team does not wear (Utah's red sticks) gets
+  a stick of the same brand in a team colour, or a plain one. The List of changes counts them. A stick picked in the
+  Roster editor stays.
+- **Fixed: "Aatu Räty still on VAN".** With NHL.com's rosters of October the safety check stopped the update of the
+  community roster: Aku Räty's contract (Edmonton) was taken for Aatu Räty, whose record has the same last name. A
+  player's record now goes to the player it fits best.
+
+### Photos, logos and team names
+
+- **No more wrong faces when you keep several rosters.** Every roster on your PC shares the game's picture files, and a
+  picture number could belong to one player in one roster and to another player in another (for example the
+  community's 2026-27 roster next to a Puck Peak roster). The program now looks at all your rosters and pictures first
+  and never gives a player a number someone else uses. Where it had done so, it moves its picture away; the other
+  roster then shows no picture for those players until you update it too.
+- **A player without a real photo keeps his old picture.** When a photo cannot be made (NHL.com shows only a grey
+  silhouette, no face found, the download fails), the player keeps the picture he had instead of an empty one.
+- **This season's jerseys and centre ice.** The teams wear this season's home and away jerseys: the 32 NHL teams, the
+  AHL, the OHL, QMJHL and WHL, the SHL, Liiga, DEL, Extraliga, National League, Norway's two clubs and the national
+  teams, with numbers, socks, pants and the Select Jerseys pictures to match. Third jerseys and every other version stay
+  the game's own. This season's centre-ice logo goes in where the game shows a club's own ice; the DEL clubs share one
+  rink in the game and the national teams play on the international ice, so they keep the game's own. The first install
+  takes about 18 minutes and about 0.8 GB per game version.
+- **Select Jerseys shows this season's pictures.** The Home and Away pictures in Select Jerseys (and in the Roster
+  Jerseys & ice tab) are pictures of this season's kits. Before, they were the game's picture of Utah's
+  jersey painted in three of the team's colours, so Pittsburgh's sleeves came out gold.
+- **Sharper centre ice and jerseys.** The centre-ice logos (Utah's Delta Center ring, for example) no longer look
+  blocky, blotchy or hatched, above all at a slant from the camera, and their edges no longer show a white rim. The same
+  goes for the number sheets.
+- **Coachella Valley and Henderson wear their own crests.** Before, their centre ice showed a black square and their
+  jerseys were plain black. The Firebirds' and the Silver Knights' crests are now on the centre ice, on the jerseys and
+  in Select Jerseys, and Coachella plays in navy. This works on every roster, also on the game's own. The game draws
+  them as create-a-team teams, so whoever builds a team of their own with create-a-team logo 72 or 80 sees these crests
+  too.
+- **Fixed: Coachella Valley in a plain jersey.** On a roster made from the game's own roster, Coachella's home jersey
+  came out plain (white, or black on newer RPCS3 versions) without stripes. It now wears its navy jersey with the red and
+  teal stripes. A roster you already have is fixed by its next update. A custom team's kit you paint in Jerseys & ice
+  gets the same jersey design.
+- **Fixed: blank team names in Select Teams.** The AHL's Colorado, Cleveland, Laval, Chicago, Tucson, Calgary and
+  Abbotsford and the CHL's Brantford, Newfoundland and Wenatchee had no name there. They are named now.
+- **No dead online entries in the menus.** View Player Hub, Leaderboards and Lobby (their online servers are gone, so
+  they never opened) and Hockey Ultimate Team are left out of the main menu and Play. Online versus, EASHL and GM
+  Connected stay (Zamboni serves them). "Restore" on the Photos row puts them back.
+- **Puck Peak in the game.** Every news text on the main menu (also the fighting tip and NHL 94) says "Puck Peak" and
+  "Updates, patches, statistics! Join us on gg.puckpeak.com"; the "new tuner set" notices say "www.puckpeak.com", in
+  every language. With the game patch the news panel keeps these lines when you play online too (without it the
+  online server's old news show there). Zamboni's other notices and the HUT banner stay as they are.
+
+### Roster, Lines, Strategy, Jerseys & ice
+
+- **Your own player photos go into the game.** A photo you pick now goes into the game when you press Save (close RPCS3
+  first), and with every update, also with "Photos, logos and team names" off. Before, it only went in with an update
+  with that switch on. The same goes for a logo you pick for a team. A picture with nobody in it is refused when you
+  pick it.
+- **Jerseys and ice for every team.** The Jerseys & ice tab works for every team in the game, not only the NHL. Outside
+  the NHL it shows the home and away jersey. For each: this season's, the game's own, made from the team's colours
+  (where the shirt allows it) or your own picture. Each row can save the game's jersey, and this season's, as a picture
+  to paint on. A club's centre ice can be changed where the game shows the club's own ice.
+- **The custom teams** (the 12 NHL copies under Custom Teams, Coachella Valley, Henderson, the prospect pools) are drawn
+  by the game like teams made in Create a Team, so their Jerseys & ice opens a window that looks like Create a Team:
+  - pick the crest out of the game's create-a-team logos, use your own picture, or keep the team's own crest
+    (Coachella Valley, Henderson);
+  - pick the home jersey, the away jersey, the pants, the socks and the numbers, with the game's own pictures;
+  - type three team colours and press "Paint everything with these colours";
+  - then fine-tune each piece (jersey, pants, socks, helmet, gloves, numbers, crest, the goalie's gear) for home and away.
+
+  The centre ice at their home games shows the crest. Goalie gear follows the new colours. A crest picture needs
+  "Photos, logos and team names".
+- **Shared centre ice.** The national teams all play on one centre ice, and so do the DEL clubs. You can put your own
+  picture on it; the window says that the change shows at every one of their home games.
+- **Winter Classic teams** (and the second EASHL team) show the jerseys of the team whose jerseys they wear, with a note
+  that a change shows on both.
+- **Lines.** Set a team's four lines, three pairs and two goalies, the power play (also with 4 skaters), the penalty
+  kill (4 and 3 skaters), overtime, the five shootout shooters, the two extra attackers, and who wears the C and the A.
+  Click a place, then a player. The tab checks the game's rules as you go (20 dressed, goalies only in goal, nobody
+  twice in one unit group, at least 6 defencemen, the letters). The game plays your lines in Play Now and shows them in
+  Roster Management > Edit Lines; a new Season or Be a GM picks its own lines at the start (change them there in
+  Coaching Options). Every later update keeps your lines while all those players are still on the team; if one has
+  left, the update's lines are used and the List of changes says so.
+- **Strategy.** The game's own Strategy menu, with its words and in its order: Forecheck, Neutral Zone, NZ / FC, Off
+  Pressure, Defensive Pressure, Defensive Strategy, Penalty Kill, Powerplay, PP Carry / PP Dump, and the sliders of each
+  forward line and defence pair. A new Season or Be a GM starts with them. The roster also holds tendencies the game's
+  menu never shows; they are at the end of each part, marked "not in the game's menu". Kept through later updates too.
+- **Player type and face** (testers' wish). The card has a **Type** list with the game's own letters: forwards GRN
+  Grinder, PLY Playmaker, SNP Sniper, PWF Power forward, TWF Two-way, ENF Enforcer; defencemen DFD, OFD, ENF, TWD;
+  goalies STD Stand-up, HYB Hybrid, BUT Butterfly. Edit Lines and Team Rosters show the type next to the player's
+  rating. A player who moves from forward to defence gets his new position's usual type. **Face**: the head number (the
+  hair comes with it), skin and eye colour; "Face of a player..." finds a player and takes his face, or picks one of the
+  game's generic heads (shown as pictures). Only faces the game has can be picked.
+
 ## 0.10.4 (2026-10-13)
 
 - **Equipment and "Jerseys and ice..." now really fill the whole window**, over the Puck Peak logo. In 0.10.3 they still
@@ -125,7 +409,7 @@ Fixes from testers of 0.10.1.
   comes back as the game had it (press again to undo). Rosters (NHL, ratings, national teams, leagues) start from the game's own
   roster, with the rows you left on applied on top; the calendar is the game's own calendar (Season mode and Be a GM have their
   complete 82-game season back); "Photos, logos and team names" puts the game's own pictures, team names and jerseys back.
-  The game's own roster is read from the game's clean roster save (`...0200`) when it still is EA's own, otherwise from your game disc.
+  The game's own roster is read from the game's clean roster save (`...0200`) when it still is the game's own, otherwise from your game disc.
   It is only read, never changed.
 - **Restore default.** One big button puts everything back: rosters, calendar, pictures, team names and jerseys. It asks first, then saves
   as a new roster or replaces the picked roster (after a backup copy), as you chose in step 4.

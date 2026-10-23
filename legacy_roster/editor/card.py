@@ -7,10 +7,14 @@
     change_note(old, new, fields)         'OVR 83 → 86, #10 → 12' for the table's Change column
 
 The card's `values` are what the page sends: texts as typed ('first', 'last', 'num', 'pos', 'shoots', 'birth',
-'country', 'height', 'weight', 'ovr'), 'team' (a slot number or 'FA') and 'ratings' (label -> text).
+'country', 'height', 'weight', 'ovr'), 'team' (a slot number or 'FA'), 'ratings' (label -> text), the player type
+'style' (a number of ratings.STYLE_CHOICES, '' for the usual one of his position), the face 'head', 'skin', 'eyes'
+(numbers, '' to leave it as it is; faces.py) and 'look' (a created look, {part: number} of faces.LOOK, or null: a player
+made here wears one instead of a head, skin and eyes).
 """
 import datetime
 
+from .. import faces, ratings
 from .. import layout as L
 from ..art.portraits import person_key
 from . import model
@@ -34,7 +38,8 @@ def change_note(old, new, fields):
              'pos': lambda: f"{old.pos} → {new.pos}", 'first': lambda: "name", 'last': lambda: "name",
              'birth': lambda: "birthdate", 'country': lambda: f"{old.country} → {new.country}",
              'shoots': lambda: "shoots", 'height_in': lambda: "height", 'weight_lb': lambda: "weight",
-             'ratings': lambda: "ratings"}
+             'ratings': lambda: "ratings", 'style': lambda: f"type {old.style_label} → {new.style_label}",
+             'face': lambda: "face", 'look': lambda: "look"}
     out = []
     for f in fields:
         text = words.get(f, lambda: f)()
@@ -58,11 +63,18 @@ def team_value(value):
         return None
 
 
-def read(values, labels, new, choices, current=None):
+def _number(values, key):
+    """A typed whole number, None when the field is empty; ValueError when it is not a number."""
+    text = _text(values, key).strip()
+    return int(text) if text else None
+
+
+def read(values, labels, new, choices, current=None, heads=None):
     """The card's values, checked: (values, None) or (None, what is wrong). `labels`: the rating names the card
     shows; `new`: a player not in the roster yet (he needs an overall); `choices`: the teams that can be picked;
-    `current`: the player's ratings now. A rating left as the game has it is not checked (the game's own go
-    below 40, a defenseman's faceoffs for one); a typed one must be 40-99."""
+    `current`: the player's ratings now; `heads`: the heads the game can draw (model.Snapshot.heads). A rating left as
+    the game has it is not checked (the game's own go below 40, a defenseman's faceoffs for one); a typed one must be
+    40-99."""
     current = current or {}
     out = {'first': _text(values, 'first').strip(), 'last': _text(values, 'last').strip(),
            'pos': _text(values, 'pos'), 'shoots': _text(values, 'shoots') or 'L',
@@ -93,6 +105,34 @@ def read(values, labels, new, choices, current=None):
     if team is None or team not in choices:
         return None, "Pick the team from the list."
     out['team'] = team
+    try:
+        out['style'] = _number(values, 'style')
+    except ValueError:
+        out['style'] = -1
+    if out['style'] is not None and out['style'] not in ratings.STYLE_CHOICES[ratings.style_class(
+            POSITIONS.index(out['pos']))]:
+        return None, "Pick the player type from the list."
+    try:
+        out['head'] = _number(values, 'head')
+    except ValueError:
+        return None, "The face is a number: pick it with Face of a player..."
+    if out['head'] is not None and heads and out['head'] not in heads:
+        return None, f"The game has no face {out['head']}. Pick one with Face of a player..."
+    for key, allowed, what in (('skin', faces.SKINS, "Skin colour"), ('eyes', faces.EYES, "Eye colour")):
+        try:
+            out[key] = _number(values, key)
+        except ValueError:
+            out[key] = -1
+        if out[key] is not None and out[key] not in allowed:
+            return None, f"{what}: pick it from the list."
+    out['look'] = None
+    if values.get('look'):
+        if not isinstance(values['look'], dict):
+            return None, "Pick the look with Look..."
+        out['look'], problems = faces.clean_look(values['look'])
+        if problems:
+            return None, f"Look: {problems[0]}. Pick it with Look..."
+        out['head'] = out['skin'] = out['eyes'] = None          # the look has its own
     rated = {}
     typed = values.get('ratings') or {}
     for label in labels:
@@ -120,10 +160,11 @@ def new_player(values, photo=None):
     """(person key, edit) of a new player from a checked card."""
     who = person_key(values['first'], values['last'], values['birth'])
     fields = {k: values[k] for k in ('first', 'last', 'num', 'pos', 'shoots', 'birth', 'country',
-                                     'height_in', 'weight_lb') if values.get(k) is not None}
+                                     'height_in', 'weight_lb', 'style', 'head', 'skin', 'eyes') if values.get(k) is not None}
     fields['pos'] = model.POS_KEY[values['pos']]
     edit = {'label': f"{values['first']} {values['last']}", 'new': True, 'set': fields,
             'team': values['team'], 'ovr': values['ovr'],
+            **({'look': values['look']} if values.get('look') else {}),
             **({'ratings': values['ratings']} if values['ratings'] else {}),
             **({'photo': photo} if photo else {})}
     return who, edit
@@ -135,7 +176,7 @@ def player_edit(p, values, edit=None, photo=None):
     e = dict(edit or {'label': p.name})
     current = {'first': p.first, 'last': p.last, 'num': p.num, 'pos': model.POS_KEY.get(p.pos, p.pos),
                'shoots': p.shoots, 'birth': list(p.birth), 'country': p.country,
-               'height_in': p.height_in, 'weight_lb': p.weight_lb}
+               'height_in': p.height_in, 'weight_lb': p.weight_lb, 'style': p.style, **(p.face or {})}
     wanted = dict(values, pos=model.POS_KEY[values['pos']])
     changes = {k: wanted[k] for k in current if wanted.get(k) is not None and wanted[k] != current[k]
                and not (k == 'height_in' and cm(current[k]) == cm(wanted[k]))
@@ -143,6 +184,9 @@ def player_edit(p, values, edit=None, photo=None):
     if any(k in changes for k in ('first', 'last', 'birth')) and 'was' not in e:
         e['was'] = {'first': p.first, 'last': p.last, 'birth': list(p.birth)}
     e['set'] = dict(e.get('set') or {}, **changes)
+    kind = ratings.style_class(POSITIONS.index(values['pos']))
+    if e['set'].get('style') is not None and e['set']['style'] not in ratings.STYLE_CHOICES[kind]:
+        del e['set']['style']           # an earlier type of the position he left: he gets his new position's usual
     rated = {a: v for a, v in values['ratings'].items() if p.ratings.get(a) != v}
     if rated:
         e['ratings'] = dict(e.get('ratings') or {}, **rated)
@@ -150,9 +194,15 @@ def player_edit(p, values, edit=None, photo=None):
     team_changed = values['team'] != (teams[0] if teams else model.FREE_AGENTS)
     if team_changed:
         e['team'] = values['team']
+    looked = bool(values.get('look')) and values['look'] != p.look
+    if looked:                                  # the look's head, skin and eyes are its own
+        e['look'] = values['look']
+        e['set'] = {k: v for k, v in e['set'].items() if k not in faces.FIELDS}
+    elif values.get('look') is None and 'look' in e and any(k in changes for k in faces.FIELDS):
+        del e['look']                           # a generic head instead of his look
     if photo:
         e['photo'] = photo
-    return e, bool(changes or rated or team_changed or photo)
+    return e, bool(changes or rated or team_changed or photo or looked)
 
 
 def renamed(my_edits, only=None):
@@ -172,6 +222,9 @@ def renamed(my_edits, only=None):
 def what_changed(edit):
     """The parts of one player's edit, for the My edits list."""
     what = ['new player'] if edit.get('new') else []
-    return what + list(edit.get('set') or {}) + (['ratings'] if edit.get('ratings') else []) + \
+    words = {'style': 'type', 'head': 'face', 'skin': 'face', 'eyes': 'face'}
+    what += list(dict.fromkeys(words.get(k, k) for k in edit.get('set') or {}))
+    what += ['look'] if edit.get('look') else []
+    return what + (['ratings'] if edit.get('ratings') else []) + \
         (['team'] if 'team' in edit else []) + (['photo'] if edit.get('photo') else []) + \
         (['equipment'] if edit.get('equipment') else [])

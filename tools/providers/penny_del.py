@@ -17,6 +17,7 @@ BASE = "https://www.penny-del.org"
 SECTION = {'Stürmer': 'F', 'Verteidiger': 'D', 'Torhüter': 'G'}
 HAND = {'L': 'L', 'R': 'R'}
 NATION = {'GER': 'DEU', 'SUI': 'CHE', 'DEN': 'DNK', 'LAT': 'LVA', 'SLO': 'SVN', 'NED': 'NLD', 'CRO': 'HRV'}
+DAY = re.compile(r'(\d{2})\.(\d{2})\.(\d{4})')
 
 
 def _clean(text):
@@ -62,6 +63,55 @@ def parse_roster(page, today):
                 'weight_kg': int(weight) if weight.isdigit() else None,
                 'country': NATION.get(nation, nation) or None, 'letter': None, 'rookie': False})
     return players
+
+
+def parse_schedule(page):
+    """[(date, start time, home club, away club)] of a schedule page's rows ("Sonntag, 20.09.2026", home first), clubs
+    by the name of their page ('/teams/adler-mannheim/uebersicht'). A club without a link stops with an error: its
+    name alone is not the key `fetch` uses."""
+    games = []
+    for row in re.findall(r'<tr[^>]*>(.*?)</tr>', page, re.S):
+        day = re.search(r'<td class="team-schedule__date">([^<]*)</td>', row)
+        m = DAY.search(day.group(1)) if day else None
+        if not m:
+            continue
+        clock = re.search(r'<td class="team-schedule__time">([^<]*)</td>', row)
+        clubs = re.findall(r'<h6 class="team-meta__name[^"]*">(.*?)</h6>', row, re.S)
+        slugs = [re.search(r'href="/teams/([a-z0-9\-]+)/', c) for c in clubs]
+        if len(clubs) != 2 or not all(slugs):
+            raise ValueError(f"del: a game on {day.group(1).strip()} has no club page for "
+                             f"{' / '.join(_clean(c) for c in clubs) or 'its clubs'}")
+        start = _clean(clock.group(1)).strip('﻿') if clock else ''
+        games.append((f"{m.group(3)}-{m.group(2)}-{m.group(1)}", start, slugs[0].group(1), slugs[1].group(1)))
+    return games
+
+
+def schedule(season_year, log=print):
+    """[[date, home club, away club]] of every regular-season game of the season that starts in `season_year` (clubs by
+    the name of their page, as `fetch` names them), sorted by date, start time and home club (games still to play have
+    no id). The statistics section has a schedule per phase: its Hauptrunde pages, one per month, leave out the
+    playoffs (and pre-playoffs), which have pages of their own; the league lists no pre-season games."""
+    phase = f"{BASE}/statistik/saison-{season_year}-{str(season_year + 1)[2:]}/hauptrunde/spielplan"
+    months = list(dict.fromkeys(re.findall(r'value="(/statistik/saison-[0-9\-]+/hauptrunde/spielplan/monat/[a-z]+)"',
+                                           get_text(phase, pause=0.7))))
+    if not months:
+        raise ValueError(f"del: the regular season {season_year}-{season_year + 1} lists no months")
+    games = {}
+    for path in months:
+        for date, start, home, away in parse_schedule(get_text(BASE + path, pause=0.7)):
+            games[(date, home, away)] = start
+    out = [[date, home, away] for (date, home, away), _start in
+           sorted(games.items(), key=lambda kv: (kv[0][0], kv[1], kv[0][1]))]
+    if not out:
+        raise ValueError(f"del: no regular-season games for {season_year}-{season_year + 1}")
+    per_club = {}
+    for _date, home, away in out:
+        for club in (home, away):
+            per_club[club] = per_club.get(club, 0) + 1
+    log(f"del schedule {season_year}: {len(out)} games, {len(per_club)} clubs, "
+        f"{min(per_club.values())}-{max(per_club.values())} per club, {out[0][0]} to {out[-1][0]} "
+        f"({len(months)} months)")
+    return out
 
 
 def fetch(season_year, sources=(), log=print, today=None):

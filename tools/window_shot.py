@@ -4,18 +4,34 @@ from the base roster (the same one the tests use) and keeps the program's settin
 
     python tools\\window_shot.py <state> <out.png> [options]
 
-states:
-    none       RPCS3 not set yet
-    ready      RPCS3 found, a roster selected
+states (the tab they show in brackets):
+    none       RPCS3 not set yet [Setup]
+    setup      RPCS3 found, a roster selected [Setup]
+    ready      RPCS3 found, a roster selected [Update]
+    patch      the Game patch tab, not patched [Game patch]
     updating   an update in progress (made-up progress messages)
     done       runs a real offline update into the pretend folder, then shows the result
     details    done, with the details drawer open
     failed     a made-up failure
     delete     the question before a roster save goes to the Recycle Bin (its Delete button pressed)
     export     the window with "Export only SYS-DATA roster" ticked, after making the roster (export-ready: before)
-    editor     the Roster editor tab on the base roster, Edmonton and its first player picked
-    equipment  the Roster editor's "Equipment" window for the first Edmonton player (pictures need --disc)
-    uniforms   the Roster editor's "Jerseys and ice" window for Edmonton (pictures need --disc)
+    roster     the Roster tab on the base roster, Edmonton (or --team <slot>) and its first player picked (also: editor)
+    equipment  the Roster tab's "Equipment" window for the first Edmonton player (pictures need --disc)
+    jerseys    the Jerseys & ice tab for Edmonton or --team <slot> (pictures need --disc) (also: uniforms)
+    lines      the Lines tab for Edmonton (SHOT_TAB=pp|pk|ot|so|letters: another part), a place picked
+    strategy   the Strategy tab for Edmonton, two values changed (also: strategies)
+    face       the Roster tab's "Face of a player" window, SHOT_FACE (default "mc") typed (head pictures need --disc)
+    calendar   the Calendar tab for Edmonton (SHOT_DAY=YYYY-MM-DD: that day opened; SHOT_MODE=league: all games)
+    office     the Front office tab for Edmonton
+    contract   the Front office's contract window for its first player, the cap hit raised by $1M
+    prospects  the Draft & Pro tab: next year's draft with three made-up prospects, the second on the card
+    prospects-pro  the Draft & Pro tab: My pro, made and on the card
+    prospects-make  the Draft & Pro tab's "Make a class..." window over the three prospects
+    prospects-class  the Draft & Pro tab: a random class of 32 (number 2027), its first player on the card
+    prospects-import  the Draft & Pro tab: that class saved as a file and put into the draft after, with the report
+    prospects-career  the Draft & Pro tab's Be a Pro careers: copies from LEGACY_ROSTER_CAREERS (folders of Be a Pro
+               saves) in the pretend RPCS3, the first opened, 250 more Offense XP and Passing + 3 not saved
+    patched    the Game patch tab: the EU game patched with an older patch (Patch again, Unpatch), a roster tagged "32 teams"
 
 The pretend RPCS3 has the base roster, an earlier update of it, and a copy saved for the NA version, so the
 EU / NA tags and "Save for" show.
@@ -26,8 +42,13 @@ draws the page from web/ with it. So the picture is the same on every PC, at any
 
 options:
     --scale F           the screen's scaling: 1 (100 %), 1.5 (150 %), 2 (200 %); default 1
-    --screen-lines N    pretend the screen is N lines tall: 768 = small laptop (the window is 80 lines less)
-    --show-path TEXT    path shown in step 1, so a public picture does not show a real user name
+    --screen-lines N    pretend the screen is N lines tall (default 1080; 768 = small laptop); the window takes the
+                        size main.py gives it there (taskbar 48 lines, 16:9, 1366 wide up to 800 lines)
+    --size WxH          the page's size in the window's units instead of the one --screen-lines gives (940x640: the
+                        smallest window)
+    --tab ID            show another tab than the state's own (setup, update, patch, roster, lines, strategy,
+                        jerseys, calendar, office, prospects)
+    --show-path TEXT    path shown in Setup, so a public picture does not show a real user name
     --all               switch on every league before a done/details update
     --disc PATH         your own game disc image (read only): the editor's card then shows the players' pictures
     --saves             step 1 points at a copied folder of roster saves instead of RPCS3
@@ -55,16 +76,26 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 BASE = os.environ.get('LEGACY_ROSTER_BASE') or os.path.join(ROOT, 'work', 'backup', 'BLES021530202')
 WEB = os.path.join(ROOT, 'legacy_roster', 'web')
-STATES = ('none', 'ready', 'updating', 'done', 'details', 'failed', 'delete', 'editor', 'uniforms', 'equipment', 'export',
-          'export-ready')
-WINDOW = (1080, 780)            # the window's size (main.py), with its frame and title bar
+STATES = ('none', 'setup', 'ready', 'patch', 'updating', 'done', 'details', 'failed', 'delete', 'roster', 'editor', 'jerseys',
+          'uniforms', 'equipment', 'export', 'export-ready', 'patched', 'full', 'lines', 'strategy', 'strategies', 'face',
+          'calendar', 'office', 'contract', 'downloading', 'misfit', 'prospects', 'prospects-pro', 'prospects-look',
+          'prospects-make', 'prospects-class', 'prospects-import', 'prospects-career')
+TEAM_STATES = {'roster': 'roster', 'editor': 'roster', 'equipment': 'roster', 'face': 'roster', 'jerseys': 'jerseys',
+               'uniforms': 'jerseys', 'lines': 'lines', 'strategy': 'strategy', 'strategies': 'strategy',
+               'calendar': 'calendar', 'office': 'office', 'contract': 'office', 'prospects': 'prospects',
+               'prospects-pro': 'prospects', 'prospects-look': 'prospects', 'prospects-make': 'prospects', 'prospects-class': 'prospects',
+               'prospects-import': 'prospects', 'prospects-career': 'prospects'}
+# made-up players for the Draft & Pro pictures (no real person's name)
+SHOT_PROSPECTS = (('Aron', 'Halvik', 'C', 'SWE', 1), ('Jonah', 'Vale', 'D', 'CAN', 3), ('Marek', 'Doubrava', 'LW', 'CZE', 5))
+SCREEN_LINES, TASKBAR = 1080, 48    # the screen pretended (in the window's units) and its taskbar
 FRAME = (16, 39)                # what the frame and title bar take of it at 100 %
 FIXTURE = '__fixture.json'
 
 
-def pretend_rpcs3(folder, disc=None):
+def pretend_rpcs3(folder, disc=None, full=False):
     """An RPCS3 folder with the base roster, one earlier update of it and a copy for the NA version
-    (`disc`: a game disc image both versions are said to be on)."""
+    (`disc`: a game disc image both versions are said to be on; `full`: 11 EU rosters, one more than the
+    game lists)."""
     from legacy_roster import savedata
     sd = os.path.join(folder, 'rpcs3', 'dev_hdd0', 'home', '00000001', 'savedata')
     shutil.copytree(BASE, os.path.join(sd, os.path.basename(BASE)))
@@ -75,6 +106,8 @@ def pretend_rpcs3(folder, disc=None):
         data = f.read()
     savedata.install(sd, base, data, savedata.default_name(datetime.datetime.now() - datetime.timedelta(days=1)))
     savedata.install(sd, base, data, "Community roster NA", title_id='BLUS31540')
+    for n in range(3, 11) if full else ():
+        shutil.copytree(base.path, os.path.join(sd, f"{base.title_id}02{n:02d}"))
     if disc:
         os.makedirs(os.path.join(folder, 'rpcs3', 'config'))
         with open(os.path.join(folder, 'rpcs3', 'config', 'games.yml'), 'w', encoding='utf-8') as f:
@@ -131,12 +164,20 @@ def wait(condition, seconds=600):
         time.sleep(0.1)
 
 
-def drive(args, upd, ed, uni, work):
+def drive(args, c, work):
     """Bring the controllers into the state asked for. Says which tab shows and whether the details are open."""
-    from legacy_roster import layout as L
+    from legacy_roster import gamepatch, layout as L
+    upd, ed, uni = c['update'], c['editor'], c['uniforms']
     wait(lambda: not upd.scanning, 60)
     state, tab, details = args.state, 'update', False
-    if state == 'updating':
+    if state in ('none', 'setup'):
+        tab = 'setup'
+        if state == 'setup':
+            upd.select(os.path.basename(BASE))
+    elif state == 'patch':
+        tab = 'patch'
+        upd.select(os.path.basename(BASE))
+    elif state == 'updating':
         upd._begin(None)
         for msg in ('Starting from "ROSTER2526" (BLES021530202)', 'NHL rosters: ANA (1/32)', 'NHL rosters: TOR (28/32)'):
             upd.say(msg)
@@ -151,44 +192,196 @@ def drive(args, upd, ed, uni, work):
         wait(lambda: upd.busy, 10)
         wait(lambda: not upd.busy and not upd.scanning)
         details = state == 'details'
-    elif state in ('editor', 'uniforms', 'equipment'):
-        tab = 'editor'
+    elif state in TEAM_STATES:
+        tab = TEAM_STATES[state]
         upd.select(os.path.basename(BASE))
-        ed.opened()
+        ed.show_tab('roster')               # the team tabs read the roster picked in Setup
         wait(lambda: ed.view is not None and not ed.busy and ed.after_busy is None)
-        ed.pick_team(L.API_TO_SLOT['EDM'])
+        team = args.team if args.team is not None else L.API_TO_SLOT['EDM']
+        ed.set_league("Free agents" if team == 'FA' else ed.snap.team_league[team])
+        ed.pick_team(team)
         rows = ed.snapshot()['rows']
         ed.pick_player(next((r for r in rows if r['pos'] == 'G'), rows[0])['id'] if os.environ.get('SHOT_GOALIE') else rows[0]['id'])
         wait(lambda: not (ed.picture or {}).get('loading'), 60)
-        if state == 'uniforms':
-            ed.uniforms_open()
-            wait(lambda: uni.snapshot() and uni.snapshot()['loaded'], 120)
-            wanted = len(uni.versions) + 1 if uni.pictures is not None and args.disc else 0
-            wait(lambda: len(uni.thumbs) >= wanted, 120)
+        ed.show_tab(tab)                    # its follower follows the team
+        if tab == 'jerseys':
+            wait(lambda: (uni.snapshot() or {}).get('loaded'), 120)
+            if uni.team_kit is None:            # a custom team's form has the game's pictures once it is loaded
+                wanted = len(uni.versions) + 1 if uni.pictures is not None and args.disc else 0
+                wait(lambda: len(uni.thumbs) >= wanted, 120)
         if state == 'equipment':
             ed.equipment.open()
             wait(lambda: ed.equipment.loaded, 120)
+        if state == 'lines':
+            ed.lines.set_tab(os.environ.get('SHOT_TAB') or 'even')
+            ed.lines.pick_slot({'pp': 'pp1c', 'pk': 'pk4_1c', 'ot': 'ot_1c', 'so': 's1'}.get(ed.lines.tab, 'l2lw'))
+        if state == 'face':             # the Face of a player window, a search typed (the heads' pictures need --disc)
+            ed.face_open()
+            wait(lambda: (ed.modal or {}).get('pics') != 'loading', 120)
+            ed.face_search(os.environ.get('SHOT_FACE') or 'mc')
+        if tab == 'strategy':
+            ed.strategy.set('oz_forecheck', 1)
+            ed.strategy.set('forward1_bias2', 8)
+        if tab == 'calendar':
+            if os.environ.get('SHOT_MODE'):
+                c['calendar'].mode(os.environ['SHOT_MODE'])
+            if os.environ.get('SHOT_DAY'):
+                c['calendar'].day(os.environ['SHOT_DAY'])
+        if tab == 'prospects':
+            make_prospects(c, state)
+        if state == 'contract':         # the first player of the organisation's list, $1M more
+            office = c['office']
+            first = next(r for g in office.snapshot()['groups'] for r in g['rows'])
+            ed.contract_open(first['key'])
+            deal = office.contract_snapshot()['draft']
+            office.contract_change('cap', deal['cap'] + 1_000_000)
     elif state in ('export', 'export-ready'):     # "Export only SYS-DATA roster": the file is written into the temp folder
         os.chdir(work)
         upd.set_export_only(True)
         upd.use_export_file(os.path.join(BASE, 'SYS-DATA'))
+        if state == 'export-ready':
+            tab = 'setup'
         if state == 'export':
             upd.start()
             wait(lambda: upd.busy, 10)
             wait(lambda: not upd.busy)
+    elif state == 'patched':        # the EU game patched with an older patch, a roster made for it
+        tab = 'patch'
+        upd.select(os.path.basename(BASE))
+        upd.patch_state = {'BLES02153': {'patched': True, 'version': '0.17', 'intro': True, 'login': False}}
+        upd.patch_rosters = {os.path.basename(BASE)}
+        upd.changed()
+    elif state == 'misfit':         # the EU game just patched, the roster picked is a normal one: the question
+        tab = 'setup'
+        upd.select(os.path.basename(BASE))
+        upd.patch_state = {'BLES02153': {'patched': True, 'version': gamepatch.TEAMS_VERSION, 'intro': True, 'login': False}}
+        upd.patch_rosters = set()
+        upd.versions = ['BLES02153']
+        upd._ask_fit()
+        upd.changed()
+    elif state == 'downloading':    # the pictures of "Photos, logos and team names" coming in, Update pressed
+        upd.select(os.path.basename(BASE))
+        upd.fetch, upd.fetch_at, upd.fetch_size = 'running', 0.41, 157_000_000
+        upd.waiting, upd.busy = False, True
+        upd._fetch_progress(0.42)
+    elif state == 'full':           # 11 EU rosters: the count is red, one row is not in the game, no new roster
+        upd.select(os.path.basename(BASE))
+        upd.save_mode = 'new'
+        upd.changed()
     elif state == 'delete':
+        tab = 'setup'
         upd.ask_delete(next(s.folder for s in upd.slots if s.tool_made))
     elif state == 'failed':
         upd.status = ("Nothing was saved.", 'bad')
         upd.show_result(False, "The new roster failed the safety checks, so nothing was saved",
                         ["Anaheim Ducks dresses 19 players (4 C, 4 LW, 3 RW, 6 D, 2 G); the game needs 20 with 2 G "
                          "and at least 6 D", "Your existing rosters are untouched."], [("Show details", 'details')])
-    return tab, details
+    return args.tab or tab, details
+
+
+SHOT_LOOK = {'shape': 9, 'tone': 6, 'hair': 2, 'hair_colour': 3, 'facial_hair': 0, 'facial_hair_colour': 3,
+             'eyebrow': 1, 'eyebrow_colour': 3, 'eyes': 4, 'black_eye': 0, 'scars': 1, 'freckles': 0}
+
+
+def make_prospects(c, state):
+    """Three made-up prospects for next year's draft on CHL clubs (the second on the card); 'prospects-pro': also My
+    pro, on Edmonton, with a created look, on the card; 'prospects-look': the Look window over him (the game's pictures
+    need --disc); 'prospects-make': the maker's window over them; 'prospects-class' / 'prospects-import': a random class
+    instead (and its file put into the draft after)."""
+    from legacy_roster import draftclass
+    from legacy_roster import layout as L
+    ed, pr = c['editor'], c['prospects']
+    year = ed.snap.season_year + 1
+    if state == 'prospects-career':
+        return make_career(c)
+
+    def calm():
+        with ed.lock:                       # `busy` goes off just before the result is taken in, under the lock
+            return not ed.busy and ed.after_busy is None
+
+    settle = lambda: wait(lambda: calm() and (time.sleep(0.05) or calm()), 300)
+    if state in ('prospects-class', 'prospects-import'):
+        pr.show(year)
+        pr.make_open()
+        pr.make_set('count', 32)
+        pr.make_set('seed', 2027)
+        pr.make()
+        settle()
+        if state == 'prospects-import':     # another player's class of the same year (number 99), one club unknown
+            snap = ed.snap
+            names = [(p.first, p.last, p.country) for p in snap.by_who.values() if not any(t in L.NHL_ALL for t in p.teams)]
+            taken = [p.name for p in snap.by_who.values()]
+            made = draftclass.make(year, 24, names, pr._draft_clubs(snap), seed=99, taken=taken)
+            players = [{'card': pl['card'], 'prospect': pl['prospect'],
+                        'club': {'league': snap.team_league[pl['club']], 'name': snap.team_name(pl['club'])}} for pl in made]
+            players[0]['club'] = {'league': 'OHL', 'name': 'Lakeshore Herons'}
+            pr.step(1)
+            pr.import_text(draftclass.class_file("Shared class", year, players), 'shared_class.json')
+            settle()
+        pr.pick(pr.snapshot()['rows'][0]['key'])
+        settle()
+        return
+    clubs = (min(L.OHL), min(L.QMJHL), min(L.WHL))
+
+    def made(first, last, pos, country, team, birth, ovr, look=None):
+        typed = {'first': first, 'last': last, 'num': str(10 + len(ed.edits)), 'pos': pos, 'shoots': 'L',
+                 'birth': birth, 'country': country, 'height': '185', 'weight': '84', 'team': team, 'ovr': str(ovr),
+                 'ratings': {}, 'look': look}
+        assert ed.apply(typed) == 'applied', ed.status
+        settle()
+
+    pr.show(year)
+    for (first, last, pos, country, tier), team in zip(SHOT_PROSPECTS, clubs):
+        pr.add()
+        pr.set('tier', tier)
+        made(first, last, pos, country, team, f"{year - 18}-0{tier}-12", 62 - 4 * tier)
+    if state in ('prospects-pro', 'prospects-look'):
+        pr.show('pro')
+        pr.add()
+        made('Theo', 'Brannick', 'C', 'CAN', L.API_TO_SLOT['EDM'], f"{year - 20}-05-01", 64, look=SHOT_LOOK)
+        if state == 'prospects-look':
+            ed.look_open(ed.snapshot()['card']['values']['look'])
+            wait(lambda: (ed.modal or {}).get('pics') != 'loading', 120)
+    else:
+        pr.pick(next(r['key'] for r in pr.snapshot()['rows'] if r['name'].endswith('Vale')))
+    if state == 'prospects-make':
+        pr.make_open()
+        pr.make_set('seed', 2027)
+
+
+def make_career(c):
+    """Up to three Be a Pro career copies (LEGACY_ROSTER_CAREERS) into the pretend RPCS3, the careers in view, the first
+    opened, 250 more Offense XP and Passing + 3 typed."""
+    from legacy_roster import careersave
+    source = os.environ.get('LEGACY_ROSTER_CAREERS')
+    folders = []
+    for here, dirs, files in os.walk(source or ''):
+        if 'DATA0000' in files and 'PARAM.SFO' in files:
+            folders.append(here)
+    if not folders:
+        raise SystemExit("prospects-career needs LEGACY_ROSTER_CAREERS: a folder holding copies of Be a Pro saves")
+    sd = c['update'].rpcs3.savedata
+    for n, folder in enumerate(sorted(folders)[:3]):
+        shutil.copytree(folder, os.path.join(sd, f'BLES021530{500 + n}'))
+    car, pr = c['career'], c['prospects']
+    pr.show('careers')
+    car.open(car.saves[0].folder)
+    wait(lambda: not car.busy, 120)
+    car.set('offense', car.career.pro.xp['offense'] + 250)
+    if car.career.pro.ratings:
+        car.set('passing', min(careersave.HIGHEST, car.career.pro.ratings['passing'] + 3))
 
 
 def controllers():
+    from legacy_roster.app.calendar import CalendarController
+    from legacy_roster.app.career import CareerController
     from legacy_roster.app.editor import EditorController
     from legacy_roster.app.equipment import EquipmentController
+    from legacy_roster.app.lines import LinesController
+    from legacy_roster.app.office import OfficeController
+    from legacy_roster.app.prospects import ProspectsController
+    from legacy_roster.app.season import SeasonSource
+    from legacy_roster.app.strategy import StrategyController
     from legacy_roster.app.uniforms import UniformsController
     from legacy_roster.app.update import UpdateController
     from legacy_roster.window.host import WebHost
@@ -197,21 +390,39 @@ def controllers():
     ed = EditorController(host, upd)
     uni = UniformsController(host, ed)
     eq = EquipmentController(host, ed)
-    for name, snapshot in (('update', upd.snapshot), ('editor', ed.snapshot), ('picture', ed.picture_view),
+    ln, st = LinesController(host, ed), StrategyController(host, ed)
+    season = SeasonSource(ed)
+    cal, office = CalendarController(host, ed, season), OfficeController(host, ed, season)
+    car = CareerController(host, ed)
+    pr = ProspectsController(host, ed, car)
+    for name, snapshot in (('lines', ln.snapshot), ('strategy', st.snapshot), ('update', upd.snapshot), ('editor', ed.snapshot),
+                           ('picture', ed.picture_view), ('face_pics', ed.face_pics_view), ('look_pics', ed.look_pics_view),
                            ('uniforms', uni.snapshot), ('thumbs', uni.thumbs_view),
-                           ('equipment', eq.snapshot), ('equip_pics', eq.pics_view)):
+                           ('equipment', eq.snapshot), ('equip_pics', eq.pics_view), ('rail', ed.rail_view),
+                           ('calendar', cal.snapshot), ('office', office.snapshot), ('contract', office.contract_snapshot),
+                           ('prospects', pr.snapshot), ('career', car.snapshot)):
         host.register(name, snapshot)
     upd.start_up()
-    return host, upd, ed, uni
+    return host, {'host': host, 'update': upd, 'editor': ed, 'uniforms': uni, 'calendar': cal, 'office': office,
+                  'prospects': pr, 'career': car}
 
 
-def serve(message):
-    """The page and the fixture on a local web server (ES modules do not load from file://): its address."""
+# a state whose rows are below the fold: the list of steps scrolled to its end once the page is drawn
+SCROLL_STEPS = ("<script>setInterval(() => { const step = document.querySelector('.step'); const list = step && "
+                "step.closest('.scroll'); if (list) list.scrollTop = list.scrollHeight; }, 200);</script>")
+# SHOT_SCROLL=1: an in-page window scrolled to its end (the lower part of a long window)
+SCROLL_MODAL = ("<script>setInterval(() => { const body = document.querySelector('.modal .m-body'); "
+                "if (body) body.scrollTop = body.scrollHeight; }, 200);</script>")
+
+
+def serve(message, extra=''):
+    """The page and the fixture on a local web server (ES modules do not load from file://): its address. `extra`:
+    more for the page's head (SCROLL_STEPS)."""
     data = json.dumps(message)
     with open(os.path.join(WEB, 'index.html'), encoding='utf-8') as f:
         page = f.read()
     # the state goes into the page itself, so it is there before the first picture is drawn
-    shot = page.replace('<head>', '<head>\n<script>window.__FIXTURE__ = ' + data.replace('</', '<\\/') + ';</script>', 1)
+    shot = page.replace('<head>', '<head>\n<script>window.__FIXTURE__ = ' + data.replace('</', '<\\/') + ';</script>' + extra, 1)
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def do_GET(self):
@@ -246,9 +457,19 @@ def browser_program():
     sys.exit("no Microsoft Edge or Chrome found to draw the page (or use --live)")
 
 
+def window_size(lines):
+    """The window's size with its frame (main.fit) on a screen `lines` tall."""
+    from legacy_roster.window.main import fit
+    width = 1366 if lines <= 800 else round(lines * 16 / 9)
+    return fit((0, 0, width, lines - TASKBAR))[:2]
+
+
 def headless(url, out, args, work):
-    height = (args.screen_lines - 80) if args.screen_lines else WINDOW[1]
-    size = (WINDOW[0] - FRAME[0], height - FRAME[1])
+    if args.size:
+        size = tuple(int(x) for x in args.size.lower().split('x'))
+    else:
+        window = window_size(args.screen_lines or SCREEN_LINES)
+        size = (window[0] - FRAME[0], window[1] - FRAME[1])
     out = os.path.abspath(out)
     if os.path.exists(out):
         os.remove(out)
@@ -268,9 +489,8 @@ def live(args, work):
     def after(window, c):
         window.events.loaded.wait(30)
         time.sleep(2)
-        tab, details = drive(args, c['update'], c['editor'], c['uniforms'], work)
-        if tab == 'editor':
-            window.run_js("document.querySelectorAll('.tabset button')[1].click()")
+        tab, details = drive(args, c, work)
+        window.run_js("window.dispatchEvent(new CustomEvent('lr-tab', { detail: '%s' }))" % tab)
         if details:
             c['host'].send('details', {'open': True})
         time.sleep(2.5)
@@ -285,9 +505,14 @@ def main():
     ap.add_argument('out')
     ap.add_argument('--scale', type=float, default=1.0)
     ap.add_argument('--screen-lines', type=int)
+    ap.add_argument('--size', help="the page's size, WxH (940x640: the smallest window)")
+    ap.add_argument('--tab', choices=('setup', 'update', 'patch', 'roster', 'lines', 'strategy', 'jerseys', 'calendar', 'office',
+                                      'prospects'))
     ap.add_argument('--show-path')
     ap.add_argument('--all', action='store_true')
     ap.add_argument('--disc')
+    ap.add_argument('--team', type=lambda v: v if v == 'FA' else int(v),
+                    help="the editor's team slot (default Edmonton; 36 Charlotte, 135 Canada; FA the free agents)")
     ap.add_argument('--saves', action='store_true')
     ap.add_argument('--live', action='store_true')
     ap.add_argument('--browser', action='store_true')
@@ -302,7 +527,7 @@ def main():
         from legacy_roster import __version__, pipeline, savedata
         from legacy_roster.app import settings as S
         from legacy_roster.app import texts as X
-        exe = pretend_rpcs3(work, args.disc)
+        exe = pretend_rpcs3(work, args.disc, full=args.state == 'full')
         if args.saves:                                # the saves copied out of RPCS3: no RPCS3 above them
             copied = os.path.join(work, 'copied saves')
             shutil.copytree(os.path.join(os.path.dirname(exe), 'dev_hdd0', 'home', '00000001', 'savedata'), copied)
@@ -316,8 +541,9 @@ def main():
         if args.live:
             live(args, work)
             return
-        host, upd, ed, uni = controllers()
-        tab, details = drive(args, upd, ed, uni, work)
+        host, c = controllers()
+        upd = c['update']
+        tab, details = drive(args, c, work)
         time.sleep(0.3)
         message = host.first()
         message['meta'] = {'version': __version__, 'tagline': X.TAGLINE, 'site_label': X.SITE_LABEL}
@@ -329,8 +555,8 @@ def main():
             for real, shown in ((work, r'C:\Users\Player\AppData\Local'), (os.path.expanduser('~'), r'C:\Users\Player')):
                 text = text.replace(json.dumps(real)[1:-1], json.dumps(shown)[1:-1])
             message = json.loads(text)
-        server, url = serve(message)
-        query = ('&tab=editor' if tab == 'editor' else '') + ('&details' if details else '')
+        server, url = serve(message, SCROLL_MODAL if os.environ.get('SHOT_SCROLL') else '')
+        query = f'&tab={tab}' + ('&details' if details else '')
         if args.browser:
             import webbrowser
             url += f"index.html?fixture={FIXTURE}" + query

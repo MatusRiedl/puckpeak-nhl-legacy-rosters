@@ -3,8 +3,9 @@
 
 The game keeps a player's draft in cPbu: `draftyear` (year - 1900; 255 undrafted), `draftround`,
 `draftposition` (the overall pick: Gaudreau round 4, pick 104 on the disc) and `draftteam` (NHL slot
-+ 1, five bits like `proteam`, so Vegas in slot 31 cannot be written). A junior who is not drafted yet
-has his draft year and round 0, as EA wrote them; Be a GM's draft takes its classes from there.
++ 1, five bits, so Vegas in slot 31 cannot be written; the patch roster gives `proteam` six bits, not this
+field). A junior who is not drafted yet
+has his draft year and round 0, as the game wrote them; Be a GM's draft takes its classes from there.
 
 Before, nothing wrote these fields: a player kept whatever his record had (another person's, when the
 record was reused), and new players were all undrafted (testers, 0.7.0: Will Smith, Stenberg).
@@ -24,7 +25,7 @@ DRAFT_AGE = (17, 21)            # draft year - birth year of every pick (18 most
 class Drafts:
     def __init__(self, picks, season_year, stale=True):
         self.season_year = season_year
-        self.stale = stale              # records in EA's year - 1900 may be there (donors.real_birth_year)
+        self.stale = stale              # records in the game's year - 1900 may be there (donors.real_birth_year)
         self.by_last = {}
         for first, last, pos, year, rnd, overall, team in picks or []:
             self.by_last.setdefault(norm(last), []).append((norm(first), pos, year, rnd, overall, team))
@@ -56,7 +57,7 @@ class Drafts:
             return None
         shown = P.get(prow, 'dnFq') + 1910
         pos = P.get(prow, 'aljv')
-        # his own birth year first; then ten years earlier (a record still in EA's year - 1900)
+        # his own birth year first; then ten years earlier (a record still in the game's year - 1900)
         found = self.pick(first, last, {shown}, pos) or (self.pick(first, last, {shown - 10}, pos) if self.stale else None)
         if found is not None:
             _, _, year, rnd, overall, team = found

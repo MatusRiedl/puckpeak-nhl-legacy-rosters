@@ -20,6 +20,7 @@ def player():
     p.who, p.first, p.last, p.num, p.pos, p.shoots = 'jacob|trouba|1994-02-26', 'Jacob', 'Trouba', 65, 'D', 'R'
     p.birth, p.country, p.height_in, p.weight_lb = (1994, 2, 26), 'USA', 75, 216
     p.teams, p.ratings, p.ovr = [3], {'Faceoffs': 35, 'Shot power': 88}, 81
+    p.style, p.face = 4, {'head': 1234, 'skin': 1, 'eyes': 2}
     return p
 
 
@@ -75,3 +76,39 @@ def test_change_notes():
     new.ovr, new.num = 83, 12
     assert C.change_note(old, new, ['ovr', 'num', 'first', 'last']) == "OVR 81 → 83, #65 → 12, name"
     assert C.change_note(None, new, ['ovr']) == "changed"
+
+
+HEADS = {1234, 60001, 60002}
+
+
+def test_the_type_is_one_of_his_positions_and_a_face_one_the_game_has():
+    p = player()
+    values, problem = C.read(typed(style='2'), LABELS, False, CHOICES, p.ratings, HEADS)
+    assert problem is None and C.player_edit(p, values)[0]['set'] == {'style': 2}
+    assert C.read(typed(style='7'), LABELS, False, CHOICES, p.ratings, HEADS)[1] == "Pick the player type from the list."
+    assert C.read(typed(style='7', pos='C'), LABELS, False, CHOICES, p.ratings, HEADS)[1] is None
+    assert C.read(typed(style=''), LABELS, False, CHOICES, p.ratings, HEADS)[0]['style'] is None
+    assert C.read(typed(head='77'), LABELS, False, CHOICES, p.ratings, HEADS)[1].startswith("The game has no face 77")
+    assert C.read(typed(skin='11'), LABELS, False, CHOICES, p.ratings, HEADS)[1] == "Skin colour: pick it from the list."
+    assert C.read(typed(eyes='7'), LABELS, False, CHOICES, p.ratings, HEADS)[1] == "Eye colour: pick it from the list."
+    values, _ = C.read(typed(style='4', head='60002', skin='3', eyes='2'), LABELS, False, CHOICES, p.ratings, HEADS)
+    edit, real = C.player_edit(p, values)
+    assert real and edit['set'] == {'head': 60002, 'skin': 3}
+    assert C.what_changed(edit) == ['face']
+
+
+def test_a_type_of_the_position_he_left_is_dropped():
+    p = player()
+    values, _ = C.read(typed(pos='C', style=''), LABELS, False, CHOICES, p.ratings, HEADS)
+    edit, _ = C.player_edit(p, values, {'label': p.name, 'set': {'style': 2}})
+    assert edit['set'] == {'pos': 'C'}
+    assert C.what_changed({'set': {'style': 7, 'head': 60001, 'eyes': 1}}) == ['type', 'face']
+
+
+def test_every_type_has_the_game_s_letters():
+    from legacy_roster import ratings
+    for kind, numbers in ratings.STYLE_CHOICES.items():
+        assert all(ratings.style_name(n, kind == 'G') for n in numbers), kind
+    assert [ratings.style_label(n) for n in (1, 2, 3, 4, 10)] == ['DFD', 'OFD', 'ENF', 'TWD', 'ENF']
+    assert [ratings.style_label(n, goalie=True) for n in (0, 1, 2)] == ['STD', 'HYB', 'BUT']
+    assert ratings.style_choice(6) == 'PLY · Playmaker' and ratings.style_label(12) == 'Type 12'

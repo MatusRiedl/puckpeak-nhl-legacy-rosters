@@ -158,7 +158,7 @@ def season_test(folder, slot, say=print):
         ladder = ladder[-1:]
     season = pack.get('season', 2026)
     lines = [f"Season mode test, from \"{slot.name}\" ({slot.folder}).",
-             "Load each SEASON roster in the game (Roster Management > Load Roster), start Season mode, pick a team "
+             "Load each SEASON roster in the game (Customize > Save/Load/Delete > Load > Rosters), start Season mode, pick a team "
              "and wait for it to load. Test them in number order and note the first one that crashes; 1b and 1c "
              "only if 1 crashes (1b is 1 without Jonathan Drouin on the free-agent list, 1c is 1 with every free "
              "agent on a new link number); 5 and 6 only if 4 crashes. 5 and 6 are 4 with junior players taken off: 5 below the player and link sizes; 6 "

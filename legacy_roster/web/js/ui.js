@@ -7,13 +7,13 @@ export function Button({ kind = 'ghost', small, big, block, disabled, onClick, t
     disabled=${disabled} onClick=${onClick}>${children}</button>`;
 }
 
-export function Toggle({ on, disabled, onChange, label }) {
+export function Toggle({ on, disabled, onChange, label, gold }) {
   return html`<button type="button" role="switch" aria-checked=${!!on} aria-label=${label}
-    class=${cls('toggle', on && 'on')} disabled=${disabled} onClick=${() => onChange(!on)}></button>`;
+    class=${cls('toggle', on && 'on', gold && 'gold')} disabled=${disabled} onClick=${() => onChange(!on)}></button>`;
 }
 
-export function Checkbox({ on, disabled, onChange, children }) {
-  return html`<div role="checkbox" aria-checked=${!!on} tabindex="0"
+export function Checkbox({ on, disabled, onChange, title, children }) {
+  return html`<div role="checkbox" aria-checked=${!!on} tabindex="0" title=${title}
     class=${cls('check', on && 'on', disabled && 'disabled')}
     onClick=${() => !disabled && onChange(!on)}
     onKeyDown=${(e) => { if (!disabled && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); onChange(!on); } }}>
@@ -103,6 +103,82 @@ export function TextField({ value, disabled, onChange, delay = 250, className, p
     onKeyDown=${(e) => { if (e.key === 'Enter') { clearTimeout(timer.current); onChange(text); onEnter && onEnter(); } }}
     onInput=${(e) => { const t = e.target.value; setText(t); clearTimeout(timer.current);
       timer.current = setTimeout(() => onChange(t), delay); }}/>`;
+}
+
+const INFO_EDGE = 12;
+
+// where the "?"'s text goes: under the "?" when it fits there, else over it, else beside it (when two columns fit),
+// else over the "?" as near it as the window lets it be
+function infoSpot(dot, pop) {
+  const r = dot.getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight, edge = INFO_EDGE;
+  const h = pop ? pop.offsetHeight : 0;
+  const full = Math.min(1000, vw - 2 * edge);
+  const near = Math.max(edge, Math.min(vh - edge - h, r.top + r.height / 2 - h / 2));
+  const right = vw - r.right - 10 - edge, left = r.left - 10 - edge;
+  let spot;
+  if (r.bottom + 8 + h <= vh - edge) spot = { top: r.bottom + 8 };
+  else if (r.top - 8 - h >= edge) spot = { top: r.top - 8 - h };
+  else if (Math.max(right, left) >= 820) {
+    const width = Math.min(1000, Math.max(right, left));
+    spot = { left: right >= left ? r.right + 10 : r.left - 10 - width, top: near, width };
+  } else spot = { top: near };
+  const place = { left: Math.max(edge, Math.min(r.left - 16, vw - full - edge)), width: full, ...spot,
+                  maxHeight: vh - 2 * edge };
+  for (const k of ['left', 'top', 'width']) place[k] = Math.round(place[k]);
+  return place;
+}
+
+// a "?" that explains more while the pointer is on it (or the keyboard is); a click keeps it open, Escape or a click
+// elsewhere closes it. The text goes into <body> at a fixed place, so no card cuts it off.
+export function Info({ title, sections, label = 'More about this' }) {
+  const dot = useRef(null);
+  const pop = useRef(null);
+  const timer = useRef(null);
+  const [hover, setHover] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [place, setPlace] = useState(null);
+  const [, setSize] = useState(0);
+  const open = hover || pinned;
+  const show = () => { clearTimeout(timer.current); setHover(true); };
+  const hide = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setHover(false), 180); };
+  const close = () => { clearTimeout(timer.current); setHover(false); setPinned(false); };
+  // drawn hidden first, then placed by its real height; placed again whenever that or the window changes
+  useLayoutEffect(() => {
+    if (!open) { if (place) setPlace(null); return; }
+    const next = infoSpot(dot.current, pop.current);
+    if (!place || Object.keys(next).some((k) => next[k] !== place[k])) setPlace(next);
+  });
+  useEffect(() => {
+    if (!open) return undefined;
+    const again = () => setSize((n) => n + 1);
+    window.addEventListener('resize', again);
+    return () => window.removeEventListener('resize', again);
+  }, [open]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const key = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    const away = (e) => { if (!dot.current.contains(e.target) && !(pop.current && pop.current.contains(e.target))) close(); };
+    window.addEventListener('keydown', key, true);
+    window.addEventListener('mousedown', away, true);
+    return () => { window.removeEventListener('keydown', key, true); window.removeEventListener('mousedown', away, true); };
+  }, [open]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const width = place ? place.width : Math.min(1000, window.innerWidth - 2 * INFO_EDGE);
+  const text = open && html`<div ref=${pop} role="tooltip"
+      class=${cls('info-pop', width >= 900 ? 'three' : width >= 600 && 'two')}
+      style=${place || { width, left: 0, top: 0, visibility: 'hidden' }}
+      onMouseEnter=${show} onMouseLeave=${hide}>
+    <div class="i-title">${title}</div>
+    <div class="i-parts">${sections.map((s) => html`<div key=${s.head} class="i-part">
+      <div class="i-head">${s.head}</div>
+      <ul>${s.items.map((t, k) => html`<li key=${k}>${t}</li>`)}</ul>
+    </div>`)}</div>
+  </div>`;
+  return html`<button type="button" ref=${dot} class=${cls('info-dot', open && 'open')} aria-label=${label}
+      aria-expanded=${open} onMouseEnter=${show} onMouseLeave=${hide} onFocus=${show} onBlur=${hide}
+      onClick=${() => (pinned ? close() : setPinned(true))}>?</button>
+    ${text && window.ReactDOM ? window.ReactDOM.createPortal(text, document.body) : text}`;
 }
 
 export function Modal({ title, wide, full, onClose, buttons, children }) {

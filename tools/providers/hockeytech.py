@@ -53,6 +53,22 @@ def parse_player(row):
         'nhl_contract': (row.get('status') or '').upper() == 'NHL'}
 
 
+def schedule(season_year, client='ahl', log=print):
+    """[[date, home club, away club]] of every regular-season game of the season that starts in `season_year` (clubs by
+    their name in the feed, as `fetch` names them), sorted by date and game id."""
+    season = regular_season(client, season_year)
+    games = sorted(call(client, 'schedule', season_id=season)['Schedule'],
+                   key=lambda g: (g['date_played'], int(g['game_id'])))
+    out = [[g['date_played'], g['home_team_name'], g['visiting_team_name']] for g in games]
+    per_club = {}
+    for _date, home, away in out:
+        for club in (home, away):
+            per_club[club] = per_club.get(club, 0) + 1
+    log(f"{client} schedule {season_year}: {len(out)} games, {len(per_club)} clubs, "
+        f"{min(per_club.values())}-{max(per_club.values())} per club, {out[0][0]} to {out[-1][0]}")
+    return out
+
+
 def fetch(season_year, sources=(), log=print, client='ahl'):
     """{club name in the feed: [player, ...]} for every club of the league's regular season,
     '_logos': {club name: logo link}, and '_former': last season's players who are on no club's

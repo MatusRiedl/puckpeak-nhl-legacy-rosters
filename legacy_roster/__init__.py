@@ -1,4 +1,4 @@
 """NHL Legacy Edition (PS3 / RPCS3) roster updater."""
 
-__version__ = "0.10.4"
+__version__ = "0.50.0"
 APP_NAME = "NHL Legacy Roster Updater"

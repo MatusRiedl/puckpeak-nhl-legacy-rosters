@@ -40,13 +40,13 @@ def test_the_ladder_writes_new_saves_and_a_report_and_changes_nothing_else(saves
     before = open(source.sys_data, 'rb').read()
     said = []
     made = seasontest.season_test(saves, source, said.append)
-    assert made[0].name == "SEASON 1 core" and made[0].folder == 'BLES021530203'
+    assert made[0].name == "SEASON 1 core" and made[0].folder == 'BLES021530201'
     assert [s.name for s in made[1:]] in (["SEASON 1c core new links"],
                                           ["SEASON 1b core no Drouin", "SEASON 1c core new links"])   # 1b when Drouin is listed
     assert open(source.sys_data, 'rb').read() == before                       # the roster it started from is untouched
     assert sorted(s.folder for s in savedata.list_rosters(saves)) == sorted(['BLES021530202'] + [s.folder for s in made])
     text = '\n'.join(said)
-    assert 'Start:' in text and 'SEASON 1 core (BLES021530203)' in text and "over Season's table sizes" in text
+    assert 'Start:' in text and 'SEASON 1 core (BLES021530201)' in text and "over Season's table sizes" in text
 
 
 def test_the_source_is_the_newest_roster_the_program_did_not_make(saves):

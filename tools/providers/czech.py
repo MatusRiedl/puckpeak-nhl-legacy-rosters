@@ -14,6 +14,8 @@ import time
 import urllib.request
 
 BASE = "https://www.hokej.cz"
+GAMES = BASE + "/tipsport-extraliga/zapasy"
+NOT_REGULAR = ('play', 'baráž', 'předkolo', 'kvalifikace')    # words in the names of the other competitions
 POSITIONS = ('G', 'D', 'F')     # the order of the three tables on a roster page
 HAND = {'levá': 'L', 'pravá': 'R'}
 PHOTO_CACHE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cache', 'extraliga_photos.json')
@@ -80,6 +82,87 @@ def photos(players, log=print):
         json.dump(known, f, ensure_ascii=False, indent=0, sort_keys=True)
     log(f"extraliga: photos for {sum(1 for p in players if p.get('photo'))} of {len(players)} players "
         f"({fetched} player pages read)")
+
+
+def regular_season(season_year):
+    """The id of the season's regular-season competition. The schedule page lists the season's competitions
+    ('Tipsport extraliga', 'Play off Tipsport extraligy', 'Baráž o extraligu'); exactly one must be none of the
+    others."""
+    select = re.search(r'<select[^>]*name="competition"[^>]*>(.*?)</select>',
+                       _get(f"{GAMES}?matchList-filter-season={season_year}"), re.S)
+    options = re.findall(r'<option value="(\d+)"[^>]*>([^<]*)', select.group(1)) if select else []
+    regular = [cid for cid, name in options if cid != '0' and not any(w in name.lower() for w in NOT_REGULAR)]
+    if len(regular) != 1:
+        raise ValueError(f"extraliga: no single regular season among the competitions of {season_year}: {options}")
+    return regular[0]
+
+
+def club_paths(games, log=print):
+    """{club code: club path} from the game pages ('/zapas/<id>'), which link both clubs ('/klub/hc-kometa-brno/22')
+    next to their codes. `games` is {game id: (home code, away code)}; a page is read only while it names a club not
+    yet known."""
+    paths = {}
+    for gid in sorted(games, key=int):
+        if all(code in paths for code in games[gid]):
+            continue
+        page = _get(f"{BASE}/zapas/{gid}")
+        for side, code in zip(('home', 'visiting'), games[gid]):
+            m = re.search(rf'<div class="team-{side}">\s*<a href="(/klub/[^"?]+)[^"]*">.*?'
+                          r'<h2 class="short">([^<]*)</h2>', page, re.S)
+            if not m or m.group(2).strip() != code:
+                raise ValueError(f"extraliga: the page of game {gid} does not show {code} as the {side} club")
+            paths[code] = m.group(1)
+        time.sleep(0.7)
+    if len(set(paths.values())) != len(paths):
+        raise ValueError(f"extraliga: two codes lead to one club: {paths}")
+    log(f"extraliga: {len(paths)} club codes read from the game pages")
+    return paths
+
+
+def schedule(season_year, log=print):
+    """[[date, home club, away club]] of every regular-season game of the season that starts in `season_year` (clubs by
+    their path, as `fetch` names them), sorted by date and game id. The calendar feed (`do=events`, local dates) names
+    clubs by code and also holds the play-off and the relegation games once they are drawn: only the games of the
+    regular-season competition's list (all rounds) are kept, and the codes are turned into paths by the game pages.
+    The feed has no pre-season games."""
+    competition = regular_season(season_year)
+    page = _get(f"{GAMES}?matchList-filter-season={season_year}&matchList-filter-competition={competition}"
+                f"&do=matchList-view-all")
+    regular = {}
+    for gid, row in re.findall(r'<tr data-href="/zapas/(\d+)"[^>]*>(.*?)</tr>', page, re.S):
+        codes = [_clean(c) for c in re.findall(r'<span class="preview__name--short">(.*?)</span>', row, re.S)]
+        if len(codes) != 2:
+            raise ValueError(f"extraliga: game {gid} of the regular season does not name two clubs")
+        regular[gid] = tuple(codes)
+    time.sleep(0.7)
+    events = json.loads(_get(f"{GAMES}?do=events&start={season_year}-07-01&end={season_year + 1}-07-01"))
+    dates, others = {}, 0
+    for e in events:
+        gid = (e.get('url') or '').rsplit('/', 1)[-1]
+        if gid not in regular:
+            others += 1
+            continue
+        m = re.match(r'(\S+) - (\S+)', e.get('title') or '')
+        if not m or (m.group(1), m.group(2)) != regular[gid] or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', e['start']):
+            raise ValueError(f"extraliga: the calendar's game {gid} ({e.get('title')}, {e.get('start')}) "
+                             f"is not {' - '.join(regular[gid])}")
+        dates[gid] = e['start']
+    missing = sorted(set(regular) - set(dates), key=int)
+    if not regular or missing:
+        raise ValueError(f"extraliga: {len(missing)} of {len(regular)} regular-season games have no date "
+                         f"in the calendar (it holds only the current season): {missing[:10]}")
+    time.sleep(0.7)
+    paths = club_paths(regular, log)
+    out = [[dates[g], paths[regular[g][0]], paths[regular[g][1]]]
+           for g in sorted(regular, key=lambda g: (dates[g], int(g)))]
+    per_club = {}
+    for _date, home, away in out:
+        for club in (home, away):
+            per_club[club] = per_club.get(club, 0) + 1
+    log(f"extraliga schedule {season_year}: {len(out)} games, {len(per_club)} clubs, "
+        f"{min(per_club.values())}-{max(per_club.values())} per club, {out[0][0]} to {out[-1][0]} "
+        f"({others} games of other competitions left out)")
+    return out
 
 
 def fetch(season_year, sources=(), log=print):

@@ -2,7 +2,7 @@
 
 Two layers:
   * IsoImage      -- a decrypted PS3 disc image (ISO 9660 / Joliet)
-  * EbArchive     -- EA "EB" v3 archives (boot.big, cache.big, nocache.big, cacheboot.big, ...)
+  * EbArchive     -- "EB" v3 archives (boot.big, cache.big, nocache.big, cacheboot.big, ...)
 
 EB v3 layout (big-endian):
   0x00 "EB", u16 version (3), u32 file count, u32 0x400, u32 names offset, u32 names size,

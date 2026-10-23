@@ -235,6 +235,24 @@ def portrait(photo, size):
     return canvas
 
 
+STAND_IN = 3.0      # mean colour spread (max - min of R, G, B) below which a portrait is a grey stand-in
+
+
+def stand_in(pic):
+    """Is this portrait a stand-in, not a photo: the grey silhouette a league shows while it has no photo of a
+    player (NHL.com: 7 players in 2026-27, spread 0.0; the greyest real photo in the photo pack: 13.7)."""
+    pic = pic.convert('RGBA')
+    mask = pic.getchannel('A').point(lambda v: 255 if v > 128 else 0)
+    if mask.getbbox() is None:
+        return True
+    r, g, b = pic.convert('RGB').split()
+    spread = ImageChops.subtract(ImageChops.lighter(ImageChops.lighter(r, g), b),
+                                 ImageChops.darker(ImageChops.darker(r, g), b))
+    hist = spread.histogram(mask)
+    count = sum(hist)
+    return sum(v * n for v, n in enumerate(hist)) / count < STAND_IN
+
+
 # --- logos -------------------------------------------------------------------------------------
 def _trim(img):
     """The logo alone: a plain backdrop (some clubs publish their logo on white) made transparent
