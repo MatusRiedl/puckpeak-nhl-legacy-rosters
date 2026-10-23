@@ -8,6 +8,10 @@
 [**⬇ Download the latest version**](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest)
 &nbsp;·&nbsp; [Quick start](QUICKSTART.md) &nbsp;·&nbsp; [What's new](CHANGELOG.md)
 
+[![Join the Puck Peak Discord](https://img.shields.io/badge/Discord-Join_Puck_Peak-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://gg.puckpeak.com)
+
+Questions, news and help: **[gg.puckpeak.com](https://gg.puckpeak.com)**
+
 <img src="docs/shot_done.png" width="720" alt="The updater after an update">
 
 </div>
@@ -39,6 +43,7 @@
 3. Start the game. That is all.
 
 No roster yet? It can start from the game's own. Built for the NHL Legacy community, by [Puck Peak](https://www.puckpeak.com).
+Questions or ideas? Come to our [Discord](https://gg.puckpeak.com) (the **Join our Discord** button at the top of the window).
 
 <details>
 <summary><b>Everything it does, in detail</b></summary>
@@ -363,7 +368,8 @@ Ctrl+1 to Ctrl+9 and Ctrl+0 open a tab; Ctrl+PgUp and Ctrl+PgDn go to the tab on
    extras of the patch. With "No pop ups at
    start" you can still play online: the game signs in when you open an online mode. RPCS3 must be
    closed. The tab also shows, for the EU and the NA version, what is in the game now, and **What the
-   game patch does** explains it all.
+   game patch does** explains it all. The patch works with and without the game's update 1.01. If the
+   tab says **Patch again** (you patched before the update was installed), press it once.
 5. **Update: What should be updated?** Switch on what you want. Then, under **Save**, choose **Update
    this roster** or **Save as a new roster**, and press **Update roster**. It takes about a minute.
    With both versions of the game in RPCS3, choose first who gets the new roster (**Save for**: EU, NA

@@ -94,6 +94,51 @@ def test_promo_texts_go_in_once_and_restore_brings_the_games_own_back(game):
     assert sorted(os.listdir(os.path.dirname(loose(game, 'eng_us')))) == ['nhl_eng_us.db']
 
 
+def eb_archive(files):
+    """A small "EB" v3 archive (the .big files of the disc and of update 1.01's patch.big), stored, not packed."""
+    import struct
+    dirs = sorted({name.rsplit('/', 1)[0] for name in files})
+    fnl, dnl = 32, 32
+    names = b''.join(struct.pack('>H', dirs.index(name.rsplit('/', 1)[0])) + name.rsplit('/', 1)[1].encode().ljust(fnl - 2, b'\0')
+                     for name in files)
+    names = names.ljust((len(names) + 15) // 16 * 16, b'\0') + b''.join(d.encode().ljust(dnl, b'\0') for d in dirs)
+    names_off = 0x30 + len(files) * 16
+    data_off = (names_off + len(names) + 15) // 16 * 16
+    table, body = b'', b''
+    for data in files.values():
+        table += struct.pack('>IIII', (data_off + len(body)) // 16, 0, len(data), 0)
+        body += data.ljust((len(data) + 15) // 16 * 16, b'\0')
+    head = b'EB' + struct.pack('>HIIII', 3, len(files), 0, names_off, len(names)) + bytes([fnl, dnl]) + struct.pack('>H', len(dirs))
+    return (head.ljust(0x30, b'\0') + table + names).ljust(data_off, b'\0') + body
+
+
+def test_a_game_with_update_101_starts_from_the_updates_own_texts(game):
+    """Update 1.01's patch.big carries newer text files (13 more texts, 3-on-3 overtime among them): the loose file
+    is made from those, else the game would lose them."""
+    own = {lang: own_texts(lang) for lang in loc.LANGUAGES}
+    newer = loc.LocFile(own['eng_us'])
+    newer.set('OT3ThenShootout', '5 Min (3 on 3) then Shootout')
+    newer = newer.build()
+    disc = TextDisc(own)
+    writer = install._Writer([game])
+    install.install_names(disc, writer, NAMES, lambda m: None)
+    before = writer.manifest['games'][game]['fe/loc/nhl_eng_us.db']['source']
+    assert read(game, 'eng_us').get('OT3ThenShootout') is None
+
+    with open(os.path.join(game, 'patch.big'), 'wb') as f:
+        f.write(eb_archive({'fe/ion/game/storefront.big': b'x' * 40, 'fe/loc/nhl_eng_us.db': newer}))
+    assert install.update_texts([game]) == {'eng_us': newer}
+    writer = install._Writer([game])
+    assert install.install_names(disc, writer, NAMES, lambda m: None) == 7       # a new source: written again
+    assert writer.manifest['games'][game]['fe/loc/nhl_eng_us.db']['source'] != before
+    assert read(game, 'eng_us').get('OT3ThenShootout') == '5 Min (3 on 3) then Shootout'
+    assert read(game, 'eng_us').get('NHLTeamName_PHX') == 'Utah Mammoth'
+    assert read(game, 'fin_fi').get('OT3ThenShootout') is None                  # not in this patch.big: the disc's
+    with open(os.path.join(game, 'patch.big'), 'wb') as f:
+        f.write(b'not an archive')
+    assert install.update_texts([game]) == {}
+
+
 def test_a_changed_table_rewrites_the_files(game, monkeypatch):
     disc = TextDisc({lang: own_texts(lang) for lang in loc.LANGUAGES})
     writer = install._Writer([game])

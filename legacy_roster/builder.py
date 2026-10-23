@@ -14,6 +14,7 @@ from . import layout as L
 from . import lines
 from . import ratings
 from .donors import Donors, real_birth_year
+from .faces import RESERVED
 from .matching import match, norm, same_first_name
 
 
@@ -427,9 +428,9 @@ class Builder:
             return False
         return real_birth_year(self.P, prow, self.stale_years) <= self.data.season_year - self.retire_age and pid not in self.attached
 
-    def retires(self, pid):
+    def retires(self, pid, force=False):
         """A player who has left his team (or is a free agent), is on no club team any more and
-        would_retire() retires instead of staying a free agent. His record is cleared of its
+        would_retire() retires instead of staying a free agent (`force`: whatever his age, make_room). His record is cleared of its
         contract and NHL rights and becomes a spare record for a new player; his places on national
         teams are freed (national_teams() fills them). False for everyone else. Only
         settle_free_agents(), the NHL step and stock.retire_leftovers() retire players: all run
@@ -437,7 +438,7 @@ class Builder:
         ents = [x for x in self.R.entries_by_pid.get(pid, []) if x not in self.deleted]
         copies = [x for x in ents if self.U.get(x, 'BSXd') in L.MIRROR_OF]
         ents = [x for x in ents if x not in copies]
-        if any(self.U.get(x, 'BSXd') not in L.NATIONAL for x in ents) or not self.would_retire(pid):
+        if any(self.U.get(x, 'BSXd') not in L.NATIONAL for x in ents) or not (force or self.would_retire(pid)):
             return False
         prow = self.R.p_by_id[pid]
         for e in copies:        # places on the custom copies of his NHL team go with it (sync_mirrors)
@@ -482,6 +483,8 @@ class Builder:
         """A player record for someone who is not in the save yet (see donors.py). When none is
         left: an error, or None if the caller can do without (`required=False`)."""
         prow = self.donors.take(pos, target)
+        if prow is None and required:
+            prow = self.make_room(pos, who, target)
         if prow is None:
             if not required:
                 return None
@@ -492,6 +495,71 @@ class Builder:
         self.full_quality.pop(pid, None)
         self.rated_by.pop(pid, None)
         self.full_rated.discard(pid)
+        return prow
+
+    def make_room(self, pos, who, target=None):
+        """No record is left for a player who must be in the game (on an NHL.com roster or an IIHF squad): a full update
+        gives every spare record to the club leagues, so the next update's newcomers find none (a tester's Owen Michaels,
+        Edmonton, 2026-10-23). The free agent the game needs least retires and his record is taken: the oldest, then the
+        lowest rated (donors' order), never one who played in the NHL last season, is under contract, holds NHL rights, is
+        listed by this run's data, plays for a national team, is a legend or younger than donors.MIN_AGE. When none fits
+        (goalies: most free agents in goal are drafted prospects), a junior club's lowest-rated player whom it can do
+        without (it keeps 2 goalies and 18 skaters, no NHL rights, on no other team) leaves the game, as the CHL step
+        itself leaves depth players out when records run short. A second run needs no room: it finds the newcomer, and
+        the CHL step misses the junior as before. None when nobody fits."""
+        R, P = self.R, self.P
+        live = self.live_entries()
+        fits = []
+        for link in self.fa_links:
+            pid = R.link_to_pid.get(link)
+            prow = R.p_by_id.get(pid)
+            if (prow is None or (P.get(prow, 'aljv') == 4) != (pos == 4) or prow in self.created
+                    or pid in self.last_season or pid in self.api_pids or prow in self.listed_rows
+                    or pid in self.under_contract or pid in self.attached or pid in RESERVED
+                    or any(e not in self.deleted for e in live.get(pid, []))     # also on no national team
+                    or not self.donors._spare_ok(prow) or self.person(prow) in self.donors.reserved):
+                continue
+            fits.append(prow)
+        for prow in sorted(fits, key=self.donors._order):
+            name, age = R.name(prow), self.data.season_year - real_birth_year(P, prow, self.stale_years)
+            if not self.retires(P.get(prow, 'zIBw'), force=True):
+                continue
+            section, self.log.section = self.log.section, FREE_AGENTS
+            self.log.append(['FA', 'free agent retired', name, f"{age}, to make room for {who}", ''])
+            self.log.section = section
+            return self.donors.take(pos, target)
+        goalie = lambda prow: P.get(prow, 'aljv') == 4
+        kept = Counter()                # (junior club, goalie?) -> players on it
+        for pid, ents in live.items():
+            for e in ents:
+                if self.U.get(e, 'BSXd') in L.CHL:
+                    kept[(self.U.get(e, 'BSXd'), goalie(R.p_by_id[pid]))] += 1
+        fits = []
+        for pid, ents in live.items():
+            prow = R.p_by_id.get(pid)
+            if (prow is None or len(ents) != 1 or goalie(prow) != (pos == 4) or prow in self.created
+                    or pid in self.api_pids or pid in self.under_contract or pid in self.attached or pid in RESERVED
+                    or P.get(prow, 'WBbd') or len(self.records_of[self.identity(prow)]) != 1):
+                continue
+            team = self.U.get(ents[0], 'BSXd')
+            if team in L.CHL and kept[(team, pos == 4)] > (2 if pos == 4 else 18):
+                fits.append((self.quality.get(pid, 0), prow, ents[0]))
+        if not fits:
+            return None
+        _quality, prow, e = min(fits)
+        team, name, number = self.U.get(e, 'BSXd'), R.name(prow), self.U.get(e, 'tRVs')
+        self.depart(e)
+        self.deleted.add(e)
+        self.retires(P.get(prow, 'zIBw'), force=True)
+        spare = self.donors.spare[P.get(prow, 'aljv')]
+        if prow in spare:
+            spare.remove(prow)
+        if pos != 4 and P.get(prow, 'aljv') != pos:
+            self.set_position(prow, pos)
+        from .pipeline import LEAGUE_NAMES
+        section, self.log.section = self.log.section, LEAGUE_NAMES['chl']
+        self.log.append([R.T.get(team, 'RPbr'), 'left to make room', name, f"for {who} (no free player record)", number])
+        self.log.section = section
         return prow
 
     def hold_records(self, counts):

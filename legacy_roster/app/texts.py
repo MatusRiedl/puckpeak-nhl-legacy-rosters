@@ -5,6 +5,7 @@ from .. import savedata
 
 SITE = "https://www.puckpeak.com"
 SITE_LABEL = "www.puckpeak.com"
+DISCORD = "https://gg.puckpeak.com"        # the Puck Peak Discord (a redirect)
 TAGLINE = "NHL & hockey analytics like never before"
 HOW_TO_LOAD = "In the game: Customize > Save/Load/Delete > Load > Rosters, pick it, then save the roster once so it stays active."
 HOW_TO_LOAD_IN_PLACE = ("In the game: start it. If this is not the roster in use, Customize > Save/Load/Delete > Load > Rosters, pick it, "
@@ -58,6 +59,8 @@ MISFIT_PATCHED = "The patched game cannot load this roster (it says \"damaged\")
 MISFIT_UNPATCHED = "Made for the game patch: the game without it cannot load this roster. Update it to turn it back."
 MISFIT_VERSION = ("Made for another version of the game patch: the patched game cannot load this roster (it says "
                   "\"damaged\"). Update it to make it fit.")
+MISFIT_STALE = ("Your game has update 1.01, and the game patch in RPCS3 is from before this program knew it. Press "
+                "Patch again in Game patch.")
 FIT_NO_STEP = "Switch on at least one thing to update, then press Update roster."
 UNPATCHED = "Done: the game patch is out. Rosters marked \"32 teams\" do not open now: update one, and it is made for the game as it is."
 NO_LOGIN_TIP = "No sign-in boxes when the game starts. Online modes still sign in when you open them."
@@ -126,7 +129,7 @@ def fit_ask(name, why):
 def patch_state(state, old=(), missing=()):
     """'Patched: EU and NA (intro skipped)' from patchinstall.state, or None when nothing is patched. `old`: patched
     versions with an older patch; `missing`: versions RPCS3 has that are not patched."""
-    on = [t for t, st in state.items() if st.get('patched')]
+    on = [t for t, st in state.items() if st.get('patched') or st.get('stale')]
     if not on:
         return None
     from .. import savedata

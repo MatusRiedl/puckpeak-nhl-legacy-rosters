@@ -392,7 +392,8 @@ with a message). `build/` and `dist/` are git-ignored.
   anything in `Claims.used()`; tests build without claims, so the byte-identical second runs do not see them.
 - **Records are the scarce resource**:
   - goalies most of all (a skater record can switch position, a goalie's cannot);
-  - with every league on, every spare record is used;
+  - with every league on, every spare record is used (a newcomer on a later update gets one through
+    `Builder.make_room`);
   - `tools/capacity.py` shows the numbers.
 - **Ratings** are stored as rating − 36 in 6 bits; the exact field per attribute is in
   `schema.py`. An older correlation-guessed map (`work/research/attr_map.json`) was wrong; do

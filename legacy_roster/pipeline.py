@@ -727,6 +727,11 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         source = default                # the update starts from the game's own roster
     targets = sorted(set(targets or [source.title_id]), key=lambda t: (t != source.title_id, t))
     if game_patch is None:              # as RPCS3 is
+        stale = [t for t in targets if t in patchinstall.stale_titles(rpcs3)]
+        if stale:
+            raise L.LayoutError(f"Your {' and '.join(savedata.region(t) for t in stale)} game has update 1.01, and the "
+                                "game patch in RPCS3 was made before this program knew it. Press Patch again in Game "
+                                "patch, then update.")
         on = [t for t in targets if t in patchinstall.patched_titles(rpcs3)]
         if on and len(on) != len(targets):
             off = [t for t in targets if t not in on]

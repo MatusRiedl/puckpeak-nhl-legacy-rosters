@@ -935,6 +935,14 @@ def test_after_patch_a_roster_that_no_longer_fits_is_marked_and_offered_an_updat
     assert "another version of the game patch" in X.fit_ask(slot.name, X.MISFIT_VERSION)[0]
     upd.roster_rights = {slot.folder: 6}
     assert row()['misfit'] is None
+    # a tester's NA game, 2026-10-23: patched by 0.50.0 (1.00 only), then update 1.01 installed: every roster, Patch again
+    upd.patch_state[slot.title_id].update(patched=False, stale=True, game='01.01')
+    assert row()['misfit'] == X.MISFIT_STALE
+    upd.patch_rosters = set()
+    assert row()['misfit'] == X.MISFIT_STALE
+    card = upd.snapshot()['patch']
+    assert [b['label'] for b in card['buttons']] == ["Patch again", "Unpatch"] and card['state']['tone'] == 'amber'
+    assert card['regions'][0]['state'].startswith("The game has update 1.01")
 
 
 def test_step_2_says_what_is_missing_without_rpcs3_and_while_it_runs(app, monkeypatch):

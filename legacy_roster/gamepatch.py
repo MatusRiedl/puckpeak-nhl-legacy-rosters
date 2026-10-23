@@ -25,11 +25,18 @@ EU_HASH = 'c93019e83e820ad7ce6ac2428d022e7c09d484d3'     # PPU hash of NHL Legac
 # every word the patch touches (audit_patch: 0 problems on the NA ELF; docs/notes/na-version.md). Same entries, own hash.
 NA_HASH = 'cf2651406b00ee9c2af61fc1daf37fce50303474'
 HASHES = {'BLES02153': EU_HASH, 'BLUS31540': NA_HASH}
+# Update 1.01 (on the PlayStation Store for both versions; a tester's NA game had it, 2026-10-23): RPCS3 runs the update's
+# program dev_hdd0/game/<TITLEID>/USRDIR/EBOOT.BIN instead of the disc's, one program for EU and NA under its own hash, so
+# entries under the 1.00 hashes never ran there and a patch roster "appears to be damaged". The patch is written a second
+# time for it at 1.01's addresses (port, patch101.py).
+UPDATE_HASH = 'd4bbaf00a080a924e862c1b3f7705380a3499edb'
+VERSIONS = ('01.00', '01.01')
 YEARS_LATER = 11                                         # 2015 -> 2026
 YEAR_ENTRY = "NHL Legacy year 2026 (test)"
 PATCH_VERSION = '0.8'
-TEAMS_VERSION = '0.24'                                   # 0.23: the roster's player rights in six bits, Vegas's too (lab round 42);
-#                                                          0.24: the same words, the news entry (NEWS_ENTRY) ticked with them
+TEAMS_VERSION = '0.25'                                   # 0.23: the roster's player rights in six bits, Vegas's too (lab round 42);
+#                                                          0.24: the same words, the news entry (NEWS_ENTRY) ticked with them;
+#                                                          0.25: the same words, also for update 1.01
 INTRO_VERSION = '0.1'                                    # the intro entries (INTRO_ENTRIES)
 
 # FUN_00731ce8(out, year, month, day) turns a date into a day number; 0x731d04 copies the year (ori r29,r4,0). The patch
@@ -1167,9 +1174,96 @@ INTRO_ENTRIES = (
 DATA_WORDS += (0x220a64c, 0x1cd411c)
 OTHER_INSTRUCTIONS += (0x220a64c, 0xfb2f24, 0x7e8d58)
 
+# Update 1.01 (UPDATE_HASH). Its program is 1.00's with a few functions grown: every place the patch names sits 0 to 0x2030
+# bytes later and holds the same instruction (tools/port_patch.py found each by its neighbourhood and wrote patch101.py;
+# tools/audit_patch.py checks every word against the 1.01 program). The patch's words are the same, apart from what names
+# a place: the hooked addresses, the targets of the game's branches the patch writes or keeps, the addresses our code
+# calls (CAVE_ADDRESSES, built with lis + ori / addic) and the function descriptor of the login entry (VALUE_ADDRESSES).
+CAVE_DATA = (0x1a7ac9c,)                                # data our code reads: the table list (exhibitionteams, as 0x129c04)
+CAVE_ADDRESSES = frozenset(SKIP_CALLS) | {LIST_END} | set(CAVE_DATA)
+VALUE_ADDRESSES = (0x1cd411c,)                          # data words whose number is an address
 
-def hooks():
-    """Every game instruction the patch replaces: [(address, the game's word)] (tools/audit_patch.py checks them)."""
+
+def _target(addr, word):
+    """Where the relative branch `word` at `addr` goes, or None (not a relative branch)."""
+    op = word >> 26
+    if op == 18 and not word & 2:
+        disp = word & 0x3fffffc
+        return addr + (disp - 0x4000000 if disp & 0x2000000 else disp)
+    if op == 16 and not word & 2:
+        disp = word & 0xfffc
+        return addr + (disp - 0x10000 if disp & 0x8000 else disp)
+    return None
+
+
+def at(addr, version='01.00'):
+    """The address in the game version `version` of the 1.00 address `addr`."""
+    if version == '01.00':
+        return addr
+    from .patch101 import ADDRESSES
+    return ADDRESSES[addr]
+
+
+def ported_word(addr, word, version='01.00'):
+    """The word at the 1.00 address `addr`, `word` there in 1.00, as it is in `version`: a branch goes to the same place
+    (moved), a function descriptor is the one at the moved place; everything else is the same word."""
+    if version == '01.00' or addr in DATA_WORDS and addr not in VALUE_ADDRESSES:
+        return word
+    if addr in VALUE_ADDRESSES:
+        return at(word, version)
+    target = _target(addr, word)
+    if target is None:
+        return word
+    disp = at(target, version) - at(addr, version)
+    if word >> 26 == 18:
+        assert -0x2000000 <= disp < 0x2000000, hex(addr)
+        return word & 0xfc000003 | disp & 0x3fffffc
+    assert -0x8000 <= disp < 0x8000, hex(addr)
+    return word & 0xffff0003 | disp & 0xfffc
+
+
+def ported_code(code, version='01.00'):
+    """Our code `code` ([(word, what)]) for `version`: each lis + ori / addi / addic pair that builds one of
+    CAVE_ADDRESSES builds the moved address; the rest (the game's instruction it replaces, numbers, the branches inside our
+    code) stays."""
+    out = list(code)
+    if version == '01.00':
+        return out
+    for i in range(len(code) - 1):
+        hi, lo = code[i][0], code[i + 1][0]
+        if hi >> 26 != 15 or hi >> 16 & 31 or lo >> 26 not in (12, 14, 24):
+            continue
+        signed = lo >> 26 != 24
+        if (lo >> 16 if signed else lo >> 21) & 31 != hi >> 21 & 31:
+            continue
+        low = lo & 0xffff
+        value = ((hi & 0xffff) << 16) + (low - 0x10000 if signed and low & 0x8000 else low) & 0xffffffff
+        if value not in CAVE_ADDRESSES:
+            continue
+        moved = at(value, version)
+        top = (moved + 0x8000 if signed else moved) >> 16
+        out[i] = (hi & 0xffff0000 | top, f"{code[i][1]}  (1.01: 0x{moved:x})")
+        out[i + 1] = (lo & 0xffff0000 | moved & 0xffff, code[i + 1][1])
+    return out
+
+
+def port_addresses():
+    """Every 1.00 address the 1.01 patch needs moved: the hooked ones, the branch targets of the words written and
+    replaced, the addresses our code builds, the descriptors in the data words (tools/port_patch.py maps them)."""
+    found = {a for a, _ in hooks()} | set(CAVE_ADDRESSES)
+    for a, old, new, _ in writes():
+        if a in VALUE_ADDRESSES:
+            found |= {old, new}
+        elif a not in DATA_WORDS:
+            found |= {t for t in (_target(a, old), _target(a, new)) if t is not None}
+    for a, old in hooks():
+        if a not in DATA_WORDS and _target(a, old) is not None:
+            found.add(_target(a, old))
+    return found
+
+
+def _hooks():
+    """hooks() in 1.00."""
     return ([YEAR_HOOK] + [(a, old) for a, old, *_ in YEAR_LABELS]
             + [(a, old) for _, ws, cs, _ in TEAM_STAGES for a, old, *_ in list(ws) + list(cs)]
             + [(a, old) for _, ws, _ in INTRO_ENTRIES for a, old, *_ in ws])
@@ -1192,64 +1286,95 @@ def year_of(year):
     return year + YEARS_LATER if 0 <= year - lo < span else year
 
 
-def entry_lines(title='BLES02153'):
+def hooks(version='01.00'):
+    """Every game instruction the patch replaces in `version`: [(address, the game's word)] (tools/audit_patch.py checks
+    them)."""
+    return [(at(a, version), ported_word(a, old, version)) for a, old in _hooks()]
+
+
+def _write_line(a, old, new, why, version):
+    return (f"      - [ be32, 0x{at(a, version):08x}, 0x{ported_word(a, new, version):08x} ]   "
+            f"# was 0x{ported_word(a, old, version):08x}: {why}")
+
+
+def entry_lines(title='BLES02153', version='01.00'):
     """The year entry's lines under its PPU hash (indented two spaces)."""
     return (_head(YEAR_ENTRY, PATCH_VERSION, "The game's years 2010-2025 become 11 years later (2015 becomes 2026). Use it "
                   "with a roster made for it (year-test), whose birth years are on the league's own clock, 11 years earlier.",
-                  title)
-            + [f"      - [ be32, 0x{a:08x}, 0x{new:08x} ]   # was 0x{old:08x}: {why}" for a, old, new, why in YEAR_LABELS]
-            + _cave_lines(YEAR_HOOK[0], YEAR_HOOK[1], YEAR_CAVE))
+                  title, version)
+            + [_write_line(a, old, new, why, version) for a, old, new, why in YEAR_LABELS]
+            + _cave_lines(YEAR_HOOK[0], YEAR_HOOK[1], YEAR_CAVE, version))
 
 
-def _head(name, version, notes, title):
+def _head(name, version, notes, title, game='01.00'):
     # plain YAML scalars: ': ' would start a map and '#' a comment (RPCS3 then loads no entry of the file)
     assert ': ' not in name + notes and '#' not in name + notes, name
-    return [f"  {name}:",
-            "    Games:",
-            "      NHL Legacy:",
-            f"        {title}: [ 01.00 ]",
-            "    Author: PuckPeak NHL Legacy Rosters",
-            f"    Patch Version: {version}",
-            f"    Notes: {notes}",
-            "    Patch:"]
+    return ([f"  {name}:",
+             "    Games:",
+             "      NHL Legacy:"]
+            + [f"        {t}: [ {game} ]" for t in ((title,) if isinstance(title, str) else title)]
+            + ["    Author: PuckPeak NHL Legacy Rosters",
+               f"    Patch Version: {version}",
+               f"    Notes: {notes}",
+               "    Patch:"])
 
 
-def _cave_lines(addr, old, code):
+def _cave_lines(addr, old, code, version='01.00'):
     # RPCS3 writes the be32 lines that follow a calloc line into the new code, one after another, then adds the jump back
-    return ([f"      - [ calloc, 0x{addr:08x}, {len(code)} ]   # the game's 0x{old:08x} goes to our code"]
-            + [f"      - [ be32, 0x{addr:08x}, 0x{word:08x} ]   # {what}" for word, what in code])
+    where = at(addr, version)
+    return ([f"      - [ calloc, 0x{where:08x}, {len(code)} ]   # the game's 0x{ported_word(addr, old, version):08x} "
+             "goes to our code"]
+            + [f"      - [ be32, 0x{where:08x}, 0x{word:08x} ]   # {what}" for word, what in ported_code(code, version)])
 
 
-def team_entry_lines(stage, title='BLES02153'):
+def team_entry_lines(stage, title='BLES02153', version='01.00'):
     """One 32-team entry's lines (`stage` from TEAM_STAGES): the plain changes first, then each piece of own code."""
     name, ws, cs, notes = stage
-    lines = _head(name, TEAMS_VERSION, notes, title)
-    lines += [f"      - [ be32, 0x{a:08x}, 0x{new:08x} ]   # was 0x{old:08x}: {why}" for a, old, new, why in ws]
+    lines = _head(name, TEAMS_VERSION, notes, title, version)
+    lines += [_write_line(a, old, new, why, version) for a, old, new, why in ws]
     for a, old, code, _ in cs:
-        lines += _cave_lines(a, old, code)
+        lines += _cave_lines(a, old, code, version)
     return lines
 
 
-def intro_entry_lines(entry, title='BLES02153'):
+def intro_entry_lines(entry, title='BLES02153', version='01.00'):
     """One intro entry's lines (`entry` from INTRO_ENTRIES)."""
     name, ws, notes = entry
-    return (_head(name, INTRO_VERSION, notes, title)
-            + [f"      - [ be32, 0x{a:08x}, 0x{new:08x} ]   # was 0x{old:08x}: {why}" for a, old, new, why in ws])
+    return (_head(name, INTRO_VERSION, notes, title, version)
+            + [_write_line(a, old, new, why, version) for a, old, new, why in ws])
 
 
-def patch_text(teams=False, titles=tuple(HASHES)):
-    """The patch file (RPCS3's patch format 1.2), ready to import into RPCS3 (Manage > Game Patches: drop it on the window):
-    for each game version in `titles` (EU, NA) under its own PPU hash, the year entry, with `teams` the 32-team entries,
-    then the intro entries (each ticked on its own, or not)."""
+def hash_of(title, version='01.00'):
+    """The PPU hash RPCS3 knows the game version `version` of `title` by (1.01: one program for EU and NA)."""
+    return HASHES[title] if version == '01.00' else UPDATE_HASH
+
+
+def _blocks(titles, versions, lines_of):
+    # one block per PPU hash: 1.01's names both versions in each entry's Games (YAML allows a key once)
     blocks = []
-    for title in titles:
-        lines = entry_lines(title)
-        for stage in TEAM_STAGES if teams else ():
-            lines += [""] + team_entry_lines(stage, title)
-        for entry in INTRO_ENTRIES:
-            lines += [""] + intro_entry_lines(entry, title)
-        blocks.append(f"PPU-{HASHES[title]}:\n" + "\n".join(lines) + "\n")
+    for version in versions:
+        groups = {}
+        for title in titles:
+            groups.setdefault(hash_of(title, version), []).append(title)
+        note = ["  # update 1.01: the same patch at 1.01's addresses (the comments name 1.00's)"] if version != '01.00' else []
+        for hash_, group in groups.items():
+            lines = lines_of(group[0] if len(group) == 1 else tuple(group), version)
+            blocks.append(f"PPU-{hash_}:\n" + "\n".join(note + lines) + "\n")
     return "Version: 1.2\n\n" + "\n".join(blocks)
+
+
+def patch_text(teams=False, titles=tuple(HASHES), versions=('01.00',)):
+    """The patch file (RPCS3's patch format 1.2), ready to import into RPCS3 (Manage > Game Patches: drop it on the window):
+    for each game version in `titles` (EU, NA) and `versions` under its own PPU hash, the year entry, with `teams` the
+    32-team entries, then the intro entries (each ticked on its own, or not)."""
+    def lines_of(title, version):
+        lines = entry_lines(title, version)
+        for stage in TEAM_STAGES if teams else ():
+            lines += [""] + team_entry_lines(stage, title, version)
+        for entry in INTRO_ENTRIES:
+            lines += [""] + intro_entry_lines(entry, title, version)
+        return lines
+    return _blocks(titles, versions, lines_of)
 
 
 # What the program installs for players (patchinstall.py): the year entry and every 32-team stage as ONE entry, one switch
@@ -1260,26 +1385,25 @@ PLAYER_NOTES = ("Seattle and Vegas in Season and Be a GM (32 NHL and 32 AHL team
                 "Roster Updater (it opens no other roster). Season and Be a GM saves made with it need it.")
 
 
-def player_entry_lines(title='BLES02153'):
+def player_entry_lines(title='BLES02153', version='01.00'):
     """The players' 32-team entry: the year entry's changes, then every TEAM_STAGES entry's, in that order."""
-    lines = _head(PLAYER_ENTRY, TEAMS_VERSION, PLAYER_NOTES, title)
+    lines = _head(PLAYER_ENTRY, TEAMS_VERSION, PLAYER_NOTES, title, version)
     head = len(lines)                   # every entry's head has the same lines; its changes follow
-    lines += entry_lines(title)[head:]
+    lines += entry_lines(title, version)[head:]
     for stage in TEAM_STAGES:
-        lines += team_entry_lines(stage, title)[head:]
+        lines += team_entry_lines(stage, title, version)[head:]
     return lines
 
 
-def player_patch_text(titles=tuple(HASHES)):
-    """The patch file the program installs: for each version in `titles` under its PPU hash, PLAYER_ENTRY and the intro
-    entries (patchinstall.py ticks them)."""
-    blocks = []
-    for title in titles:
-        lines = player_entry_lines(title)
+def player_patch_text(titles=tuple(HASHES), versions=VERSIONS):
+    """The patch file the program installs: for each version in `titles` and game version in `versions` under its PPU
+    hash, PLAYER_ENTRY and the intro entries (patchinstall.py ticks them)."""
+    def lines_of(title, version):
+        lines = player_entry_lines(title, version)
         for entry in INTRO_ENTRIES:
-            lines += [""] + intro_entry_lines(entry, title)
-        blocks.append(f"PPU-{HASHES[title]}:\n" + "\n".join(lines) + "\n")
-    return "Version: 1.2\n\n" + "\n".join(blocks)
+            lines += [""] + intro_entry_lines(entry, title, version)
+        return lines
+    return _blocks(titles, versions, lines_of)
 
 
 def year_shift(R, stale):

@@ -446,6 +446,8 @@ class UpdateController:
         if s is None or getattr(s, 'disc', False) or self.rpcs3 is None or self.rpcs3.plain \
                 or self.usable.get(s.folder) is not None:
             return None
+        if self.patch_state.get(s.title_id, {}).get('stale'):
+            return X.MISFIT_STALE
         patched, made = s.title_id in self._patched(), s.folder in self.patch_rosters
         if patched and made:
             game, own = self.patch_state.get(s.title_id, {}).get('rights'), self.roster_rights.get(s.folder)
@@ -1134,8 +1136,10 @@ class UpdateController:
     def _patch_view(self):
         """Step 2: is the game patched, the two small switches, Patch / Unpatch."""
         why = self.patchable()
-        patched = self._patched() if why != X.PATCH_NEEDS_RPCS3 else []
-        old = [t for t in patched if self.patch_state[t].get('version') != gamepatch.TEAMS_VERSION]
+        patched = [t for t, st in self.patch_state.items() if st.get('patched') or st.get('stale')] \
+            if why != X.PATCH_NEEDS_RPCS3 else []           # stale: patched before update 1.01 was known
+        old = [t for t in patched if self.patch_state[t].get('version') != gamepatch.TEAMS_VERSION
+               or self.patch_state[t].get('stale')]
         missing = [t for t in self.versions if t not in patched]
         free = not self.busy and not self.scanning and why is None
         if why == X.PATCH_NEEDS_RPCS3:
@@ -1173,7 +1177,9 @@ class UpdateController:
         """The Game patch tab: one card per version of the game, patched or not, with its rosters."""
         out = []
         for t in self.versions:
-            if t in old:
+            if self.patch_state.get(t, {}).get('stale'):
+                state, tone = "The game has update 1.01, the patch is older: patch again", 'amber'
+            elif t in old:
                 state, tone = "Patched with an older patch: patch again", 'amber'
             elif t in patched:
                 state, tone = "Patched: 32 teams, the year 2026", 'good'

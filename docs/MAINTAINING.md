@@ -199,6 +199,9 @@ when the pack's layout changes in a way older exes cannot read, raise `PACK_FORM
 - After any change to `gamepatch.py`'s stages: bump `TEAMS_VERSION`; run `python tools/audit_patch.py <EBOOT.ELF>`, which
   must report 0 problems (the decrypted EU EBOOT stays outside the repo); run the tests with `LEGACY_ROSTER_DISC` set to
   the EU disc image; then play a lab round (docs/GAME_PATCH.md). A patch that has not been played never goes to players.
+- The patch covers 1.00 (EU, NA) and the game's update 1.01, which is one program for EU and NA. After a stage change, run
+  `python tools/port_patch.py <1.00 ELF> <1.01 ELF> --write` (it writes `legacy_roster/patch101.py`), then audit the
+  1.01 ELF too. To get the update and decrypt it, see docs/notes/update-101.md.
 - A new RPCS3 release: check that it still applies every entry (the log names each one with "Applied patch") and still
   knows `calloc`.
 - A new season: the 32-team calendar comes from the data pack's `schedule` part like the 30-team one; the year entry moves

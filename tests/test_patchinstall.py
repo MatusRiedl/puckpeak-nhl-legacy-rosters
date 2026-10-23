@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from legacy_roster import gamepatch, patchinstall, savedata
+from legacy_roster import datasource, gamepatch, patchinstall, savedata
 from legacy_roster import layout as L
 from legacy_roster.art import crests, install
 
@@ -52,11 +52,36 @@ def test_only_our_lines_of_rpcs3s_switches_change_and_come_out_again():
     assert patchinstall.ticked(made, NA) == {PLAYER, LOGIN}
 
 
+def test_update_101_is_one_hash_for_both_versions_each_with_its_own_lines():
+    up = lambda text, title, wanted: patchinstall.config_with(text, title, wanted, '01.01')
+    both = up(up(CONFIG, EU, {PLAYER, INTRO}), NA, {PLAYER})
+    assert both == up(up(CONFIG, NA, {PLAYER}), EU, {PLAYER, INTRO})        # the same lines whoever comes first
+    assert both.count(f"PPU-{gamepatch.UPDATE_HASH}:") == 1 and both.count(f"  {PLAYER}:") == 1
+    assert f"  {PLAYER}:\n    NHL Legacy:\n      BLES02153:\n        01.01:\n          Enabled: true\n" \
+           f"      BLUS31540:\n        01.01:\n          Enabled: true" in both
+    assert patchinstall.ticked(both, EU, '01.01') == {PLAYER, INTRO} and patchinstall.ticked(both, NA, '01.01') == {PLAYER}
+    assert patchinstall.ticked(both, EU) == set()                            # 1.00 is another hash
+    assert up(up(both, EU, {PLAYER, INTRO}), NA, {PLAYER}) == both
+    na_only = up(both, EU, set())                                            # EU's lines go, NA's stay
+    assert 'BLES02153:\n        01.01' not in na_only and patchinstall.ticked(na_only, NA, '01.01') == {PLAYER}
+    assert INTRO not in na_only                                             # the entry only EU had goes whole
+    assert up(na_only, NA, set()) == CONFIG
+
+
 def _fake_rpcs3(tmp_path):
     root = tmp_path / 'rpcs3'
     game = lambda title: str(root / 'dev_hdd0' / 'game' / title / 'USRDIR')
     return SimpleNamespace(folder=str(root), plain=False, dev_hdd0=str(root / 'dev_hdd0'), game_folder=game,
                            game_disc=lambda title: 'disc.iso' if title == EU else None)
+
+
+def _update(rpcs3, title, version='01.01'):
+    """Update `version` of the game in RPCS3's folder of `title`: its program and PARAM.SFO (as the update's pkg puts them)."""
+    from legacy_roster.sfo import FMT_STRING, Sfo
+    usr = rpcs3.game_folder(title)
+    _write(os.path.join(usr, 'EBOOT.BIN'), b'SCE')
+    _write(os.path.join(os.path.dirname(usr), 'PARAM.SFO'),
+           Sfo.new([('APP_VER', FMT_STRING, version.encode() + b'\0', 8), ('CATEGORY', FMT_STRING, b'GD\0', 4)]).to_bytes())
 
 
 def _read(path):
@@ -89,12 +114,15 @@ def test_patch_this_game_and_unpatch_leave_rpcs3_as_it_was(tmp_path, monkeypatch
     assert made == [('disc.iso', b'roster')]            # the EU disc makes NA's files too (the same files on both)
     for title in (EU, NA):
         assert patchinstall.state(rpcs3)[title] == {'patched': True, 'version': gamepatch.TEAMS_VERSION,
+                                                     'game': '01.00', 'stale': False,
                                                      'intro': True, 'login': False, 'news': True,
                                                      'rights': None}   # a fake meta; the news always ticked
-        assert _read(patchinstall.patch_file(rpcs3, title)) == gamepatch.player_patch_text([title]).encode()
+        assert _read(patchinstall.patch_file(rpcs3, title)) == gamepatch.player_patch_text().encode()
         assert _read(os.path.join(rpcs3.game_folder(title), 'db', 'nhlng-meta.xml')) == b'META'
         assert _read(os.path.join(rpcs3.game_folder(title), 'db', 'nhlng.db')) == b'DB'
     assert patchinstall.installed(rpcs3)
+    _update(rpcs3, NA)                                  # update 1.01 in NA's folder: RPCS3 runs its program, patched too
+    assert patchinstall.state(rpcs3)[NA] == {**patchinstall.state(rpcs3)[EU], 'game': '01.01'}
     install.remove(say=lambda m: None)                  # "Restore the game's own pictures": the patch stays
     assert _read(old_db) == b'DB' and patchinstall.state(rpcs3)[EU]['patched']
 
@@ -114,7 +142,7 @@ def test_patch_this_game_and_unpatch_leave_rpcs3_as_it_was(tmp_path, monkeypatch
     assert not os.path.exists(os.path.join(rpcs3.game_folder(NA), 'db'))        # folders we made are gone
     assert not patchinstall.installed(rpcs3)
     assert not any(t['patched'] for t in patchinstall.state(rpcs3).values())
-    kept = os.listdir(os.path.join(str(tmp_path / 'local'), 'NHLLegacyRosterUpdater', 'patch', 'backup'))
+    kept = os.listdir(datasource.app_dir(patchinstall.STORE, 'backup'))       # on a Mac under ~/Library, not LOCALAPPDATA
     assert [n for n in kept if n.endswith('_patch_config.yml')]                  # RPCS3's own file, kept for good
 
 
@@ -134,8 +162,43 @@ def test_entries_of_our_names_that_were_ticked_before_come_back_where_they_were(
     assert patchinstall.ticked(_read(config).decode(), NA) == {PLAYER, INTRO, NEWS}
     patchinstall.install_patch(rpcs3, [NA, EU], b'roster', intro=False, login=True, say=lambda m: None)   # again
     assert patchinstall.ticked(_read(config).decode(), NA) == {PLAYER, LOGIN, NEWS}
+    assert patchinstall.ticked(_read(config).decode(), NA, '01.01') == {PLAYER, LOGIN, NEWS}
+    import json
+    with open(patchinstall._saved_path(), encoding='utf-8') as f:
+        saved = json.load(f)
+    for kept in saved.values():                             # as 0.50.0 kept them: by title id, 1.00's hash only
+        kept[NA] = kept.pop(gamepatch.NA_HASH)
+    with open(patchinstall._saved_path(), 'w', encoding='utf-8') as f:
+        json.dump(saved, f)
     patchinstall.remove(rpcs3, say=lambda m: None)
     assert _read(config) == before.encode()                 # as before our first change, byte for byte
+
+
+def test_a_patch_from_before_update_101_is_stale_in_a_game_with_the_update(tmp_path, monkeypatch):
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
+    monkeypatch.setattr(patchinstall, 'db_files', lambda disc, roster: (b'META', b'DB'))
+    rpcs3 = _fake_rpcs3(tmp_path)
+    old = gamepatch.player_patch_text([NA], versions=('01.00',)).replace(gamepatch.TEAMS_VERSION, '0.24')
+    with monkeypatch.context() as m:                                    # what 0.50.0 put in: for 1.00 only
+        m.setattr(gamepatch, 'VERSIONS', ('01.00',))
+        m.setattr(gamepatch, 'player_patch_text', lambda: old)
+        patchinstall.install_patch(rpcs3, [NA], b'roster', intro=False, say=lambda m: None)
+    assert patchinstall.patched_titles(rpcs3) == [NA] and patchinstall.stale_titles(rpcs3) == []
+    _update(rpcs3, NA)                                                  # the player installs update 1.01
+    st = patchinstall.state(rpcs3)[NA]
+    assert (st['patched'], st['stale'], st['game'], st['version']) == (False, True, '01.01', '0.24')
+    assert patchinstall.patched_titles(rpcs3) == [] and patchinstall.stale_titles(rpcs3) == [NA]
+    assert patchinstall.installed(rpcs3)
+    assert patchinstall.set_switches(rpcs3, [NA], True, False) == []    # nothing for a patch the game does not run
+    patchinstall.install_patch(rpcs3, [NA], b'roster', intro=False, say=lambda m: None)   # Patch again
+    st = patchinstall.state(rpcs3)[NA]
+    assert (st['patched'], st['stale'], st['version']) == (True, False, gamepatch.TEAMS_VERSION)
+    _update(rpcs3, NA, '01.00')                                         # an update folder that says 1.00
+    assert patchinstall.state(rpcs3)[NA]['game'] == '01.00' and patchinstall.patched_titles(rpcs3) == [NA]
+    patchinstall.remove(rpcs3, say=lambda m: None)
+    assert not patchinstall.installed(rpcs3)
 
 
 def test_the_db_files_of_the_32_team_test_move_from_the_pictures_list(tmp_path, monkeypatch):

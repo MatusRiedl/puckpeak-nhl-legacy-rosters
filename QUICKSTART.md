@@ -62,6 +62,7 @@ from [Puck Peak](https://www.puckpeak.com).
 - A Be a Pro career you play: **Draft & Pro** > Be a Pro careers, pick it, change your pro's name, his ratings or the
   experience he has to spend, and press **Save this career** with RPCS3 closed (a backup copy is made first).
 
-The full manual is in [README.md](README.md). Found a problem? Open an
+The full manual is in [README.md](README.md). Questions, news and help: our Discord,
+[gg.puckpeak.com](https://gg.puckpeak.com) (the **Join our Discord** button at the top of the window). Found a problem? Open an
 [issue](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/issues) and include the list of
 changes or the error message.

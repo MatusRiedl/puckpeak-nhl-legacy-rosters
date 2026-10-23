@@ -61,6 +61,7 @@ EDGED_KINDS = ('t', 'd', 'r')
 # the same for portraits: '#2', 0.8.0: studio photos on a shaded backdrop are cut out too (images.
 # _shaded_background_mask), no longer shown in an oval
 PORTRAIT_DRAWING = '#2'
+UPDATE_ARCHIVE = 'patch.big'         # the game's update 1.01 puts its newer files there (USRDIR), text files among them
 
 
 def logo_kinds(artid):
@@ -461,20 +462,44 @@ def give_back(numbers, say=print):
     return len(numbers)
 
 
+def update_texts(game_dirs):
+    """{language: text file} of the game's update 1.01 when one of `game_dirs` (USRDIR folders) has it: its patch.big
+    holds the text files the game then reads instead of the disc's, with 13 more texts (the 3-on-3 overtime, gear and
+    jersey names) and newer ones. {} without the update."""
+    from . import loc
+    from .disc import EbArchive
+    for d in game_dirs:
+        path = os.path.join(d, UPDATE_ARCHIVE)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, 'rb') as f:
+                arc = EbArchive(f)
+                names = {lang: f"fe/loc/nhl_{lang}.db" for lang in loc.LANGUAGES}
+                return {lang: arc.read(name) for lang, name in names.items() if name in arc.entries}
+        except (OSError, ValueError, NotImplementedError):
+            continue
+    return {}
+
+
 def install_names(disc, writer, names, say):
     """The game's text files with the roster's team names and the Puck Peak texts (loc.py), one per
-    language, made from the disc's own each time (so nothing piles up). Returns how many files were written."""
+    language, made from the game's own each time (so nothing piles up): the update's when a game folder has update
+    1.01 (a superset of the disc's), else the disc's. Returns how many files were written."""
     import hashlib as _h
     from . import loc
+    newer = update_texts(writer.game_dirs)
     source = 'names:' + _h.sha1((loc.NAMES_VERSION + json.dumps(names, sort_keys=True, default=sorted)
                                  + loc.PROMO_VERSION + json.dumps(loc.PROMO, sort_keys=True)).encode()).hexdigest()
+    if newer:
+        source += ':' + _h.sha1(b''.join(newer[lang] for lang in sorted(newer))).hexdigest()[:12]
     rels = {lang: ('fe', 'loc', f"nhl_{lang}.db") for lang in loc.LANGUAGES}
     todo = [lang for lang in loc.LANGUAGES if not writer.current(rels[lang], source)]
     if not todo:
         return 0
     files = {}
     for lang in loc.LANGUAGES:        # all of them: a promo text's room is the longest any language keeps
-        original = disc.text_file(lang)
+        original = newer.get(lang) or disc.text_file(lang)
         if original is not None:
             files[lang] = loc.LocFile(original)
     room = loc.promo_limits(files.values())

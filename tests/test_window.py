@@ -54,6 +54,22 @@ def test_every_call_of_the_page_is_offered_by_the_api():
     assert called and called <= offered, called - offered
 
 
+def test_the_headers_discord_button_opens_the_puck_peak_discord():
+    from legacy_roster.window.api import Api
+
+    class Host:
+        opened = []
+
+        def open_url(self, url):
+            self.opened.append(url)
+
+    host = Host()
+    assert Api(host, None).open_discord() is None
+    assert host.opened == ['https://gg.puckpeak.com']
+    with open(os.path.join(WEB, 'js', 'shell.js'), encoding='utf-8') as f:
+        assert "call('open_discord')" in f.read()
+
+
 def test_the_pages_server_takes_many_connections_at_once():
     """The page asks for its fonts and scripts at once; with Python's queue of 5 Windows refused the rest (lab 47c)."""
     import socket

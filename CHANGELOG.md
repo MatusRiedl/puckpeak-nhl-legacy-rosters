@@ -3,6 +3,22 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.50.1 (2026-10-23)
+
+- **Join our Discord.** A button at the top of the window, and one at the top of the GitHub page, open the Puck Peak
+  Discord ([gg.puckpeak.com](https://gg.puckpeak.com)): questions, news and help.
+- **A second update no longer stops with "no spare player record left for ...".** After a full update every free
+  player record of the game is in use. When NHL.com then lists a new player (a call-up, a new signing), the update now
+  makes room: an old free agent nobody needs retires, or for a goalie a junior club's third goalie leaves. The List of
+  changes names who made room. If you saw this error, update to 0.50.1 and run the update again.
+- **The game patch works with the game's update 1.01 too** (EU and NA). RPCS3 installs this update for many players,
+  and the game patch of 0.50.0 only fitted the game without it: the patch never ran, so a 32-team roster showed as
+  "damaged". The patch now fits both, and RPCS3 uses the right one by itself. If your game has update 1.01 and you
+  patched with 0.50.0, the Game patch tab says "Patch again": press it (RPCS3 closed), then start the game. The
+  program does not update a roster until then.
+- **Team names and Puck Peak texts keep update 1.01's own texts** (such as "5 Min (3 on 3) then Shootout" in the
+  overtime choices): the program now starts from the update's text files when your game has it.
+
 ## 0.50.0 (2026-10-23)
 
 The biggest update yet: everything new since 0.10.4, and a new window. The versions in between (0.20.0 to 0.35.0) were

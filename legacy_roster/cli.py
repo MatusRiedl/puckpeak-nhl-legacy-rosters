@@ -427,8 +427,11 @@ def cmd_game_patch(args):
     for title, st in patchinstall.state(rpcs3).items():
         if st['patched']:
             extra = [what for what, on in (("the intro skipped", st['intro']), ("no pop-ups at start", st['login'])) if on]
-            print(f"{savedata.region(title)}: patched for 32 teams and the year 2026 ({st['version']})"
-                  + (f", {', '.join(extra)}" if extra else ""))
+            print(f"{savedata.region(title)}: patched for 32 teams and the year 2026 ({st['version']}, game "
+                  f"{st['game']})" + (f", {', '.join(extra)}" if extra else ""))
+        elif st['stale']:
+            print(f"{savedata.region(title)}: the game has update {st['game']}, the patch ({st['version']}) is older: "
+                  "run game-patch install again")
         else:
             print(f"{savedata.region(title)}: not patched")
 

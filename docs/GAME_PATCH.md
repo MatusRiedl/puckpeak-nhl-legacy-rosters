@@ -63,6 +63,12 @@ The game is *NHL Legacy Edition* EU (`BLES02153`, version 01.00, PPU hash `c9301
 the box its Season and Be a GM know 30 NHL teams, and its calendar starts in 2015. The patch has three parts. All three
 have to be there together.
 
+**Update 1.01** (since patch 0.25, 0.50.1): RPCS3 boots the update's `dev_hdd0/game/<TITLE>/USRDIR/EBOOT.BIN` when it
+is installed. EU and NA 1.01 are one program, PPU hash `d4bbaf00a080a924e862c1b3f7705380a3499edb`
+(`gamepatch.UPDATE_HASH`). Every entry is written for 1.00 EU, 1.00 NA and 1.01. The 1.01 addresses
+(`legacy_roster/patch101.py`) come from `tools/port_patch.py`. The window says "Patch again" when the patch is in but not
+for the version RPCS3 runs (`patchinstall.stale`). Notes: notes/update-101.md.
+
 1. **RPCS3 patch entries.** RPCS3 reads `<rpcs3>/patches/BLES02153_patch.yml`, along with `patch.yml` and
    `imported_patch.yml`, and the switches in `<rpcs3>/config/patch_config.yml`. At every boot it changes the game's
    instructions in memory and logs "Applied patch". The game's EBOOT.BIN on disk is never changed or re-signed. The patch
@@ -253,6 +259,9 @@ How a round is made:
    - bump `TEAMS_VERSION`.
 3. `python tools/audit_patch.py <EBOOT.ELF>` must report 0 problems. It checks every game word against the ELF and shows
    both instructions.
+   - Then `python tools/port_patch.py --write <1.00 ELF> <1.01 ELF>` finds the new or moved words in update 1.01 and
+     writes `legacy_roster/patch101.py`.
+   - Audit the 1.01 ELF too (0 problems). Decrypt it with scetool, as notes/update-101.md describes.
 4. Tests: `tests/test_gamepatch.py`, with `LEGACY_ROSTER_DISC` set to the EU disc image (the .iso, not its folder).
 5. Write the lab's patch file (RPCS3 closed), add the round to the lab README, and let the owner play it.
 6. Update this file's table and AGENTS.md.

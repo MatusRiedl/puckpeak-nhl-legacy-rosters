@@ -565,6 +565,11 @@ a new save.
   record, so `edits.records_needed` counts the new players not in the roster yet and `Builder.hold_records` takes their
   records right after the free agents are reserved; `_create` takes a held record first, and records held but not
   needed go back. The leagues lose their last depth players instead (the report's "skipped" list).
+- **An NHL player with no record left** (0.50.1). On an update of a fully updated roster no spare record is left, so
+  an NHL.com newcomer (or a national-team player, `required=True`) would stop the update. `Builder.take_record` then
+  calls `make_room`: the least needed free agent of the same kind retires (`retires(force=True)`), else a CHL club with
+  more than 2 G / 18 skaters of that kind gives up its weakest single-record player without NHL rights ("left to make
+  room"). Both are deterministic, so a build of its own output stays byte-identical.
 - **Draft classes** (`draftclass.py`, `'draft classes'` experimental; lab round 44). A class player is a new player
   with a `prospect` block (`class`, `tier`, `potential`) on a European or CHL club (`DRAFT_SLOTS`: the clubs a new Be a
   GM imports prospects from; the AHL and the free-agent list are not draft sources). `draftclass.apply` runs after the
@@ -861,7 +866,10 @@ switches on Coachella Valley / Henderson on the game's own roster, gives the pla
 players hold Vegas's (`gamepatch.rights_wide`, `rights_fit`; patch 0.23), makes part 3 (`patch_roster`) and checks it,
 and `refresh_db` brings part 2 up to date (the window marks a patch roster whose rights' bits differ from the installed
 `db/nhlng-meta.xml`: `UpdateController.misfit`, `patchinstall.installed_rights`); not patched, a patch roster is turned back first (`gamepatch.unpatch_roster` with the game's own roster).
-`patchinstall.set_switches` changes only the intro / login entries; `patchinstall.state` tells the window what to show;
+`patchinstall.set_switches` changes only the intro / login entries; `patchinstall.state` tells the window what to show.
+That includes the version RPCS3 runs (`game_version`: 01.00, or 01.01 when the update's `USRDIR/EBOOT.BIN` is there)
+and `stale` when the patch is in but not for that version (the window's "Patch again"). The patch text carries a 1.01
+block for both titles (`gamepatch.UPDATE_HASH`, `legacy_roster/patch101.py`).
 `patchinstall.remove` (Unpatch, Restore default, `cli game-patch remove`) undoes parts 1 and 2. Saves are never touched.
 
 ## Where new things plug in

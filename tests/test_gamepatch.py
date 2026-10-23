@@ -58,6 +58,52 @@ def test_the_players_entry_holds_the_lab_entries_changes_in_one_switch():
     assert '(test)' not in gamepatch.player_patch_text()
 
 
+def test_update_101_gets_the_same_patch_at_its_own_addresses():
+    """Update 1.01 is one program for EU and NA (its own PPU hash): one block naming both, the same entries and words, every
+    place moved as patch101.py says (tools/port_patch.py, checked against the program by tools/audit_patch.py)."""
+    yaml = pytest.importorskip('yaml')
+    from legacy_roster import patch101
+    assert set(patch101.ADDRESSES) == gamepatch.port_addresses()
+    moves = [b - a for a, b in patch101.ADDRESSES.items()]
+    assert min(moves) >= 0 and max(moves) <= 0x2030 and len(set(patch101.ADDRESSES.values())) == len(moves)
+    mine = yaml.safe_load(gamepatch.player_patch_text())
+    assert list(mine) == ["Version", f"PPU-{gamepatch.EU_HASH}", f"PPU-{gamepatch.NA_HASH}", f"PPU-{gamepatch.UPDATE_HASH}"]
+    old, new = mine[f"PPU-{gamepatch.EU_HASH}"], mine[f"PPU-{gamepatch.UPDATE_HASH}"]
+    assert list(old) == list(new)
+    for name in old:
+        assert list(new[name]['Games']['NHL Legacy']) == ['BLES02153', 'BLUS31540']
+        assert len(old[name]['Patch']) == len(new[name]['Patch'])
+        for (kind, a, word), (kind_101, a_101, word_101) in zip(old[name]['Patch'], new[name]['Patch']):
+            assert kind == kind_101 and a_101 == gamepatch.at(a, '01.01')
+            assert word == word_101 or kind == 'be32' and (a in gamepatch.VALUE_ADDRESSES or word >> 26 in (15, 16, 18, 24, 12))
+    text = gamepatch.player_patch_text()
+    assert "        BLES02153: [ 01.01 ]\n        BLUS31540: [ 01.01 ]" in text
+    only_na = gamepatch.player_patch_text(['BLUS31540'])
+    assert gamepatch.UPDATE_HASH in only_na and 'BLES02153' not in only_na
+    assert gamepatch.player_patch_text(versions=('01.00',)).count('PPU-') == 2
+
+
+def test_the_ported_words_go_where_the_games_went():
+    at = gamepatch.at
+    # a branch the patch writes (the news entry's b): the same place in its function, which moved with it
+    assert gamepatch.ported_word(0x7e8d58, 0x480004d8, '01.01') == 0x480004d8
+    target = gamepatch._target(0x7e8d58, 0x480004d8)
+    word = gamepatch.ported_word(0x7e8d58, 0x480004d8, '01.01')
+    assert gamepatch._target(at(0x7e8d58, '01.01'), word) == at(target, '01.01')
+    # the login entry's function descriptors, and data words that are numbers
+    assert gamepatch.ported_word(0x1cd411c, 0x020e9d80, '01.01') == at(0x020e9d80, '01.01')
+    assert gamepatch.ported_word(0x1ab0688, 220, '01.01') == 220
+    # our code calls the moved functions: lis + ori builds the 1.01 address, the dollars in the cap code stay
+    skip = dict(gamepatch.caves())[0x1283bc]
+    ported = gamepatch.ported_code(skip, '01.01')
+    built = [(hi & 0xffff) << 16 | lo & 0xffff for (hi, _), (lo, _) in zip(ported, ported[1:])
+             if hi >> 26 == 15 and lo >> 26 == 24]
+    assert at(0x3d7770, '01.01') in built and 0x3d7770 not in built and at(gamepatch.LIST_END, '01.01') in built
+    cap = next(code for a, code in gamepatch.caves() if a == 0x4a7240)
+    assert gamepatch.ported_code(cap, '01.01') == cap
+    assert gamepatch.ported_code(skip) == skip
+
+
 def test_only_the_games_own_years_move():
     assert [gamepatch.year_of(y) for y in (1987, 2009, 2010, 2015, 2016, 2025, 2026, 2037)] == \
         [1987, 2009, 2021, 2026, 2027, 2036, 2026, 2037]

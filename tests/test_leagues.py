@@ -223,6 +223,28 @@ def test_a_second_run_with_club_leagues_changes_nothing(everything, pack):
     assert again.problems == [] and again.data == result.data
 
 
+def test_newcomers_on_nhl_rosters_get_a_record_when_the_leagues_used_every_one(everything, pack):
+    """A tester's second update stopped at "no spare player record left for Owen Michaels": the first update gave every
+    record to the club leagues. A free agent nobody needs retires (goalies: a junior club's spare goalie leaves)."""
+    full, result = everything
+    assert result.builder.donors.left('S') == 0 and result.builder.donors.left('G') == 0
+    model = dict(full.nhl_players[0], num=0, photo=None)
+    newcomers = [dict(model, team=team, pos=pos, first='Testy', last=f'Newcomer{k}', birth=(2003, 3, 1 + k),
+                      nhl_id=99000000 + k) for k, (team, pos) in enumerate([('EDM', 'R'), ('EDM', 'G'), ('UTA', 'D'),
+                                                                           ('SEA', 'C'), ('VGK', 'G')])]
+    later = Data(nhl_players=full.nhl_players + newcomers, ratings_list=full.ratings_list, iihf=full.iihf,
+                 season_year=full.season_year, leagues=full.leagues, drafts=full.drafts, contracts=full.contracts)
+    again = pipeline.build(result.data, later, steps=pipeline.steps_for(pack))
+    assert again.problems == []
+    R = Roster(again.data)
+    for p in newcomers:
+        assert any(R.P.get(r, 'lastname') == p['last'] for r in members(R, L.API_TO_SLOT[p['team']]))
+    room = [r for r in again.log if 'make room' in f"{r[1]} {r[3]}"]
+    assert len(room) >= 3 and any(r[1] == 'left to make room' for r in room)    # a goalie: from a junior club
+    third = pipeline.build(again.data, later, steps=pipeline.steps_for(pack))
+    assert third.problems == [] and third.data == again.data
+
+
 def test_a_league_can_be_added_later_on_its_own(built, pack):
     later = pipeline.build(built.data, Data(season_year=pack['season'], leagues=pack['leagues']), steps=['liiga'])
     assert later.problems == []
