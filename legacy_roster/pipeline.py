@@ -211,6 +211,9 @@ class BuildResult:
         lined = getattr(self.builder, 'real_lined', None)
         if lined:
             out.append(("Lines", f"{len(lined)} teams play the lines of their last games"))
+        clubs_lined = getattr(self.builder, 'club_lined', None)
+        if clubs_lined:
+            out.append(("Club lines", f"{len(clubs_lined)} clubs play their real lines"))
         starters = sum((getattr(self.builder, 'starter_deals', None) or {}).values())
         if starters:
             out.append(("Starter deals", f"{starters} player{'s' if starters != 1 else ''} without a contract got one "

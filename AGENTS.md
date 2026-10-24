@@ -189,6 +189,24 @@ wording (`progress.py`).
 
 ## Current state
 
+**Version 0.51.0 (2026-10-24, built, not committed; owner: "fix and support the lines for AHL and others", Extraliga a focus; notes
+docs/notes/lines-from-games.md, lines-other-leagues.md):** (1) **NHL lines announced first**: `tools/providers/dailyfaceoff.py`
+(the team pages' data, matched to NHL.com's roster; `merge` per category with the games' lines; tests/test_announced_lines.py)
+fixed McDavid at LW / RW. (2) **Real lines for the clubs outside the NHL**, data pack part `club_lines` = {club slot (str):
+{'date', 'source', 'slots': {slot name: [first, last, birth year]}}}: the private maker `private/club_lines_db.py` takes the lines
+of a larger database (table `ulGe`, 49 of the 71 slots: no 5-skater power play pp1 / pp2 and no overtime; it has even strength, goalies, the 4-skater power play, both penalty kills, shootout, extras) and matches each of its teams to a club slot by the players they share
+(`--refresh club_lines`, no network, after the leagues); `tools/providers/hokejcz_lines.py` reads the Extraliga's match
+line-ups from hokej.cz's own files (day list `json.esports.cz/hokejcz/scoreboard/onlajny/<date>.json`, roster file
+`data.onlajny.com/hockey/roster/<year>/<id>.json`; slot codes 101/102 goalies, 21x-24x pairs, 31x-34x forward lines, middle = centre,
+inferred) and `merge` lays them over even strength + goalies (`--refresh extraliga_lines`; power play / kill stay the database's).
+`Builder.real_club_lines(slots)` runs last in `repair_lineups` (after every step that moves players, else a second run differs) and
+uses `real_line_up` per club, players found on the club by name; result row "Club lines". Built roster: Extraliga 14/14, Liiga 15/15,
+SHL 14/14, DEL 14/14, NL 12/12, AHL 32/32, CHL 58/60, Norway 0/2 (no data). The database's lines are older than the live rosters, so
+`Builder.fill_real_gaps` completes a group when at most 40 % of its slots are open (the player who holds the slot now, else the club's
+best of that kind) and drops a group with more gone; a player of the wrong kind for a line slot counts as gone. Shootout / extra
+attackers replaced in `real_line_up` are forwards (they were any skater: a second run differed). tests/test_club_lines.py.
+Pack must be refreshed before a release (`--refresh lines,extraliga_lines` for daily changes). Not played in the game.
+
 **Version 0.50.4 (2026-10-24, owner's asks after the community's reports; plan docs/plans/warm-tumbling-sunrise.md):**
 (1) **Real lines** from NHL.com's last five games per team (`tools/providers/nhl_lines.py`, data pack part `lines`,
 `Builder.lines_from_games` / `real_line_up` after the rating deal in `nhl_lines`, `'real lines'` experimental, notes

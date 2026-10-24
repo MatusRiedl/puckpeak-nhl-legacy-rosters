@@ -27,6 +27,9 @@ The pack holds everything the updater does not fetch live:
     contracts    the real 2026-27 NHL contracts (--refresh contracts [--db FILE]; legacy_roster/contracts.py)
     ratings_full the current ratings, player types and tendencies of every player, all leagues
                  (--refresh ratings_full [--db FILE], no network)
+    club_lines   the clubs' real lines outside the NHL, per club slot: the Extraliga's match line-ups (--refresh
+                 extraliga_lines, hokej.cz) over a larger private database's lines (--refresh club_lines [--db FILE],
+                 no network; made from the pack's own rosters, so refresh the leagues first)
 
 ratings_list, contracts, ratings_full and the AHL's rosters are made by the maintainer's private tools (private/, kept
 out of git, DEVELOPING.md). Without them those parts are taken over from the pack being replaced, as they are.
@@ -50,7 +53,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from legacy_roster import contracts, datasource  # noqa: E402
 from legacy_roster.layout import API_TO_SLOT  # noqa: E402
-from providers import (czech, hockeytech, iihf, liiga, nhl_facts, nhl_lines, penny_del, sportality, swiss,  # noqa: E402
+from providers import (czech, dailyfaceoff, hockeytech, hokejcz_lines, iihf, liiga, nhl_facts, nhl_lines, penny_del, sportality, swiss,  # noqa: E402
                        wiki_logo)
 
 PRIVATE = os.path.join(ROOT, 'private')        # the makers of three parts, kept out of git (DEVELOPING.md)
@@ -60,8 +63,9 @@ try:
     import ratings_full  # noqa: E402
     import ratings_list  # noqa: E402
     import club_rosters_db  # noqa: E402
+    import club_lines_db  # noqa: E402
 except ImportError:
-    contracts_db = ratings_full = ratings_list = club_rosters_db = None
+    contracts_db = ratings_full = ratings_list = club_rosters_db = club_lines_db = None
 PRIVATE_PARTS = ('ratings_list', 'contracts', 'ratings_full')
 
 # one feed per part of a league (club_slots.json); a part's cache is tools/cache/<part>.json
@@ -279,7 +283,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--refresh', default='',
                     help="comma list: ratings, iihf, nhl (also nhl_last, drafts and schedule), lines, ahl_schedule, contracts, "
-                         "ratings_full, ahl_rosters, schedules (every league's calendar) or <part>_schedule, or a league "
+                         "ratings_full, ahl_rosters, club_lines, extraliga_lines, schedules (every league's calendar) or <part>_schedule, or a league "
                          "(liiga, extraliga, shl, del, nl, norway, ahl, chl; rosters and calendar) or one part of it "
                          "(ohl, qmjhl, whl)")
     ap.add_argument('--db', default=contracts_db.DB if contracts_db else None,
@@ -358,12 +362,35 @@ def main():
     if 'lines' in refresh:
         os.makedirs(CACHE, exist_ok=True)
         with open(cache, 'w', encoding='utf-8') as f:
-            json.dump(nhl_lines.lines(SEASON), f, ensure_ascii=False)
+            json.dump(dailyfaceoff.merge(dailyfaceoff.lines(SEASON), nhl_lines.lines(SEASON)), f, ensure_ascii=False)
     if os.path.exists(cache):
         with open(cache, encoding='utf-8') as f:
             pack['lines'] = json.load(f)
-        pack['sources']['lines'] = {'label': "NHL.com: lines of the last games", 'date': file_date(cache),
+        pack['sources']['lines'] = {'label': "announced lines, and NHL.com's last games", 'date': file_date(cache),
                                     'count': len(pack['lines'])}
+
+    # the lines of the clubs outside the NHL: the private source's (made from the pack's own rosters, so after the leagues),
+    # with the Extraliga's match line-ups over their even strength and goalies (providers/hokejcz_lines.py); club slots
+    base_cache = os.path.join(CACHE, 'club_lines.json')
+    if club_lines_db and 'club_lines' in refresh:
+        os.makedirs(CACHE, exist_ok=True)
+        with open(base_cache, 'w', encoding='utf-8') as f:
+            json.dump(club_lines_db.extract(args.db or club_lines_db.contracts_db.DB, pack), f, ensure_ascii=False)
+    cache = os.path.join(CACHE, 'extraliga_lines.json')
+    if 'extraliga_lines' in refresh:
+        os.makedirs(CACHE, exist_ok=True)
+        with open(cache, 'w', encoding='utf-8') as f:
+            json.dump(hokejcz_lines.lines(SEASON, os.path.join(ROOT, 'tools', 'club_slots.json')), f, ensure_ascii=False)
+    base, match = {}, {}
+    for path, into in ((base_cache, base), (cache, match)):
+        if os.path.exists(path):
+            with open(path, encoding='utf-8') as f:
+                into.update(json.load(f))
+    if base or match:
+        pack['club_lines'] = hokejcz_lines.merge(base, match)
+        pack['sources']['club_lines'] = {'label': "club lines: match line-ups and a larger database",
+                                         'date': file_date(cache if match else base_cache),
+                                         'count': len(pack['club_lines'])}
 
     # the AHL's calendar for the game patch's farm league, clubs as their team slots (tools/club_slots.json)
     cache = os.path.join(CACHE, 'ahl_schedule.json')

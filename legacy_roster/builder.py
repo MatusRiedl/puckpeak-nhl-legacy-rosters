@@ -34,7 +34,7 @@ class Data:
 
     def __init__(self, nhl_players=None, ratings_list=None, iihf=None, season_year=2026, leagues=None, nhl_logos=None,
                  nhl_last=None, drafts=None, schedule=None, calendar=None, contracts=None, ratings_full=None,
-                 league_schedules=None, real_lines=None):
+                 league_schedules=None, real_lines=None, club_lines=None):
         self.nhl_players = nhl_players or []   # flat list, see datasource.flatten_nhl()
         self.ratings_list = ratings_list           # [{'name','team','position','birth','ovr','attrs'}] or None
         self.ratings_full = ratings_full                # the full ratings (data pack part `ratings_full`), with the ratings step
@@ -50,6 +50,7 @@ class Data:
         # schedule.apply_league)
         self.league_schedules = league_schedules or {}
         self.contracts = contracts or []       # real 2026-27 NHL contracts (contracts.py), only with the NHL step
+        self.club_lines = club_lines or {}      # club slot (str) -> {'slots': {slot name: [first, last, birth year]}} (data pack part `club_lines`)
         self.real_lines = real_lines or {}     # NHL team code -> {'slots': {slot name: NHL.com id}} (data pack part `lines`)
 
 
@@ -1074,6 +1075,76 @@ class Builder:
             else:
                 self.real_lined.append(code)
 
+    def real_club_lines(self, slots):
+        """The real lines of the clubs outside the NHL (data pack part `club_lines`: an Extraliga club's latest match
+        line-up, else the lines of a larger database) over the lines the league step dealt, for the clubs in `slots`: the
+        same rule as the NHL's (`real_line_up`), players found on the club by name (the full name, else the last name and
+        the first initial when only one player of the club has them). `self.club_lined` / `club_refused`: club slots."""
+        self.club_lined, self.club_refused = [], {}
+        for slot in sorted(slots):
+            wanted = (self.data.club_lines.get(str(slot)) or {}).get('slots')
+            if not wanted:
+                continue
+            full, short = {}, {}
+            for e in self.entries_on(slot):
+                prow = self.prow_of_entry(e)
+                first, last = norm(self.P.get(prow, 'PedH')), norm(self.P.get(prow, 'RMbQ'))
+                full.setdefault(first + last, []).append(prow)
+                short.setdefault((last, first[:1]), []).append(prow)
+
+            def found(who):
+                first, last = norm(who[0]), norm(who[1])
+                rows = full.get(first + last) or short.get((last, first[:1])) or []
+                return rows[0] if len(rows) == 1 else None
+            key = {}
+            for name, who in wanted.items():
+                prow = found(who)
+                if prow is not None:
+                    key[name] = prow
+            self.fill_real_gaps(slot, key)
+            problems = self.real_line_up(slot, key, {prow: prow for prow in key.values()})
+            if problems:
+                self.club_refused[slot] = problems
+            else:
+                self.club_lined.append(slot)
+
+    GAP_SHARE = 0.4     # a group of real lines is kept when at most this share of its players has left the club
+
+    def fill_real_gaps(self, team, key):
+        """`key` ({slot name: player row}) holds the real lines' players found on the club. A group that lacks some of them
+        (a database older than the club's list, a player now in the NHL) is completed when at most GAP_SHARE of its slots
+        are open: each open slot goes to the player who holds it now, else to the club's best player of that kind (goalie,
+        defenceman, forward) not yet in the group; a group with more gone is dropped from `key` (the deal stays)."""
+        slots, _letters = lines.lineup(self, team)
+        ents = self.entries_on(team)
+        kind = {e: {4: 'G', 3: 'D'}.get(self.P.get(self.prow_of_entry(e), 'aljv'), 'F') for e in ents}
+        kind_of = {self.prow_of_entry(e): kind[e] for e in ents}
+        for n in list(key):                 # a place for a kind of player he is not (a database's positions differ): open
+            want = 'G' if n.startswith('g') else 'D' if n.endswith(('ld', 'rd')) and n in schema.EVEN_STRENGTH else                 'F' if n.endswith(('lw', 'c', 'rw')) else None
+            if want and kind_of.get(key[n]) != want:
+                del key[n]
+        for _title, names in lines.GROUPS:
+            got = [n for n in names if n in key]
+            open_ = [n for n in names if n not in key]
+            if not got or not open_:
+                continue
+            if len(open_) > self.GAP_SHARE * len(names):
+                for n in got:
+                    del key[n]
+                continue
+            used = {key[n] for n in got}
+            for n in open_:
+                want = 'G' if n.startswith('g') else 'D' if n.endswith(('ld', 'rd')) else 'F'
+                now = slots.get(n)
+                pick = now if now is not None and self.prow_of_entry(now) not in used and kind.get(now) == want else None
+                if pick is None:
+                    pick = next((e for e in sorted(ents, key=lambda e: (-self.q(e), self.pid_of_entry(e), e))
+                                 if kind[e] == want and self.prow_of_entry(e) not in used), None)
+                if pick is None:
+                    break
+                key[n] = self.prow_of_entry(pick)
+                used.add(key[n])
+
     def real_line_up(self, team, wanted, rows):
         """Write `wanted` ({slot name: NHL.com id}) onto `team`'s lines; returns what is wrong with the result ([] when it
         was written)."""
@@ -1103,10 +1174,9 @@ class Builder:
                 if new[n] in dressed:
                     continue
                 held = {new[m] for m in names}
-                want_d = n.endswith(('ld', 'rd'))
+                want_d = n.endswith(('ld', 'rd'))          # shootout and extra attackers: forwards
                 pick = [e for e in skaters if e not in held and
-                        (not n.endswith(('lw', 'c', 'rw', 'ld', 'rd')) or
-                         (self.P.get(self.prow_of_entry(e), 'aljv') == 3) == want_d)]
+                        (self.P.get(self.prow_of_entry(e), 'aljv') == 3) == want_d]
                 if pick:
                     new[n] = pick[0]
         kinds = {0: 'C', 1: 'L', 2: 'R', 3: 'D', 4: 'G'}
@@ -2338,6 +2408,8 @@ class Builder:
             lines.build_lines(self, slot)
             clubs._letters(self, slot, letters)
             mended.append(slot)
+        if self.data.club_lines:            # last, when no step moves a player any more: the real lines of the clubs
+            self.real_club_lines(slots)
         self.log.section = SECTION_NATIONAL
         for team in sorted(L.NATIONAL & (set(self.departures) | set(self.arrivals) | self.position_teams)):
             if self.mendable(team):

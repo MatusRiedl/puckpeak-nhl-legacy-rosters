@@ -3,6 +3,19 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.51.0 (2026-10-24)
+
+- **The NHL's lines are the announced ones.** The lines, pairs, goalies, power play and penalty kill now come first from
+  the teams' announced line combinations (Daily Faceoff), so a centre such as Connor McDavid plays centre next to another
+  centre such as Leon Draisaitl, and the power-play units are the real units. Where a team's announced lines cannot be
+  matched to its NHL.com roster (a new player, an unfinished unit), that part still comes from its last five games.
+- **Real lines for the clubs outside the NHL.** The AHL, the CHL, the Czech Extraliga, the SHL, Liiga, the DEL and the
+  National League play lines, pairs and goalies taken from real data instead of being dealt by rating, wherever every
+  player of a line is on the club. The Czech Extraliga clubs use their latest match line-up from hokej.cz (their first
+  goalie is the one who started most of the last games). A club whose data names a player who is not on it keeps the
+  lines it had for that part.
+- Lines set in the Roster editor are still kept; lines set inside the game are replaced by the real ones at the next update.
+
 ## 0.50.4 (2026-10-24)
 
 - **Lines come from real games.** Every NHL team's lines, pairs, goalies, power play and penalty kill are now worked
