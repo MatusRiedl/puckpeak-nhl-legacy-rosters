@@ -760,3 +760,11 @@ def test_the_intro_entries_stand_apart_and_change_three_words_and_one_byte():
     assert len(ours) == 4 and not ours & others and {0x220a64c, 0x1cd411c} <= set(gamepatch.DATA_WORDS)
     assert {0xfb2f24, 0x7e8d58} <= set(gamepatch.OTHER_INSTRUCTIONS)
     assert all(': ' not in name + notes and '#' not in name + notes for name, _, notes in gamepatch.INTRO_ENTRIES)
+
+
+def test_the_next_seasons_calendar_is_trimmed_when_the_patched_game_saved_it_with_more_room(base_bytes):
+    R = Roster(base_bytes)
+    F = R.f[gamepatch.FUTURE_TABLE]
+    F.grow(1459)                                                    # a roster the patched game saved itself
+    gamepatch.future_fit(R)
+    assert R.f[gamepatch.FUTURE_TABLE].max_rec == schedule.PATCH_ROWS

@@ -3,6 +3,13 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.51.2 (2026-10-24)
+
+- An update no longer stops with "Kraken has 49 players (max 40)" when the roster lists a player twice on one of its
+  copies of an NHL team (Kraken is the copy of Seattle). The copy keeps him once.
+- A roster the patched game saved itself (with room for more games next season) is brought back to the patch's size
+  for next season's calendar when it is updated again.
+
 ## 0.51.1 (2026-10-24)
 
 - **Real captains on every team.** The C and the two A's were picked by rating before (Winnipeg's captain Adam Lowry

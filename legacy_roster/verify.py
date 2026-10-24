@@ -140,6 +140,9 @@ def structure(R, full_lineup=FULL_LINEUP, mirrors=None):
     # lines: no slot held twice, dressed == holds a slot; playable teams dress a legal 20
     for t in range(R.T.cur_rec):
         ents = by_team.get(t, [])
+        for p, n in Counter(pid(i) for i in ents).items():
+            if n > 1:
+                out[('twice', t, p)] = f"{_team(R, t)} lists {R.name(R.p_by_id[p])} {n} times"
         held = Counter(f for i in ents for f in flags if U.get(i, f))
         if any(v > 1 for v in held.values()):
             out[('slot twice', t)] = f"{_team(R, t)}: a line slot is held by two players"
@@ -167,8 +170,8 @@ def structure(R, full_lineup=FULL_LINEUP, mirrors=None):
     def sig(t):
         return {pid(i): tuple(U.get(i, f) for f in flags + ['jZSh', 'lcCm', 'tRVs']) for i in by_team.get(t, [])}
     for prim, ms in (layout_mirrors(R) if mirrors is None else mirrors).items():
-        for m in ms:
-            if sig(prim) != sig(m):
+        for m in ms:        # sig is by player: the count catches a copy that lists someone twice
+            if sig(prim) != sig(m) or len(by_team.get(prim, [])) != len(by_team.get(m, [])):
                 out[('mirror', m)] = f"{_team(R, m)} (team {m}) is not an exact copy of {_team(R, prim)}"
 
     # free agents are listed once, are not on NHL teams and carry no contract

@@ -1341,17 +1341,28 @@ class Builder:
     def sync_mirrors(self):
         """Keep the mirror copies (classic/alternate team slots) identical to the primary team. A
         player who was only on the copy (a community roster whose copies are out of step) becomes
-        a free agent rather than a player on no team."""
+        a free agent rather than a player on no team. A copy that lists a player twice (a tester's roster: "Kraken has 49
+        players") keeps one entry of him; an entry whose link names no player goes."""
         U = self.U
         live = None
         for prim, mirrors in self.mirrors.items():
             pe = {self.pid_of_entry(e): e for e in self.entries_on(prim)}
             for m in mirrors:
-                me = {self.pid_of_entry(e): e for e in self.entries_on(m)}
-                for pid, e in me.items():
-                    if pid not in pe:
+                me, twice = {}, 0
+                for e in self.entries_on(m):
+                    pid = self.pid_of_entry(e)
+                    if pid is None or pid not in self.R.p_by_id:
+                        self.deleted.add(e)
+                    elif pid not in pe:
                         live = live if live is not None else self.live_entries()
                         self.release(e, live)
+                    elif pid in me:
+                        self.deleted.add(e)
+                        twice += 1
+                    else:
+                        me[pid] = e
+                if twice:
+                    self.log.append(['ALL', 'summary', f"{self.R.team_name(m)}: players listed twice taken off", twice, ''])
                 for pid, src in pe.items():
                     e = me.get(pid)
                     if e is None:

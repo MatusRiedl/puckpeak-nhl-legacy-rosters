@@ -62,7 +62,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    copy of the savedata folder, or `tools/window_shot.py` (it makes a fake RPCS3).
 6. **No git commit or push, and nothing published, without the owner's explicit go-ahead.**
    The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters (0.6.0
-   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, each with the owner's go-ahead). Every further commit,
+   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, 0.50.4 to 0.51.2 on 2026-10-24, each with the owner's go-ahead). Every further commit,
    push or release needs the go-ahead again. Before pushing, check that no base roster (`work/`),
    picture pack (`private/packs/`, a zip in `legacy_roster/data/`), anything from `private/`, personal path or user name
    goes in, and that `python tools/clean_check.py` finds nothing.
@@ -189,7 +189,17 @@ wording (`progress.py`).
 
 ## Current state
 
-**Version 0.51.1 (2026-10-24, built and smoke-tested, not committed, data pack refreshed locally and not published; plan docs/plans/also-we-issued-0-51-0-vivid-hellman.md, notes
+**Version 0.51.2 (2026-10-24, released with the owner's go-ahead; plan docs/plans/can-you-check-and-partitioned-kitten.md):**
+also `gamepatch.future_fit` shrinks the next season's calendar table to `schedule.PATCH_ROWS` when the patched game saved
+the roster with room for 1,459 (`test_gamepatch.py::test_the_next_seasons_calendar_is_trimmed_...`). A tester's export
+stopped with "Kraken has 49 players (max 40)". Kraken is slot 228, the community roster's copy of Seattle;
+`Builder.sync_mirrors` indexed the copy by player, so second entries of one player were never taken off and Seattle's
+players were added on top. It now keeps one entry per player (twins and entries naming no player go, a summary line says
+how many); `verify.structure` names a team listing a player twice (`'twice'`) and the mirror check compares counts.
+tests/test_mirrors.py (fails on the old code with the tester's error). The tester's own file was not seen: the most
+likely cause, not confirmed.
+
+**Version 0.51.1 (2026-10-24, released with the owner's go-ahead: commit 254739a, tag `v0.51.1`, GitHub release, data pack published; plan docs/plans/also-we-issued-0-51-0-vivid-hellman.md, notes
 docs/notes/captains.md):** a tester: Winnipeg's captain Lowry had no letter (0.51.0 did not cause it: letters were never
 real except Liiga's). (1) **Real captains** (`'real captains'` experimental): NHL from NHL.com's game roster reports
 (`nhl_lines.read_letters` / `game_letters`), AHL / CHL from HockeyTech game summaries (`hockeytech.club_letters`),

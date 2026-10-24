@@ -1747,6 +1747,8 @@ def future_fit(R):
         for field in schedule.ROW.values():
             F.set(i, field, 0)
     F.cur_rec = 0
+    if F.max_rec > schedule.PATCH_ROWS:                 # a roster the patched game saved itself had room for 1,459
+        F.shrink(schedule.PATCH_ROWS)
     for i, (month, day, home, away) in enumerate(rows):
         F.add_record({schedule.ROW['round']: 0, schedule.ROW['status']: 0, schedule.ROW['day']: day,
                       schedule.ROW['month']: month, schedule.ROW['index']: i, schedule.ROW['home']: home,
