@@ -301,6 +301,8 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
         art = T.get(t, 'artid')
         if art in L.OWN_ART.values() and L.OWN_ART.get(t) != art:
             problems.append(f"{_team(R, t)} has art id {art}, which is kept for another team")
+        if art in L.CLUB_ART.values() and (L.CLUB_ART.get(t) != art or not farm_patch):     # 900 / 901: the patched game only
+            problems.append(f"{_team(R, t)} has art id {art}, which only Coachella Valley / Henderson have in the patched game")
     # an NHL team's farm team (ttOk.ahlaffiliate, slot + 1) is an AHL club of slots 32-61 that serves no other NHL team
     # (the AHL step pairs them by the list's organisations, clubs.pair_farms)
     farms = {n: T.get(n, gamepatch.AFFILIATE) - 1 for n in range(30) if T.get(n, gamepatch.AFFILIATE)}
@@ -331,7 +333,7 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     if farm_patch:
         problems += (gamepatch.check_farm(R) + gamepatch.check_divisions(R) + gamepatch.check_all_star(R)
                      + gamepatch.check_future(R) + gamepatch.check_games(R) + gamepatch.check_rights(R)
-                     + gamepatch.check_league_fit(R))
+                     + gamepatch.check_league_fit(R) + gamepatch.check_art_fit(R))
     written = league_calendars or {}
     for part, expected in sorted(written.items()):
         problems += schedule.check_league(R, part, expected)

@@ -15,6 +15,20 @@ def deal_of(data, first, last):
     return next(d for d in data.contracts if d['first'] == first and d['last'] == last)
 
 
+def deal_for(data, name):
+    """The pack's deal of a roster player's name (the roster may spell the first name another way: Mikey / Michael)."""
+    first, _, last = name.partition(' ')
+    return next((d for d in data.contracts if d['last'] == last and d['first'][:3] == first[:3]), {'cap': 0})
+
+
+def left_out_star(built, data):
+    """(name, NHL.com abbreviation) of the best-paid player NHL.com's roster copy leaves out whom his team keeps under
+    contract. The snapshot moves on with the season, so no test names a player."""
+    rows = [r for r in built.builder.log if r[1] == 'stays under contract' and r[0] in L.API_TO_SLOT]
+    row = max(rows, key=lambda r: deal_for(data, r[2])['cap'])
+    return row[2], row[0]
+
+
 def test_dollars_become_the_save_s_units_on_either_scale():
     assert pay.units(17_000_000, pay.GAME) == 2334 and pay.units(17_000_000, pay.REAL) == 3400
     assert pay.units(1, pay.GAME) == 1 and pay.units(10 ** 9, pay.REAL) == (1 << 13) - 1     # clamped to the field
@@ -143,9 +157,10 @@ def test_no_real_deal_breaks_the_checks(data, scale):
 def test_players_under_contract_whom_nhl_com_leaves_out_stay_with_their_team(built, data):
     R, b = Roster(built.data), built.builder
     kept = {row[2]: row for row in b.log if row[1] == 'stays under contract'}
-    assert 'Dylan Larkin' in kept and kept['Dylan Larkin'][0] == 'DET'           # NHL.com's copy leaves him out
-    larkin = find(R, 'Dylan Larkin')
-    assert L.API_TO_SLOT['DET'] in {t for _, t in R.teams_of(larkin)} and R.P.get(larkin, 'dhKk')   # with his deal
+    star, abbr = left_out_star(built, data)
+    assert star in kept and kept[star][0] == abbr                                  # NHL.com's copy leaves him out
+    larkin = find(R, star)
+    assert L.API_TO_SLOT[abbr] in {t for _, t in R.teams_of(larkin)} and R.P.get(larkin, 'dhKk')   # with his deal
     on_nhl_com = {f"{p['first']} {p['last']}" for p in data.nhl_players}
     assert not set(kept) & on_nhl_com and len(b.contract_kept) >= len(kept)       # NHL.com wins when it lists him
     assert all(t in L.NHL_PRIMARY or t in L.AHL for t in b.contract_kept.values())     # or his farm club: below
@@ -154,7 +169,7 @@ def test_players_under_contract_whom_nhl_com_leaves_out_stay_with_their_team(bui
     nhl = dict(built.lines())[pipeline.SECTION_NHL]
     assert f", {len(kept)} kept under contract" in nhl
     fa = {R.name(R.p_by_id[R.link_to_pid[l]]) for l in b.fa_links if R.link_to_pid.get(l) in R.p_by_id}
-    assert 'Dylan Larkin' not in fa
+    assert star not in fa
 
 
 def test_prospects_under_contract_on_no_club_join_their_organisations_farm_club(built):
@@ -197,27 +212,29 @@ def test_a_team_full_up_takes_no_more_players_under_contract(base_bytes, data, b
     assert joined                                                    # from another NHL team or the free-agent list
     monkeypatch.setattr(Builder, 'NHL_KEEP_ROOM', 0)                 # every team full: only the ones there stay
     res = pipeline.build(base_bytes, data, steps=[pipeline.NHL])
-    assert res.problems == [] and 'Dylan Larkin' in {row[2] for row in res.builder.log if row[1] == 'stays under contract'}
+    star, _ = left_out_star(built, data)
+    assert res.problems == [] and star in {row[2] for row in res.builder.log if row[1] == 'stays under contract'}
     left = {row[2]: row[3] for row in res.builder.log if row[1] == 'left NHL roster'}
     assert {left.get(name) for name in joined} <= {'free agent (under contract for 2026-27, no room)', None}
     assert any(left.get(name) for name in joined)
     assert not any(row[1] in ('moved', 'added') and 'under contract' in row[3] for row in res.builder.log)
 
 
-def test_a_player_an_earlier_update_made_a_free_agent_goes_back_to_his_team(base_bytes, data):
+def test_a_player_an_earlier_update_made_a_free_agent_goes_back_to_his_team(base_bytes, data, built):
     from legacy_roster.builder import Data
+    star, abbr = left_out_star(built, data)
     older = pipeline.build(base_bytes, Data(**{**data.__dict__, 'contracts': None}))    # as before the contracts
     R = Roster(older.data)
-    assert not any(R.teams_of(i) for i in range(R.P.cur_rec) if R.name(i) == 'Dylan Larkin')   # a free agent
+    assert not any(R.teams_of(i) for i in range(R.P.cur_rec) if R.name(i) == star)   # a free agent
     res = pipeline.build(older.data, data)
     assert res.problems == []
     added = {row[2]: row for row in res.builder.log if row[1] == 'added' and 'under contract' in row[3]}
-    assert added['Dylan Larkin'][:2] == ['DET', 'added'] and added['Dylan Larkin'][3].startswith('from free agent')
+    assert added[star][:2] == [abbr, 'added'] and added[star][3].startswith('from free agent')
     R = Roster(res.data)
-    larkin = find(R, 'Dylan Larkin')
-    entry = next(e for e, t in R.teams_of(larkin) if t == L.API_TO_SLOT['DET'])
+    larkin = find(R, star)
+    entry = next(e for e, t in R.teams_of(larkin) if t == L.API_TO_SLOT[abbr])
     assert R.U.get(entry, 'jZSh') == 1                          # Detroit's lines were dealt again: he dresses
-    assert R.P.get(larkin, 'dhKk') == pay.units(deal_of(data, 'Dylan', 'Larkin')['cap'], pay.GAME)
+    assert R.P.get(larkin, 'dhKk') == pay.units(deal_for(data, star)['cap'], pay.GAME)
     assert max(len(res.builder.entries_on(t)) for t in L.NHL_PRIMARY) <= max(
         res.builder.NHL_KEEP_ROOM, max(sum(p['team'] == a for p in data.nhl_players) for a in L.API_TO_SLOT))
     assert pipeline.build(res.data, data).data == res.data      # a second run finds him there

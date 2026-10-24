@@ -187,11 +187,11 @@ def test_ahl_players_on_nhl_contracts_belong_to_the_parent_club(everything, pack
         for r in members(R, team['slot']):
             assert R.P.get(r, 'team') == team['slot'] + 1, R.name(r)
             key = (norm(R.P.get(r, 'firstname')), norm(R.P.get(r, 'lastname')))
-            if key in org_of and org_of[key] < 31:
+            if key in org_of and org_of[key] < 30:      # Seattle and Vegas hold no rights on a roster for the unpatched game
                 assert R.P.get(r, 'proteam') == org_of[key] + 1, R.name(r)
                 assert R.P.get(r, 'contractlength') and R.P.get(r, 'contractdollars'), R.name(r)
                 checked += 1
-            elif key in rightless or org_of.get(key) == 31:
+            elif key in rightless or org_of.get(key) in (30, 31):
                 assert not R.P.get(r, 'proteam'), R.name(r)       # an AHL-only deal: an older roster's rights go
     assert checked > 300
 
@@ -409,3 +409,21 @@ def test_every_club_player_holds_a_contract(everything):
     assert all(R.P.get(prow, pay.STATUS) == 0 for prow in free)
     coachella = [prow for _, prow, *_ in R.team_roster(234)]
     assert coachella and all(R.P.get(prow, 'dhKk') and R.P.get(prow, 'GDhI') for prow in coachella)
+
+
+def test_the_ahl_rosters_are_the_live_lists_with_each_players_organisation(pack):
+    """0.50.4: the AHL feed decides who plays where; every player on an NHL contract names the organisation, and the
+    30 clubs of slots 32-61 belong to 30 different NHL teams (pair_farms)."""
+    ahl = pack['leagues'].get('ahl')
+    if not ahl or not ahl.get('orgs'):
+        pytest.skip("the data pack has no AHL rosters with organisations")
+    parents = {}
+    for team in ahl['teams']:
+        assert 20 <= len(team['players']) <= 35, team['full']
+        for p in team['players']:
+            assert bool(p.get('org')) == bool(p.get('nhl_contract')), (team['full'], p['last'])
+        top = Counter(p['org'] for p in team['players'] if p.get('org')).most_common(1)
+        assert top, team['full']
+        parents[team['slot']] = top[0][0]
+    assert len(set(parents.values())) == len(parents) == 32
+    assert sum(len(t['players']) for t in ahl['teams']) >= 700       # the live lists (the old snapshot had 749)

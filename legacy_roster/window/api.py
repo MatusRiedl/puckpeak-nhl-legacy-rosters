@@ -44,6 +44,10 @@ class Api:
         self._host.open_url(X.DISCORD)
 
     @_safe
+    def open_kofi(self):
+        self._host.open_url(X.KOFI)
+
+    @_safe
     def open_error_log(self):
         path = datasource.app_dir('logs', 'error.log')
         import os

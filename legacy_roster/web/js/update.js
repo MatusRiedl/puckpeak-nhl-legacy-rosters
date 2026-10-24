@@ -3,7 +3,7 @@
 import { html, cls, useEffect, useRef, useState } from './lib.js';
 import { Button, Toggle, Checkbox, Segmented, Card, PathText, RegionTag, Flag, TextField, Info } from './ui.js';
 import { call } from './bridge.js';
-import { DiscordButton } from './shell.js';
+import { DiscordButton, KofiButton } from './shell.js';
 
 const goTo = (tab) => window.dispatchEvent(new CustomEvent('lr-tab', { detail: tab }));
 
@@ -107,7 +107,7 @@ export function SetupTab({ s, version }) {
   if (!s) return null;
   return html`<div class="columns">
     <div class="col">
-      <${DiscordButton}/>
+      <div class="linkrow"><${DiscordButton}/><${KofiButton}/></div>
       <${RpcsCard} r=${s.rpcs3} exp=${s.export} busy=${s.busy}/>
       ${s.downloads && html`<${DownloadsCard} items=${s.downloads}/>`}
       <${ProgramCard} s=${s} version=${version}/>

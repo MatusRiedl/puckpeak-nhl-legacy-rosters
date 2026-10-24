@@ -20,6 +20,7 @@ python tools/build_datapack.py --refresh iihf                 # IIHF roster PDFs
 python tools/build_datapack.py --refresh liiga,extraliga,shl,del,nl,norway   # European clubs
 python tools/build_datapack.py --refresh ahl,chl              # AHL and the junior leagues (or ohl, qmjhl, whl)
 python tools/build_datapack.py --refresh nhl                  # offline NHL snapshot
+python tools/build_datapack.py --refresh lines                # every NHL team's real lines from its last 5 games (~2 min; do it with `nhl`, refresh again before a release)
 python tools/build_datapack.py --refresh contracts --db <file>      # the 2026-27 contracts (private/, see below)
 python tools/build_datapack.py --refresh ratings_full --db <file>   # the full current ratings, types, tendencies (same file)
 python tools/build_datapack.py                                # rebuild from the caches only

@@ -50,7 +50,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from legacy_roster import contracts, datasource  # noqa: E402
 from legacy_roster.layout import API_TO_SLOT  # noqa: E402
-from providers import (czech, hockeytech, iihf, liiga, nhl_facts, penny_del, sportality, swiss,  # noqa: E402
+from providers import (czech, hockeytech, iihf, liiga, nhl_facts, nhl_lines, penny_del, sportality, swiss,  # noqa: E402
                        wiki_logo)
 
 PRIVATE = os.path.join(ROOT, 'private')        # the makers of three parts, kept out of git (DEVELOPING.md)
@@ -278,7 +278,7 @@ def check_drops(old, new, accept):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--refresh', default='',
-                    help="comma list: ratings, iihf, nhl (also nhl_last, drafts and schedule), ahl_schedule, contracts, "
+                    help="comma list: ratings, iihf, nhl (also nhl_last, drafts and schedule), lines, ahl_schedule, contracts, "
                          "ratings_full, ahl_rosters, schedules (every league's calendar) or <part>_schedule, or a league "
                          "(liiga, extraliga, shl, del, nl, norway, ahl, chl; rosters and calendar) or one part of it "
                          "(ohl, qmjhl, whl)")
@@ -352,6 +352,18 @@ def main():
             label = {'nhl_last': "NHL.com: last season's players", 'drafts': f"NHL drafts since {FIRST_DRAFT}",
                      'schedule': f"NHL.com schedule {SEASON}-{(SEASON + 1) % 100:02d}"}[key]
             pack['sources'][key] = {'label': label, 'date': file_date(cache), 'count': len(pack[key])}
+
+    # the NHL teams' real lines, worked out from their last five games (providers/nhl_lines.py; slots hold NHL.com ids)
+    cache = os.path.join(CACHE, 'lines.json')
+    if 'lines' in refresh:
+        os.makedirs(CACHE, exist_ok=True)
+        with open(cache, 'w', encoding='utf-8') as f:
+            json.dump(nhl_lines.lines(SEASON), f, ensure_ascii=False)
+    if os.path.exists(cache):
+        with open(cache, encoding='utf-8') as f:
+            pack['lines'] = json.load(f)
+        pack['sources']['lines'] = {'label': "NHL.com: lines of the last games", 'date': file_date(cache),
+                                    'count': len(pack['lines'])}
 
     # the AHL's calendar for the game patch's farm league, clubs as their team slots (tools/club_slots.json)
     cache = os.path.join(CACHE, 'ahl_schedule.json')

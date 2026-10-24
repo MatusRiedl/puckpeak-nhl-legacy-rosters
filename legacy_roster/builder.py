@@ -12,6 +12,7 @@ from collections import Counter
 from . import contracts as pay
 from . import layout as L
 from . import lines
+from . import schema
 from . import ratings
 from .donors import Donors, real_birth_year
 from .faces import RESERVED
@@ -33,7 +34,7 @@ class Data:
 
     def __init__(self, nhl_players=None, ratings_list=None, iihf=None, season_year=2026, leagues=None, nhl_logos=None,
                  nhl_last=None, drafts=None, schedule=None, calendar=None, contracts=None, ratings_full=None,
-                 league_schedules=None):
+                 league_schedules=None, real_lines=None):
         self.nhl_players = nhl_players or []   # flat list, see datasource.flatten_nhl()
         self.ratings_list = ratings_list           # [{'name','team','position','birth','ovr','attrs'}] or None
         self.ratings_full = ratings_full                # the full ratings (data pack part `ratings_full`), with the ratings step
@@ -49,6 +50,7 @@ class Data:
         # schedule.apply_league)
         self.league_schedules = league_schedules or {}
         self.contracts = contracts or []       # real 2026-27 NHL contracts (contracts.py), only with the NHL step
+        self.real_lines = real_lines or {}     # NHL team code -> {'slots': {slot name: NHL.com id}} (data pack part `lines`)
 
 
 LINK_LIMIT = 16000      # player link ids from here up are the game's own
@@ -1051,6 +1053,69 @@ class Builder:
                 self.lines_from_scratch(team)
             elif team in changed or team in self.position_teams or not self.maintain or self.mendable(team):
                 self.deal_again(team)
+        self.lines_from_games()
+
+    def lines_from_games(self):
+        """Lay the real lines of the team's last games (data pack part `lines`) over the lines just dealt, group by group:
+        the four lines and three pairs, the goalies, the power play (and its 4-skater units) and the penalty kill, each
+        only when every slot of the group has a player who is on the team now. Overtime, the shootout and the extra
+        attackers stay as dealt (a player the real lines took out of the 20 is swapped for a dressed one). Kept only
+        when check_lineup finds nothing; else the team keeps what it had. `self.real_lined` / `real_refused`: team codes."""
+        self.real_lined, self.real_refused = [], {}
+        rows = {p['nhl_id']: p['row'] for p in self.api if p.get('nhl_id') and p['row'] is not None}
+        for team in sorted(L.NHL_PRIMARY):
+            code = L.SLOT_TO_API[team]
+            wanted = (self.data.real_lines.get(code) or {}).get('slots')
+            if not wanted:
+                continue
+            problems = self.real_line_up(team, wanted, rows)
+            if problems:
+                self.real_refused[code] = problems
+            else:
+                self.real_lined.append(code)
+
+    def real_line_up(self, team, wanted, rows):
+        """Write `wanted` ({slot name: NHL.com id}) onto `team`'s lines; returns what is wrong with the result ([] when it
+        was written)."""
+        slots, letters = lines.lineup(self, team)
+        ents = self.entries_on(team)
+        if len(slots) != len(self.flags):
+            return ['the team has no complete lines to start from']
+        entry_of = {self.prow_of_entry(e): e for e in ents}
+        new, applied = dict(slots), 0
+        for _group, names in lines.GROUPS:
+            got = {n: entry_of.get(rows.get(wanted.get(n))) for n in names}
+            if all(e is not None for e in got.values()) and len(set(got.values())) == len(got):
+                new.update(got)
+                applied += 1
+        if not applied:
+            return ['no group of the real lines has all its players on the team']
+        for slot in new:                                   # a defence pair: the right shot on the right
+            if slot.endswith('ld') and slot[:-2] + 'rd' in new and new[slot] != slots.get(slot):
+                new[slot], new[slot[:-2] + 'rd'] = lines._pair(self.P, self, new[slot], new[slot[:-2] + 'rd'])
+        dressed = {new[n] for n in schema.EVEN_STRENGTH + schema.GOALIE_SLOTS}
+        skaters = sorted((e for e in dressed if self.P.get(self.prow_of_entry(e), 'aljv') != 4),
+                         key=lambda e: (-self.q(e), self.pid_of_entry(e), e))
+        for _group, names in lines.GROUPS:                # the groups left as dealt hold dressed players only
+            if names is schema.EVEN_STRENGTH or names is schema.GOALIE_SLOTS:
+                continue
+            for n in names:
+                if new[n] in dressed:
+                    continue
+                held = {new[m] for m in names}
+                want_d = n.endswith(('ld', 'rd'))
+                pick = [e for e in skaters if e not in held and
+                        (not n.endswith(('lw', 'c', 'rw', 'ld', 'rd')) or
+                         (self.P.get(self.prow_of_entry(e), 'aljv') == 3) == want_d)]
+                if pick:
+                    new[n] = pick[0]
+        kinds = {0: 'C', 1: 'L', 2: 'R', 3: 'D', 4: 'G'}
+        pos = {e: kinds[self.P.get(self.prow_of_entry(e), 'aljv')] for e in ents}
+        names = {e: self.R.name(self.prow_of_entry(e)) for e in ents}
+        problems = lines.check_lineup(new, letters, pos, names)
+        if not problems:
+            lines.set_lineup(self, team, new, letters)
+        return problems
 
     # --- a legal 20 (verify's line-up rule) ------------------------------------------
     def kinds_on(self, team):
@@ -1744,9 +1809,12 @@ class Builder:
             self._list_index = by_birth, no_birth
         by_birth, no_birth = self._list_index
         fn = norm(first)
-        found = [p for f, p in by_birth.get((norm(last), tuple(birth)), []) if same_first_name(f, fn)]
+        same_day = by_birth.get((norm(last), tuple(birth)), [])
+        found = [p for f, p in same_day if same_first_name(f, fn)]
         if found:
             return found[0]
+        if len(same_day) == 1:          # last name + birthdate alone, as matching.match finds him (Mikey / Michael Eyssimont)
+            return same_day[0][1]
         listed = no_birth.get((fn, norm(last)), []) if by_name else []
         return listed[0] if len(listed) == 1 else None
 

@@ -109,7 +109,7 @@ EXPERIMENTAL = {'shl', 'del', 'nl', 'norway', 'ahl', 'chl', 'stock', 'positions'
                 'current ratings', 'team sticks', 'nhl gear', 'puck peak texts', 'hidden menus',
                 'own art ids', 'jerseys every league', 'gear colours', 'farm clubs in the AHL',
                 'custom team kits', 'shared ice', 'picture numbers', 'own pictures on save',
-                'draft classes', 'new player records', 'no press start'}
+                'draft classes', 'new player records', 'no press start', 'real lines', 'club art 900'}
 ALL_STEPS = CORE_STEPS      # what build() and update() run when no steps are given
 
 
@@ -208,6 +208,9 @@ class BuildResult:
         if held:
             out.append(("Contracts", f"{held} players hold their real 2026-27 deal"
                         + (" (real dollars)" if real else " (scaled to the game's cap)")))
+        lined = getattr(self.builder, 'real_lined', None)
+        if lined:
+            out.append(("Lines", f"{len(lined)} teams play the lines of their last games"))
         starters = sum((getattr(self.builder, 'starter_deals', None) or {}).values())
         if starters:
             out.append(("Starter deals", f"{starters} player{'s' if starters != 1 else ''} without a contract got one "
@@ -329,6 +332,7 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     if patched:                         # made for the game patch: its years back to ours first (patch_roster again)
         gamepatch.unshift(R)
         gamepatch.unleague(R)           # Coachella Valley / Henderson in the Custom league, as the builder knows them
+        gamepatch.unart(R)              # and with their create-a-team art ids
         if not game_patch:              # for the unpatched game: the game's own calendars, room and section back
             if normal_from is None:
                 raise L.LayoutError("This roster was made for the patched game. To make it a roster for the unpatched "
@@ -571,7 +575,7 @@ def patch_roster(result, source, pack, season):
     """The roster built in `result` (a BuildResult with the calendar step's schedule.ALL_PATCH calendar and the AHL step)
     made for the game patch (gamepatch.py): birth years and picks the patched way, the AHL of 32 with its own calendar,
     Utah in the Central and Seattle / Vegas in the Pacific, EASHL 1 / 2 as the All-Stars, Coachella Valley / Henderson in
-    the AHL's league (league_fit), the next seasons' calendar,
+    the AHL's league (league_fit) and art ids of their own (art_fit), the next seasons' calendar,
     the patched game's section length, the farm clubs' rights. `source` is the roster it was built from (bytes).
     Returns (save bytes, problems, farm games); nothing may be saved while there are problems."""
     R = Roster(result.data)
@@ -583,6 +587,7 @@ def patch_roster(result, source, pack, season):
     gamepatch.divisions_fit(R)
     gamepatch.all_star_fit(R)
     gamepatch.league_fit(R)
+    gamepatch.art_fit(R)                # art ids 900 / 901 and their jersey rows (art/clubart.py)
     gamepatch.future_fit(R)
     gamepatch.section_fit(R)
     gamepatch.rights_wide(R)            # Vegas's rights fit (a lab roster is built without game_patch)
@@ -896,6 +901,9 @@ class Pictures:
         from .art import install
         self.registry.save()             # the new roster uses these ids now
         portraits_, logos, names = result.art
+        if not self.own_only:           # a roster for the patched game: Coachella Valley's / Henderson's logos under 900 / 901
+            from .art import clubart
+            logos = clubart.rekey_logos(Roster(result.data), logos)
         bad = result.builder.bad_pictures
         skipped = [('photo', url, why) for url, why in sorted(bad.items())]
         look_teams = 0

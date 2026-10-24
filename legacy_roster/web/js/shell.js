@@ -42,6 +42,13 @@ export function DiscordButton() {
     <span class="t">Join our Discord</span><span class="sub">Updates, patches, help · gg.puckpeak.com</span></button>`;
 }
 
+// the Ko-fi button right under it (owner, 0.50.4): tips for the development, the look of the one in Puck Peak's sidebar
+export function KofiButton() {
+  return html`<button type="button" class="kofi" title="ko-fi.com/iksperial" onClick=${() => call('open_kofi')}>
+    <span class="cup" aria-hidden="true">☕</span>
+    <span class="txt"><span class="t">Buy me a coffee</span><span class="sub">Support the development</span></span></button>`;
+}
+
 export function Header({ meta }) {
   return html`<header class="header">
     <img class="logo" src="img/logo.png" alt="Puck Peak" draggable="false" onClick=${() => call('open_site')}/>

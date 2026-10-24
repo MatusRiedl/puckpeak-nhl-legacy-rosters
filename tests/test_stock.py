@@ -100,7 +100,7 @@ def test_retired_stars_go_and_unsigned_veterans_stay(stock_built):
         for r in _rows(R, first, last):
             assert R.P.get(r, 'game_id') not in fa and not R.teams_of(r), last
     for first, last in (('James', 'Reimer'), ('Jonathan', 'Toews'), ('Jonathan', 'Quick')):
-        assert any(R.P.get(r, 'game_id') in fa for r in _rows(R, first, last)), last
+        assert any(R.P.get(r, 'game_id') in fa or R.teams_of(r) for r in _rows(R, first, last)), last     # not retired (a club may have signed him since)
 
 
 def test_namesakes_are_not_mixed_up(stock_built):

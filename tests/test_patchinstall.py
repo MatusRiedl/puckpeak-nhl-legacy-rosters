@@ -336,9 +336,9 @@ def test_the_games_own_roster_made_for_the_patch_fills_coachella_and_henderson_a
     R = Roster(out)
     assert gamepatch.is_patch_roster(R) and gamepatch.check_rights(R) == []
     assert contracts.ufa_problems(R) == []                     # UFA years on the league's clock, as the birth years
-    for slot, name, art in ((234, "Coachella Valley", 20073), (235, "Henderson", 20081)):
+    for slot, name, art in ((234, "Coachella Valley", 900), (235, "Henderson", 901)):
         assert R.T.get(slot, 'NYKk') == 1 and name in R.team_name(slot)
-        assert R.T.get(slot, 'artid') == art                    # not the switched-off custom teams' shared 20054
+        assert R.T.get(slot, 'artid') == art                    # 0.50.4: art ids of their own on the patched game
         assert crests.palette(R, slot) == L.OWN_KIT[slot][11, 1][:3]     # the crest's colours, also on the game's own
         assert {k: R.T.get(slot, k) for k in L.OWN_DESIGN[slot]} == L.OWN_DESIGN[slot]   # jerseystyle 0 -> 1 (round 46)
         assert sum(1 for x in R.team_roster(slot) if x[1] is not None) >= 20

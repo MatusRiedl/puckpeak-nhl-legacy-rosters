@@ -6,6 +6,7 @@ from .. import savedata
 SITE = "https://www.puckpeak.com"
 SITE_LABEL = "www.puckpeak.com"
 DISCORD = "https://gg.puckpeak.com"        # the Puck Peak Discord (a redirect)
+KOFI = "https://ko-fi.com/iksperial"       # tips for the development (the button below the Discord one)
 TAGLINE = "NHL & hockey analytics like never before"
 HOW_TO_LOAD = "In the game: Customize > Save/Load/Delete > Load > Rosters, pick it, then save the roster once so it stays active."
 HOW_TO_LOAD_IN_PLACE = ("In the game: start it. If this is not the roster in use, Customize > Save/Load/Delete > Load > Rosters, pick it, "

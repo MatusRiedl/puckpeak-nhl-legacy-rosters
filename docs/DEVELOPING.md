@@ -88,8 +88,18 @@ work/            the original lab scripts and backups (git-ignored, local only; 
 ## Tests
 
 ```
-python -m pytest -q                 # about a minute (every league is built twice)
+python tools/quicktest.py           # ONLY the tests of the files you changed, in parallel: 1-3 minutes (use this)
+python tools/quicktest.py --list    # which test files that is, without running
+python tools/quicktest.py tests/test_clubart.py tests/test_leagues.py   # chosen files, in parallel
+python tools/quicktest.py --full    # everything in parallel (5 minutes, 585 tests, measured 2026-10-24): before a release, never beside a build
+python -m pytest -q                 # everything, one process: about 20 minutes. Do not.
 ```
+
+`quicktest.py` needs `pip install pytest pytest-xdist`; it uses `-n` workers and `--dist loadfile` (a file's expensive
+roster builds are made once per worker). It picks files from `git status`: a changed test file runs itself, a changed
+module runs the test files that name it, and a module nearly everything builds on (`pipeline`, `builder`, `layout`,
+`verify`, ...) runs the CORE list in the script. Tests never name real players or clubs of the data pack's NHL snapshot
+(it moves on with every `--refresh nhl`): pick them from the build's own log, as `test_contracts.left_out_star` does.
 
 | File | Guards |
 |---|---|
@@ -122,7 +132,8 @@ they are reproducible offline.
 
 Before calling a change done:
 
-1. `python -m pytest -q` is green (and not because the base roster is missing: look for skips).
+1. `python tools/quicktest.py` is green (the files your change touches; and not because the base roster is missing: look for skips).
+   The whole suite (`--full`) only before a release.
 2. For engine changes: the second-run tests still pass. A build on its own output must be
    byte-identical; if your step is not, it has hidden order or randomness.
 3. For window changes: look at it. `tools/window_shot.py` drives the real controllers on a temporary fake

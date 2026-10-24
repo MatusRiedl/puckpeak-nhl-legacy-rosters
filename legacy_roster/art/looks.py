@@ -45,7 +45,8 @@ import math
 import os
 from collections import namedtuple
 
-from . import rpsgl
+from .. import layout as L
+from . import clubart, rpsgl
 
 STYLE = 1
 CHASSIS_ART = 22                   # Utah's (Arizona's) own files are the chassis
@@ -1010,9 +1011,9 @@ class Maker:
     style 0's relief. `look_pack`: the program's pack pictures (art/lookpack.py), for looks with pack kits."""
 
     def __init__(self, disc, look_pack=None):
-        self.disc = disc
+        self.disc = clubart.AliasDisc(disc)     # art 900 / 901 (Coachella Valley, Henderson) are read from their donors' files
         self.look_pack = look_pack
-        self.chassis = Chassis(disc)
+        self.chassis = Chassis(self.disc)
         self._mask = None
         self._figure = None
         self._previews = {}
@@ -1199,6 +1200,7 @@ class Maker:
             out += [p for p in (CENTRE.format(a=look.art),) if self._has(p)]   # the national teams' arenas have none
             if _ice_picture_wanted(look):
                 out.append(ICE_PICTURE.format(a=look.art))
+        out += [p for p in clubart.extra_paths(look.art) if self._has(p)]
         return out
 
     def files(self, look):
@@ -1278,6 +1280,8 @@ class Maker:
                     picture = picture.convert('RGBA').resize((1024, 1024), Image.LANCZOS) if picture.size != (1024, 1024) \
                         else picture.convert('RGBA')
                 out[inner] = centre_file(raw, art, look.logos[1], look.arena, look.ice_colour, picture)
+        if art in clubart.ARTS:                     # Coachella Valley, Henderson: what is not painted is the donor's
+            out.update(clubart.extra_files(self.disc, art))
         return out
 
 
@@ -1639,6 +1643,30 @@ def _pack_look(R, slot, team, owners, no_ice):
                 tuple(kit for _v, kit in sorted(team.kits.items())), team.style)
 
 
+def with_club_defaults(R, slot, e, team, logo_links):
+    """The edits of Coachella Valley / Henderson (art 900 / 901) with what the update does by itself when the player chose
+    nothing: their jerseys made from the colours of the team table and the crest, and a centre ice drawn from the crest.
+    The look pack's kits and centre ice win where it has them."""
+    kits = team.kits if team is not None and not team.why else {}
+    centre = team.centre if team is not None and not team.why else None
+    mine, ice = dict(e.get('uniforms') or {}), dict(e.get('ice') or {})
+    choice = dict(mine.get('versions') or {})
+    colours = dict(mine.get('colours') or {})
+    if not colours.get('primary') and not colours.get('secondary'):
+        # the dark jersey is the second colour all over (kit_for): the team's main colour goes second
+        main, trim = L.OWN_COLOURS[slot]
+        colours.update(primary='#%02x%02x%02x' % tuple(trim), secondary='#%02x%02x%02x' % tuple(main))
+    mine['colours'] = colours
+    if logo_links.get(slot) or (mine.get('colours') or {}).get('crest'):
+        for variant, _light, _d in team_versions(R, slot):
+            if variant not in kits:
+                choice.setdefault(str(variant), 'colours')
+        if not centre:
+            ice.setdefault('use', 'logo')
+    mine['versions'] = choice
+    return dict(e, uniforms=mine, ice=ice)
+
+
 def looks_from(R, edits_by_slot, logo_links, nhl_logos, pack=None, cache=None, look_pack=None, skipped=None, no_ice=None):
     """The looks to install: Utah, Seattle and Vegas as the update makes them, every team of any league the player gave a
     look in the Roster editor (edits.json 'uniforms' / 'ice', see edits.py; only where `editable`) and every team the
@@ -1651,16 +1679,19 @@ def looks_from(R, edits_by_slot, logo_links, nhl_logos, pack=None, cache=None, l
     out, shared = [], {}
     in_pack = set(look_pack.teams) if look_pack is not None else set()
     edited = {s for s in edits_by_slot if editable(R, s) is None}
-    owners = centre_owners(R) if any(s not in NHL for s in in_pack | edited) else {}
+    clubs = set(clubart.slots(R))               # Coachella Valley, Henderson on a roster for the patched game
+    owners = centre_owners(R) if any(s not in NHL for s in in_pack | edited | clubs) else {}
     for slot in sorted(set(NEW_TEAMS) | {s for s in edited | in_pack if s in NHL}) + \
-            sorted(s for s in edited | in_pack if s not in NHL):
+            sorted(s for s in edited | in_pack | clubs if s not in NHL):
         team = pack_team(R, slot, look_pack)
         if team is not None and team.why and skipped is not None:
             skipped.append((slot, team.why))
         e = edits_by_slot.get(slot) or {} if slot in edited else {}
         if slot in NHL:
             look = _nhl_look(R, slot, team, e, logo_links, nhl_logos, pack, cache)
-        elif e:
+        elif e or slot in clubs:
+            if slot in clubs:
+                e = with_club_defaults(R, slot, e, team, logo_links)
             look = _club_look(R, slot, team, e, logo_links, pack, cache, owners, no_ice, shared)
         elif team.why:
             look = None
@@ -1690,7 +1721,7 @@ def look_paths(look, maker=None):
         paths.append(CENTRE.format(a=look.art))
         if _ice_picture_wanted(look):
             paths.append(ICE_PICTURE.format(a=look.art))
-    return paths
+    return paths + clubart.extra_paths(look.art)
 
 
 def _file_hash(path):
@@ -1703,6 +1734,11 @@ def _file_hash(path):
 
 def look_digest(look):
     """What a look is made of, as a short text: a changed colour, logo, picture, arena or drawing makes a new one."""
+    digest = _look_digest(look)
+    return _digest(digest, clubart.DRAWING) if look.art in clubart.ARTS else digest
+
+
+def _look_digest(look):
     logos = [hashlib.sha1(l.convert('RGBA').tobytes()).hexdigest()[:10] if l is not None else '' for l in look.logos]
     return _digest(look.art, [list(map(list, p[:4])) + [list(map(list, p.font))] for p in look.kit], logos, look.arena,
                    list(look.ice_colour), [list(v) for v in look.versions],

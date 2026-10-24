@@ -544,6 +544,16 @@ Plan docs/plans/ok-let-me-know-soft-wilkes.md, notes docs/notes/lab-round-42.md.
   `SAVEDATA_DIRECTORY` (fixed in `update_in_place`), and the load path the program told players was wrong (fixed).
 - **Open:** what the game does with European / AHL-only deals when they end (after 2027-28).
 
+## Checks of 0.50.4 (2026-10-24; real lines, the AHL from the live feed, Coachella / Henderson as art 900 / 901)
+- **Real lines** (`'real lines'` experimental; docs/notes/lines-from-games.md): update a roster with the NHL step, open
+  Edit Lines for Edmonton (McDavid's real line, the power play units) and a team that traded lately; a player who left
+  keeps the rating's choice. Lines saved in the program still win.
+- **AHL from the feed:** Iowa holds Ben Dexheimer; every AHL club dresses; capacity numbers in PLAN.md.
+- **Art 900 / 901** (`'club art 900'` experimental, patched game only): Select Teams (names, crests), Select Jerseys
+  (home white with the trim colour, away in the main colour), a home game each (jersey, pants, socks, helmet logo, centre
+  ice with the crest), a Be a GM with Vegas (Henderson), Unpatch + update (back to Custom, 20073 / 20081). Known: banner,
+  puck, goalie helmet and name sheets are Charlotte's / Utica's; the Team kit window (NDEo) shows nothing for them.
+
 ## Checks of round 41 (2026-10-21; contract amounts, Roster Management's AHL, UFA / RFA; in 0.50.0)
 Plan docs/plans/ok-let-me-know-soft-wilkes.md, notes docs/notes/lab-round-41.md. Played by the agent in the lab.
 - **Owner:** Patch again (the Game patch tab says "patch again": 0.22), update the 32-team roster, then in the game:

@@ -70,6 +70,11 @@ AHL_PARENT_EXTRA = {234: 30, 235: 31}
 # create-a-team files whatever the art id; with 20073 / 20081 and the crests the photos install, both teams show their
 # own crest (docs/notes/lab-round-34.md). Only the team table's artid holds a team's art id.
 OWN_ART = {234: 20073, 235: 20081}
+# and on a roster for the patched game (0.50.4, lab round 48): art 900 / 901 as a club of the AHL, the created-team flag off
+# (ttOk BERR `table` 0) and the jersey rows (`stockteamjerseys`) of a donor club, whose files art/clubart.py clones. Lab round
+# 34's blue square was the flag left on, with no rows and no files. CLUB_DONOR: slot -> (the donor's art id, its variants)
+CLUB_ART = {234: 900, 235: 901}
+CLUB_DONOR = {234: (162, (3, 4)), 235: (141, (0, 1))}      # Charlotte's, Utica's
 # their jersey colours (table NDEo, team = slot + 1: {(equipment, variant 1 home / 2 away): zones 1-9}; the pieces:
 # custom_kit.PIECES): the community roster's, Coachella's black body and shoulders made this season's navy (equipment 9 zones 1
 # and 5 since 0.31.0: round 34 painted equipment 1, the goalie's catching glove; lab round 37), the crest's colours

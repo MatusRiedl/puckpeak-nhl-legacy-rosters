@@ -3,6 +3,26 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.50.4 (2026-10-24)
+
+- **Lines come from real games.** Every NHL team's lines, pairs, goalies, power play and penalty kill are now worked
+  out from its last five games on NHL.com: who really skated together at even strength, who played on the power play
+  and the penalty kill, and who started in goal. The first line is the one with the most ice time. A team whose real
+  lines name a player who has left keeps the lines it had for that part. Overtime, the shootout and the extra
+  attackers are still picked by rating. Lines you set yourself in the Roster editor are still kept. Lines you set
+  inside the game are replaced by the real ones at the next update.
+- **The AHL matches real life.** Who plays for each AHL club now comes from the AHL's own live lists (803 players
+  today, for example Ben Dexheimer at Iowa), not from an old snapshot. Players who hold an NHL organisation's rights
+  keep them. Players the AHL lists on an NHL contract but whom the old snapshot did not know belong to their club's
+  NHL team.
+- **A "Buy me a coffee" button** under the Discord button in the Setup tab opens ko-fi.com/iksperial (tips for the development).
+- **Coachella Valley and Henderson have their own jerseys and ice in the patched game.** They are club teams of the
+  AHL now, like Charlotte or Utica, with their own team numbers (900 and 901) instead of a made-up team's: jerseys, pants,
+  socks, helmet logo, menu picture and centre ice are made from their colours and crest when "Photos, logos and team
+  names" is on. Their banner, puck and goalie helmet are still a donor club's pictures. Only on a roster for the patched
+  game; the unpatched game keeps what it had. A Coachella jersey you made in the Roster editor's team window does not
+  show there; use the Jerseys & ice tab instead.
+
 ## 0.50.3 (2026-10-23)
 
 - **The program looks for a newer version every time it starts.** Before, it looked at most every 12 hours, so a

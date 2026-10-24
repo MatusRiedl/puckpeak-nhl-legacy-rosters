@@ -90,7 +90,8 @@ def test_a_second_run_with_the_class_changes_nothing(with_class, pack):
     again = pipeline.build(res.data, full, steps=pipeline.steps_for(pack), my_edits=mine)
     assert again.problems == []
     assert again.data == res.data
-    assert sum(1 for i in range(Roster(again.data).P.cur_rec) if Roster(again.data).name(i) == 'Class Prospect00') <= 1
+    R = Roster(again.data)                                       # once: a Roster per record took 27 minutes
+    assert sum(1 for i in range(R.P.cur_rec) if R.name(i) == 'Class Prospect00') <= 1
 
 
 def test_verify_refuses_a_class_player_who_lost_his_potential_or_got_a_draft(with_class):

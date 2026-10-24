@@ -1513,6 +1513,7 @@ def unshifted(raw):
         return raw
     unshift(R)
     unleague(R)
+    unart(R)
     return R.f.build()
 
 
@@ -1827,6 +1828,78 @@ def unleague(R):
                 R.T.set(slot, f, value)
             changed += 1
     return changed
+
+
+# --- art ids of their own (0.50.4; lab round 48, docs/notes/lab-round-48.md) -------------------------------------------
+CREATED = 'BERR'            # ttOk `table`: 1 = a created team (the game draws it from the create-a-team files)
+ROW_ART, ROW_TEAM = 'LQDG', 'gXCm'      # wgjx (stockteamjerseys): teamartid, teamid
+
+
+def art_rows(R, art):
+    """The rows of table wgjx (stockteamjerseys) for art id `art`: [{field: value}], in the table's order."""
+    W = R.f['wgjx']
+    return [{f: W.get(i, f) for f in W.fields} for i in range(W.cur_rec) if W.get(i, ROW_ART) == art]
+
+
+def art_fit(R):
+    """Give Coachella Valley and Henderson the art ids of their own (layout.CLUB_ART) in the roster `R` for the patched
+    game, in place: the created-team flag off and the jersey rows of their donor club (layout.CLUB_DONOR: the donor's rows
+    for the versions listed there) under their art id and slot. Their files are art/clubart.py's. Returns how many teams
+    changed."""
+    W, changed = R.f['wgjx'], 0
+    for slot, art in L.CLUB_ART.items():
+        donor, variants = L.CLUB_DONOR[slot]
+        wanted = [row for row in art_rows(R, donor) if row['TccF'] in variants]
+        have = {row['TccF'] for row in art_rows(R, art)}
+        for row in wanted:
+            if row['TccF'] not in have:
+                W.add_record(dict(row, **{ROW_ART: art, ROW_TEAM: slot}))
+                changed += 1
+        if R.T.get(slot, 'artid') != art or R.T.get(slot, CREATED) != 0:
+            R.T.set(slot, 'artid', art)
+            R.T.set(slot, CREATED, 0)
+            changed += 1
+    return changed
+
+
+def unart(R):
+    """Undo art_fit on the roster `R`, in place: their create-a-team art ids (layout.OWN_ART) and the flag back on, their
+    rows out of wgjx (they were added last). Returns how many teams changed."""
+    changed = 0
+    for slot, art in L.CLUB_ART.items():
+        if R.T.get(slot, 'artid') == art:
+            R.T.set(slot, 'artid', L.OWN_ART[slot])
+            R.T.set(slot, CREATED, 1)
+            changed += 1
+    W, arts = R.f['wgjx'], set(L.CLUB_ART.values())
+    gone = [i for i in range(W.cur_rec) if W.get(i, ROW_ART) in arts]
+    if gone:
+        tail = [{f: W.get(i, f) for f in W.fields} for i in range(gone[0], W.cur_rec) if i not in gone]
+        for i in range(gone[0], W.cur_rec):
+            for f in W.fields:
+                W.set(i, f, 0)
+        W.cur_rec = gone[0]
+        for row in tail:
+            W.add_record(row)
+        changed += 1
+    return changed
+
+
+def check_art_fit(R):
+    """Problems of Coachella Valley / Henderson's art ids in a roster for the patch (texts, empty when right): their art
+    id, the flag off, and the donor's rows under their art id and slot."""
+    out = []
+    for slot, art in L.CLUB_ART.items():
+        donor, variants = L.CLUB_DONOR[slot]
+        if R.T.get(slot, 'artid') != art or R.T.get(slot, CREATED) != 0:
+            out.append(f"team slot {slot} ({R.team_name(slot)}) does not have art id {art} as a club")
+        mine = sorted((row['TccF'], tuple(sorted(dict(row, **{ROW_ART: 0, ROW_TEAM: 0}).items())))
+                      for row in art_rows(R, art))
+        theirs = sorted((row['TccF'], tuple(sorted(dict(row, **{ROW_ART: 0, ROW_TEAM: 0}).items())))
+                        for row in art_rows(R, donor) if row['TccF'] in variants)
+        if mine != theirs or any(row[ROW_TEAM] != slot for row in art_rows(R, art)):
+            out.append(f"team slot {slot} ({R.team_name(slot)}): its jersey rows are not the donor club's")
+    return out
 
 
 def check_league_fit(R):

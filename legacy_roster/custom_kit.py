@@ -12,6 +12,8 @@ jersey files of their own:
 The Roster editor keeps a team's look in edits.json (`teams[slot]['kit']`, edits.py) and `write` puts it into the
 roster. Standard library only.
 """
+from .layout import CLUB_ART
+
 SLOTS = range(222, 252)
 POOL_ART = 21000                    # + slot: a prospect pool's own menu logo (art/portraits.py; drawn there, not here)
 TABLE = 'NDEo'
@@ -236,7 +238,8 @@ def problems(R, source, crests=None):
             if v != S.get(slot, field) and (slot not in SLOTS or v not in allowed):
                 out.append(f"{R.team_name(slot)}: {DESIGN_WORDS[field]} {v} is not one the game can draw there")
         art = T.get(slot, 'artid')
-        if slot in SLOTS and art != S.get(slot, 'artid') and art not in ARTS and art != POOL_ART + slot:
+        if slot in SLOTS and art != S.get(slot, 'artid') and art not in ARTS and art != POOL_ART + slot \
+                and art != CLUB_ART.get(slot):
             out.append(f"{R.team_name(slot)}: art id {art} is not one of the game's create-a-team logos")
     if TABLE in R.f.tables and TABLE in source.f.tables:
         E, F = R.f[TABLE], source.f[TABLE]

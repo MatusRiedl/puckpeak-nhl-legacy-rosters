@@ -333,6 +333,7 @@ def gather(R, steps, pack, progress=None, offline=False, fresh=False):
                 nhl_logos=pack.get('nhl_logos') if pipeline.NHL in steps else None,
                 nhl_last=pack.get('nhl_last') if pipeline.NHL in steps else None,
                 contracts=pack.get('contracts') if pipeline.NHL in steps else None,
+                real_lines=pack.get('lines') if pipeline.NHL in steps else None,
                 drafts=pack.get('drafts'),
                 schedule=pack.get('schedule') if pipeline.SCHEDULE in steps else None,
                 league_schedules=schedule.league_schedules(pack) if pipeline.SCHEDULE in steps else None)
