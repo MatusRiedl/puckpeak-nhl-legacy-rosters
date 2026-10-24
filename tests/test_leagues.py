@@ -93,7 +93,8 @@ def test_every_club_is_playable(everything, pack):
         assert 20 <= len(ents) <= L.MAX_PER_TEAM
         assert (len(dressed), pos[4], pos[3]) == (20, 2, 6)
         assert all(sum(U.get(e, s) for e in ents) == 1 for s in schema.LINE_SLOTS)
-        assert sorted(U.get(e, 'captain') for e in ents if U.get(e, 'captain')) == [1, 2, 2]
+        # a captain and two alternates, or three alternates when this season's captain is not on the club (0.51.1)
+        assert sorted(U.get(e, 'captain') for e in ents if U.get(e, 'captain')) in ([1, 2, 2], [2, 2, 2])
         numbers = [U.get(e, 'jersey') for e in ents]
         assert len(set(numbers)) == len(numbers) and 0 not in numbers
 

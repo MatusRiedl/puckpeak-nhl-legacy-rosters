@@ -107,8 +107,9 @@ def _save_manifest(m, store=ART_STORE):
 
 
 def installed():
-    """How many picture and text files are installed now (every game version together)."""
-    return sum(len(files) for files in load_manifest()['games'].values())
+    """How many picture and text files are installed now (every game version together; a game folder that is not there
+    any more does not count)."""
+    return sum(len(files) for d, files in load_manifest()['games'].items() if os.path.isdir(d))
 
 
 # --- making the pictures --------------------------------------------------------------------------
@@ -349,6 +350,7 @@ class _Writer:
                 continue
             path = os.path.join(d, *rel)
             if entry.get('backup') and os.path.exists(entry['backup']):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
                 shutil.copy2(entry['backup'], path)
                 os.remove(entry['backup'])
             elif os.path.exists(path) and ours(entry, path):
@@ -388,7 +390,7 @@ def check(rpcs3, title_id, own=False):
     if not rpcs3.game_disc(title_id):
         raise ArtError("RPCS3 does not say where your copy of the game is, so the photos cannot be made. "
                        "Start the game once from RPCS3's game list, then try again.")
-    if any(not _inside(d, rpcs3.dev_hdd0) for d in load_manifest()['games']):
+    if any(not _inside(d, rpcs3.dev_hdd0) and os.path.isdir(d) for d in load_manifest()['games']):
         raise ArtError("Photos and logos are installed for another copy of RPCS3. Press \"Restore the game's "
                        "own pictures\" first.")
 
@@ -645,10 +647,9 @@ def remove(say=print):
         return lab_count
     if savedata.running_rpcs3():
         raise ArtError("Close RPCS3 first: photos and logos can only be removed while the game is closed.")
-    n = _put_back(m)
-    path, _ = _paths()
-    os.remove(path)
-    say(f"The game's own pictures are back: {n} files put back as they were.")
+    n, left = _put_back(m)
+    _forget_handled(m, ART_STORE)
+    say(f"The game's own pictures are back: {n} files put back as they were." + _left_line(left))
     return n
 
 
@@ -656,10 +657,8 @@ def remove_store(store):
     """Put every file of `store` back as it was (kept copies return, our files go) and forget the store's list. RPCS3
     must be closed (the caller checks). Returns how many files were handled."""
     m = load_manifest(store)
-    n = _put_back(m)
-    path, _ = _paths(store)
-    if os.path.exists(path):
-        os.remove(path)
+    n, _ = _put_back(m)
+    _forget_handled(m, store)
     return n
 
 
@@ -686,12 +685,19 @@ def move_entries(prefix, source, target):
 
 
 def _put_back(m):
-    """Put every file of the list `m` back (see remove) and take away the folders we made and left empty."""
-    n = 0
+    """Put every file of the list `m` back (see remove) and take away the folders we made and left empty. A game
+    folder that is not there any more (RPCS3 moved, a drive unplugged) is left in `m` with its kept copies, so they come
+    back once it is there again. Returns (files handled, {game folder left: files})."""
+    n, left = 0, {}
     for game_dir, files in sorted(m['games'].items()):
+        if not os.path.isdir(game_dir):
+            if files:
+                left[game_dir] = len(files)
+            continue
         for key, entry in sorted(files.items()):
             path = os.path.join(game_dir, *key.split('/'))
             if entry.get('backup') and os.path.exists(entry['backup']):
+                os.makedirs(os.path.dirname(path), exist_ok=True)     # a folder taken away since (game reinstalled)
                 shutil.copy2(entry['backup'], path)
                 os.remove(entry['backup'])
             elif os.path.exists(path) and ours(entry, path):
@@ -705,4 +711,19 @@ def _put_back(m):
                 except OSError:
                     break
                 folder = os.path.dirname(folder)
-    return n
+    m['games'] = {d: files for d, files in m['games'].items() if d in left}
+    return n, left
+
+
+def _forget_handled(m, store):
+    """Keep the list of what _put_back left (game folders not there now), or delete it when nothing is left."""
+    path, _ = _paths(store)
+    if m['games']:
+        _save_manifest(m, store)
+    elif os.path.exists(path):
+        os.remove(path)
+
+
+def _left_line(left):
+    return "".join(f" {count} pictures are for a game folder that is not there any more ({d}): they stay listed and "
+                   f"come back with Restore once that folder is there again." for d, count in sorted(left.items()))

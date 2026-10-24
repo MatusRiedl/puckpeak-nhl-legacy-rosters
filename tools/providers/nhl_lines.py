@@ -8,19 +8,26 @@ team's players of its latest game:
     time), split into units 1 / 2;
   * goalies: the one with most ice time over the games is the starter.
 Overtime, the shootout and the extra attackers are left out (the builder deals them by rating). No scraping and no
-guessing: NHL.com's own numbers, one request per game for each. Output: {team code: {'date', 'games', 'slots'}} with
-`slots` {slot name (schema.SLOT_TAG): NHL.com player id}; a slot the games cannot name is missing.
+guessing: NHL.com's own numbers, one request per game for each. Output: {team code: {'date', 'games', 'slots',
+'letters'}} with `slots` {slot name (schema.SLOT_TAG): NHL.com player id}; a slot the games cannot name is missing.
+`letters` {NHL.com player id (str): 'C' | 'A'}: the captain and alternates as NHL.com's official game roster report of
+each game marks them ("ADAM LOWRY  (C)"), counted over the games (providers/letters.py).
 """
+import re
 import time
 from collections import Counter
 
 from legacy_roster import datasource
 from legacy_roster.layout import API_TO_SLOT
 
+from .letters import count_letters
+
 GAMES = 5                           # games per team
 SCHEDULE = datasource.NHL_API + "/club-schedule-season/{abbr}/{season}"
 BOXSCORE = datasource.NHL_API + "/gamecenter/{id}/boxscore"
 SHIFTS = "https://api.nhle.com/stats/rest/en/shiftcharts?cayenneExp=gameId={id}"
+ROSTER_REPORT = "https://www.nhl.com/scores/htmlreports/{season}/RO{number}.HTM"
+ROW = re.compile(r'<tr>\s*<td[^>]*>\s*(\d+)\s*</td>\s*<td[^>]*>[^<]*</td>\s*<td[^>]*>([^<]*)</td>', re.I)
 PERIOD = 1200                       # seconds in a period
 END = 3 * PERIOD + 300              # three periods and the overtime (regular season: 5 minutes, 3 v 3)
 FINAL = ('OFF', 'FINAL')
@@ -40,17 +47,46 @@ def seconds_of(shift):
     return (a, min(b, END)) if b > a else None
 
 
+def read_letters(html):
+    """(visitor, home): {sweater number: 'C' | 'A'} of an NHL.com game roster report: its dressed players stand in two
+    columns, the visitors' first (`<td valign="top" width="50%" class="border">`), the scratches follow in a section of
+    their own (left out); a captain's row reads "ADAM LOWRY  (C)". Empty dicts for a page without them."""
+    dressed = re.split(r'id="Scratches"', html, maxsplit=1, flags=re.I)[0]
+    columns = re.split(r'<td[^>]*width="50%"[^>]*class="border"[^>]*>', dressed, flags=re.I)[1:3]
+    out = []
+    for part in columns:
+        marks = {}
+        for number, name in ROW.findall(part):
+            m = re.search(r'\(([CA])\)\s*$', name.strip())
+            if m:
+                marks.setdefault(int(number), m.group(1))
+        out.append(marks)
+    return tuple((out + [{}, {}])[:2])
+
+
+def game_letters(game_id):
+    """(visitor, home) {sweater number: letter} of one game; ({}, {}) when the report cannot be read (the lines are
+    made without it)."""
+    url = ROSTER_REPORT.format(season=f"{str(game_id)[:4]}{int(str(game_id)[:4]) + 1}", number=str(game_id)[4:])
+    try:
+        return read_letters(datasource.http_get(url, retries=1).decode('latin-1'))
+    except (OSError, ValueError):
+        return {}, {}
+
+
 def read_game(game_id):
     """{team code: {'players': {id: position C/L/R/D/G}, 'toi': {id: seconds}, 'ev': Counter, 'pp': ..., 'pk': ...,
-    'trios': Counter, 'pairs': Counter}} of one finished game."""
+    'trios': Counter, 'pairs': Counter, 'letters': {id: 'C' | 'A'}}} of one finished game."""
     box = datasource.http_json(BOXSCORE.format(id=game_id))
-    teams, positions, toi, goalies = {}, {}, {}, {}
+    teams, positions, toi, goalies, numbers = {}, {}, {}, {}, {}
+    visitor, home = game_letters(game_id)
+    marks = {'homeTeam': home, 'awayTeam': visitor}
     for side in ('homeTeam', 'awayTeam'):
         code, team_id = box[side]['abbrev'], box[side]['id']
         teams[team_id] = code
         stats = box['playerByGameStats'][side]
         goalies[code] = set()
-        positions[code], toi[code] = {}, {}
+        positions[code], toi[code], numbers[code] = {}, {}, {}
         for kind in ('forwards', 'defense', 'goalies'):
             for p in stats.get(kind, []):
                 pos = p['position'] if p['position'] in ('C', 'L', 'R', 'D', 'G') else ('G' if kind == 'goalies' else 'C')
@@ -58,6 +94,8 @@ def read_game(game_id):
                 toi[code][p['playerId']] = clock(p['toi']) if p.get('toi') else 0
                 if pos == 'G':
                     goalies[code].add(p['playerId'])
+                elif p.get('sweaterNumber') in marks[side]:
+                    numbers[code][p['playerId']] = marks[side][p['sweaterNumber']]
     ice = {code: [set() for _ in range(END)] for code in teams.values()}
     shifts = datasource.http_json(SHIFTS.format(id=game_id)).get('data', [])
     for s in shifts:
@@ -72,7 +110,7 @@ def read_game(game_id):
     for code, other in zip(ice, reversed(list(ice))):
         pos = positions[code]
         mine = {'players': pos, 'toi': toi[code], 'ev': Counter(), 'pp': Counter(), 'pk': Counter(),
-                'trios': Counter(), 'pairs': Counter()}
+                'trios': Counter(), 'pairs': Counter(), 'letters': numbers[code]}
         for t in range(END):
             skaters = ice[code][t] - goalies[code]
             theirs = ice[other][t] - goalies[other]
@@ -209,7 +247,10 @@ def lines(season_year, teams=None, log=print):
         if not reads:
             log(f"lines: {abbr} has no finished game yet")
             continue
-        out[abbr] = {'date': picked[-1][1], 'games': [g for g, _d in picked], 'slots': team_lines(reads)}
-        log(f"lines: {abbr}: {len(picked)} games, {len(out[abbr]['slots'])} of 71 slots")
+        letters = count_letters([g.get('letters', {}) for g in reads])
+        out[abbr] = {'date': picked[-1][1], 'games': [g for g, _d in picked], 'slots': team_lines(reads),
+                     'letters': {str(k): v for k, v in sorted(letters.items())}}
+        log(f"lines: {abbr}: {len(picked)} games, {len(out[abbr]['slots'])} of 71 slots, "
+            f"{len(letters)} letters")
         time.sleep(0.1)
     return out

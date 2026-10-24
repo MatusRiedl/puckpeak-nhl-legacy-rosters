@@ -30,6 +30,10 @@ The pack holds everything the updater does not fetch live:
     club_lines   the clubs' real lines outside the NHL, per club slot: the Extraliga's match line-ups (--refresh
                  extraliga_lines, hokej.cz) over a larger private database's lines (--refresh club_lines [--db FILE],
                  no network; made from the pack's own rosters, so refresh the leagues first)
+    captains     not a part: every league player's `letter` and `lines[code]['letters']` (NHL.com ids) are this
+                 season's games' (NHL.com's game rosters, HockeyTech's game summaries, the Extraliga's match line-ups,
+                 refreshed with lines / ahl / chl / extraliga_lines), else the larger database's (club_lines) where
+                 the games named nobody on that team (give_letters; docs/notes/captains.md)
 
 ratings_list, contracts, ratings_full and the AHL's rosters are made by the maintainer's private tools (private/, kept
 out of git, DEVELOPING.md). Without them those parts are taken over from the pack being replaced, as they are.
@@ -257,6 +261,47 @@ def build_schedules(slot_map, refresh):
                    'count': sum(len(g) for g in found.values())}
 
 
+def give_letters(pack, base, match, nhl_db):
+    """Captains for every team the pack lists (owner, 2026-10-24: real captains for the entire game). A club whose feed
+    marked none (Liiga's roster, HockeyTech's game summaries do) gets those of its newest match line-ups (`match`: the
+    Extraliga), else the larger database's (`base`, per club slot); an NHL team NHL.com's game reports gave none gets the
+    database's (`nhl_db`, by NHL.com id). Players are found by name and birth year (the last name and birth year when
+    only one player of the club has them); goalies never wear a letter. Returns {source: teams lettered}."""
+    plain = hokejcz_lines.plain
+    counts = Counter()
+    for key, league in sorted((pack.get('leagues') or {}).items()):
+        for team in league.get('teams', []):
+            players = [p for p in team.get('players', []) if p.get('pos') != 'G']
+            if any(p.get('letter') for p in players):
+                counts[f"{key} feed"] += 1
+                continue
+            slot = str(team.get('slot'))
+            for label, src in (('matches', match), ('database', base)):
+                wanted = (src.get(slot) or {}).get('letters') or []
+                if not wanted:
+                    continue
+                full = {(plain(p['first'] + p['last']), p['birth'][0]): p for p in players}
+                short = Counter((plain(p['last']), p['birth'][0]) for p in players)
+                given = 0
+                for first, last, year, letter in wanted:
+                    p = full.get((plain(first + last), year))
+                    if p is None and short[(plain(last), year)] == 1:
+                        p = next(x for x in players if (plain(x['last']), x['birth'][0]) == (plain(last), year))
+                    if p is not None and not p.get('letter'):
+                        p['letter'] = letter
+                        given += 1
+                if given:
+                    counts[f"{key} {label}"] += 1
+                    break
+    for code, entry in sorted((pack.get('lines') or {}).items()):
+        if entry.get('letters'):
+            counts['nhl games'] += 1
+        elif nhl_db.get(code):
+            entry['letters'] = dict(nhl_db[code])
+            counts['nhl database'] += 1
+    return counts
+
+
 def check_drops(old, new, accept):
     """Stop when a part of the previous pack is missing or much smaller now."""
     problems = []
@@ -386,11 +431,18 @@ def main():
         if os.path.exists(path):
             with open(path, encoding='utf-8') as f:
                 into.update(json.load(f))
+    nhl_db = base.pop('_nhl', {})
     if base or match:
         pack['club_lines'] = hokejcz_lines.merge(base, match)
         pack['sources']['club_lines'] = {'label': "club lines: match line-ups and a larger database",
                                          'date': file_date(cache if match else base_cache),
                                          'count': len(pack['club_lines'])}
+    counts = give_letters(pack, base, match, nhl_db)
+    dated = [p for p in (base_cache, cache) if os.path.exists(p)]
+    if dated:
+        pack['sources']['captains'] = {'label': "captains: this season's games, else a larger database",
+                                       'date': file_date(dated[0]), 'count': sum(counts.values())}
+    print("captains: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
 
     # the AHL's calendar for the game patch's farm league, clubs as their team slots (tools/club_slots.json)
     cache = os.path.join(CACHE, 'ahl_schedule.json')

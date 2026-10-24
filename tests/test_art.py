@@ -412,10 +412,49 @@ def test_pictures_are_downloaded_once_and_the_originals_are_always_kept(base_dir
 def test_the_list_of_installed_files_of_version_0_4_is_still_read(tmp_path, monkeypatch):
     monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
     path, _ = install._paths()
+    game = str(tmp_path / 'USRDIR')
+    os.makedirs(game)
     with open(path, 'w', encoding='utf-8') as f:
-        json.dump({'game_dir': 'X:/rpcs3/dev_hdd0/game/BLES02153/USRDIR', 'files': {'a/b.big': {'source': 'u'}}}, f)
-    assert install.load_manifest() == {'games': {'X:/rpcs3/dev_hdd0/game/BLES02153/USRDIR': {'a/b.big': {'source': 'u'}}}}
+        json.dump({'game_dir': game, 'files': {'a/b.big': {'source': 'u'}}}, f)
+    assert install.load_manifest() == {'games': {game: {'a/b.big': {'source': 'u'}}}}
     assert install.installed() == 1
+
+
+def test_restore_gets_past_a_game_folder_that_moved_or_lost_a_folder(base_dir, tmp_path, monkeypatch):
+    """A tester's "[WinError 3]": pictures put in by an older build into an RPCS3 that has moved since."""
+    pytest.importorskip('PIL')
+    r = fake_rpcs3(base_dir, tmp_path, monkeypatch)
+    monkeypatch.setattr(install, 'Disc', SizedDisc)
+    monkeypatch.setattr(install, '_download', lambda url: head_photo(
+        background=(0, 0, 0, 0) if 'logo' in url else (240, 240, 240, 255)))
+    game = r.game_folder('BLES02153')
+    logo = os.path.join(game, 'fe', 'ion', 'artassets', 'teamlogos', 't22.big')
+    os.makedirs(os.path.dirname(logo))
+    with open(logo, 'wb') as f:
+        f.write(b'the community pack logo')
+    logos = {22: ('https://logo/uta.png', ((0, 0, 0), (110, 40, 120)))}
+    quiet = lambda m: None
+
+    # a folder of the game taken away since (the game reinstalled): the kept logo goes back into a new one
+    install.install(r, 'BLES02153', {9857: 'https://photo/mcdavid.png'}, logos, say=quiet, pack=False)
+    shutil.rmtree(os.path.dirname(logo))
+    install.remove(say=quiet)
+    assert open(logo, 'rb').read() == b'the community pack logo'
+    assert not os.path.exists(install._paths()[0])
+
+    # the whole game folder gone: Restore goes on, the list keeps it, a new install is not refused
+    install.install(r, 'BLES02153', {}, logos, say=quiet, pack=False)
+    moved = game + '_moved'
+    os.rename(game, moved)
+    said = []
+    install.remove(say=said.append)
+    assert 'not there any more' in said[-1]
+    assert list(install.load_manifest()['games']) == [game] and install.installed() == 0
+    install.check(r, 'BLES02153')
+    os.rename(moved, game)                       # the drive is back: Restore puts the original back
+    install.remove(say=quiet)
+    assert open(logo, 'rb').read() == b'the community pack logo'
+    assert not os.path.exists(install._paths()[0])
 
 
 def test_custom_teams_get_city_keys_the_game_can_name(built_with_names):

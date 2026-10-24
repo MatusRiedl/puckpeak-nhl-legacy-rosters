@@ -97,6 +97,7 @@ def test_a_game_is_read_from_the_box_score_and_the_shift_chart(monkeypatch):
         shifts['data'].append({'typeCode': 517, 'teamId': 1, 'playerId': pid, 'period': 1, 'startTime': '01:00',
                                'endTime': '02:00'})
     monkeypatch.setattr(N.datasource, 'http_json', lambda url: box if 'boxscore' in url else shifts)
+    monkeypatch.setattr(N, 'game_letters', lambda game_id: ({}, {}))
     game = N.read_game(1)
     assert game['AAA']['ev'][0] == 60 and game['AAA']['pp'][0] == 60 and game['BBB']['pk'][100] == 60
     assert game['AAA']['trios'][frozenset({0, 1, 2})] == 60 and game['AAA']['pairs'][frozenset({10, 11})] == 60
@@ -158,6 +159,7 @@ def test_a_team_whose_real_lines_name_nobody_it_has_keeps_its_lines(base_bytes, 
     ghosts = copy.deepcopy(pack['lines'])
     for entry in ghosts.values():
         entry['slots'] = {slot: 999000 + k for k, slot in enumerate(entry['slots'])}
+        entry['letters'] = {}
     broken = copy.copy(data)
     broken.real_lines = ghosts
     plain = pipeline.build(base_bytes, data)

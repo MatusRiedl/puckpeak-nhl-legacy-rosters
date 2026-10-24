@@ -130,8 +130,9 @@ CATEGORIES = {'l': 18, 'g': 2, 'pp': 18, 'pk': 14}        # slot-name prefix: ho
 
 
 def merge(announced, games):
-    """{team code: {'date', 'source', 'games', 'slots'}}: a team's announced lines, with every category they lack
-    entirely (even strength, goalies, power play, penalty kill) taken from the games' lines (tools/providers/nhl_lines)."""
+    """{team code: {'date', 'source', 'games', 'slots', 'letters'}}: a team's announced lines, with every category they
+    lack entirely (even strength, goalies, power play, penalty kill) taken from the games' lines
+    (tools/providers/nhl_lines); the captains are the games' own."""
     out = {}
     for code in sorted(set(announced) | set(games)):
         a, g = announced.get(code, {}), games.get(code, {})
@@ -144,7 +145,7 @@ def merge(announced, games):
             if use:
                 source.append(f"{prefix}:{label}")
         out[code] = {'date': a.get('date') or g.get('date'), 'source': ' '.join(source),
-                     'games': g.get('games', []), 'slots': slots}
+                     'games': g.get('games', []), 'slots': slots, 'letters': g.get('letters', {})}
     return out
 
 

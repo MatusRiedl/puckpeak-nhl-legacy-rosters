@@ -8,7 +8,10 @@ guest hold the players by slot code: 101 / 102 the goalies, 211-242 the defence 
 lines 1-4 (three each: left wing, centre, right wing). The lines show shortly before the game ("hasRoster"), so a club's
 newest game with a line-up is its current lines. hokej.cz's robots.txt allows everything; the files are unofficial and
 undocumented: a day or a club that fails is left to the other source (a larger database's lines, the rating deal).
-Output: {club slot (str): {'date', 'game', 'slots': {slot name (schema.SLOT_TAG): [first, last, birth year]}}}.
+A player's `type` 'c' / 'a' marks the captain and the alternates of that match; they are counted over the club's newest
+GAMES line-ups (providers/letters.py).
+Output: {club slot (str): {'date', 'game', 'slots': {slot name (schema.SLOT_TAG): [first, last, birth year]},
+'letters': [[first, last, birth year, 'C' | 'A']]}}.
 """
 import datetime
 import json
@@ -20,6 +23,9 @@ import unicodedata
 
 from legacy_roster import datasource
 
+from .letters import count_letters
+
+GAMES = 5                       # a club's newest line-ups read for its captains
 DAYS = "https://json.esports.cz/hokejcz/scoreboard/onlajny/{date}.json"
 ROSTER = "https://s3-eu-west-1.amazonaws.com/data.onlajny.com/hockey/roster/{year}/{game}.json"
 LEAGUE = '16'                   # Extraliga in the day files
@@ -67,6 +73,16 @@ def lines_of(side):
     return out
 
 
+def letters_of(side):
+    """{(first, last, birth year): 'C' | 'A'} of one side of a roster file: the players its `type` marks."""
+    out = {}
+    for p in side.values():
+        if (isinstance(p, dict) and (p.get('type') or '').lower() in ('c', 'a') and p.get('name') and p.get('surname')
+                and (p.get('birth_date') or {}).get('date')):
+            out[(p['name'].strip(), p['surname'].strip(), int(p['birth_date']['date'][:4]))] = p['type'].upper()
+    return out
+
+
 def lines(season_year, slots_file, today=None, log=print):
     """{club slot: {'date', 'game', 'games', 'slots'}}: each club's newest line-up of the last `BACK` days (and today's, out
     in the morning). The first goalie is the one who started most of those games (a game's own starter is only a rotation)."""
@@ -91,20 +107,23 @@ def lines(season_year, slots_file, today=None, log=print):
             if not game.get('hasRoster'):
                 continue
             for side, team in (('home', m.get('home') or {}), ('guest', m.get('visitor') or {})):
-                slot, got = club_of(team, known), lines_of((game.get('rosters') or {}).get(side) or {})
+                roster = (game.get('rosters') or {}).get(side) or {}
+                slot, got = club_of(team, known), lines_of(roster)
                 if slot and len(got) >= 18:
-                    seen.setdefault(slot, []).append((day.isoformat(), m['onlajny_id'], got))
+                    seen.setdefault(slot, []).append((day.isoformat(), m['onlajny_id'], got, letters_of(roster)))
     out = {}
     for slot, games in seen.items():
-        games.sort(key=lambda g: g[0], reverse=True)
-        date, game, got = games[0]
+        games.sort(key=lambda g: (g[0], str(g[1])), reverse=True)
+        date, game, got, _letters = games[0]
+        letters = count_letters([g[3] for g in reversed(games[:GAMES])])
         got = dict(got)
         starts = Counter(tuple(g[2]['g1']) for g in games if 'g1' in g[2])
         if starts and 'g1' in got and 'g2' in got:
             top = starts.most_common(1)[0][0]
             if top == tuple(got['g2']):                 # today's backup is the usual first goalie
                 got['g1'], got['g2'] = got['g2'], got['g1']
-        out[slot] = {'date': date, 'game': game, 'games': len(games), 'slots': got}
+        out[slot] = {'date': date, 'game': game, 'games': len(games), 'slots': got,
+                     'letters': [[*who, letter] for who, letter in sorted(letters.items())]}
     log(f"lines (extraliga): {len(out)} of {len(set(known.values()))} clubs")
     return out
 

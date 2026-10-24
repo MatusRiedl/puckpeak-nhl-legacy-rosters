@@ -189,7 +189,33 @@ wording (`progress.py`).
 
 ## Current state
 
-**Version 0.51.0 (2026-10-24, built, not committed; owner: "fix and support the lines for AHL and others", Extraliga a focus; notes
+**Version 0.51.1 (2026-10-24, built and smoke-tested, not committed, data pack refreshed locally and not published; plan docs/plans/also-we-issued-0-51-0-vivid-hellman.md, notes
+docs/notes/captains.md):** a tester: Winnipeg's captain Lowry had no letter (0.51.0 did not cause it: letters were never
+real except Liiga's). (1) **Real captains** (`'real captains'` experimental): NHL from NHL.com's game roster reports
+(`nhl_lines.read_letters` / `game_letters`), AHL / CHL from HockeyTech game summaries (`hockeytech.club_letters`),
+Extraliga from the onlajny match rosters (`hokejcz_lines.letters_of`), each counted over the last 5 games
+(`tools/providers/letters.count_letters`); the private database's `lcCm` fills clubs and NHL teams the live sources leave
+without letters (`private/club_lines_db.py`, `build_datapack.give_letters`). Builder: `real_letters` (NHL in
+`lines_from_games`, every club in `feed_letters` at the end of `repair_lineups`), `national_letters` (national teams
+filled this run: their players' own C / A first); `real_line_up` checks clubs with `nhl=False` now. `verify.structure`
+checks every team's letters (one C, three at most, no goalie). Result line "Captains". (2) **Error log**: `jobs.run(context=)`
+/ `jobs.log_block` write one block per failure (time, version, roster, folders marked "missing", steps, traceback);
+`app/update.update_context`; safety-check failures and failures after the save are logged too. (3) **Honest "saved"**:
+`pipeline.update` runs everything after the save through `then` (`UpdateResult.after`); the window keeps "Saved as" /
+"Updated" and shows red lines (`show_result(bad=)`, `texts.SAVED_DESPITE`), with an "Error log" button. (4) On the
+game's own roster the NHL step always runs (Restore default + patch left Seattle / Vegas empty: "0 captain(s)").
+(5) **Restore / Unpatch past a game folder that is gone** (the tester's "[WinError 3]"; deleting the app folder "fixed"
+it, but never do that: edits, backups, kept originals): `install._put_back` skips a game folder that is not there and
+keeps its entries (`_forget_handled`, `_left_line`), recreates a missing subfolder before putting a kept copy back
+(also `_Writer.drop`); `check` and `installed` ignore vanished folders. Tests `test_art.py::
+test_restore_gets_past_a_game_folder_that_moved_or_lost_a_folder`, `test_patchinstall.py::
+test_unpatch_gets_past_db_files_of_a_game_folder_that_is_gone`.
+Tests tests/test_captains.py, test_app (error log, after the save); full suite 565 passed. Dry run on the community roster:
+"32 NHL teams and 161 clubs wear this season's letters, 8 national teams ..." (Norway's 2 clubs: no source). Data pack
+`--refresh lines,ahl,chl,extraliga,extraliga_lines,club_lines` on 2026-10-24; the release needs `tools/publish_packs.py`
+too (players read the letters from the pack). Not played in the game.
+
+**Version 0.51.0 (2026-10-24, released; owner: "fix and support the lines for AHL and others", Extraliga a focus; notes
 docs/notes/lines-from-games.md, lines-other-leagues.md):** (1) **NHL lines announced first**: `tools/providers/dailyfaceoff.py`
 (the team pages' data, matched to NHL.com's roster; `merge` per category with the games' lines; tests/test_announced_lines.py)
 fixed McDavid at LW / RW. (2) **Real lines for the clubs outside the NHL**, data pack part `club_lines` = {club slot (str):

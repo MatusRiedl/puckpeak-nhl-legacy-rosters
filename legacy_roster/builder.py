@@ -198,6 +198,8 @@ class Builder:
         self.called_up = []         # (team, player row) brought in so a team can dress 20 (repair_lineups)
         self.rebuilt_clubs = {}     # club slot -> its league's key, for the clubs a league step rebuilt (update_league)
         self.feed_letters = {}      # club slot -> {entry: 'C' / 'A'} the league's own list gives (update_league)
+        self.lettered = set()       # teams given this season's captains (real_letters)
+        self.national_lettered = set()  # national teams given their captains by the players' own (national_letters)
         self.photos = {}        # player row -> photo link, for the players placed in this run
         self.logos = {}         # team slot -> logo link
         self.own_photos = set()     # player rows whose photo is the player's own picture (edits.py)
@@ -1066,7 +1068,10 @@ class Builder:
         rows = {p['nhl_id']: p['row'] for p in self.api if p.get('nhl_id') and p['row'] is not None}
         for team in sorted(L.NHL_PRIMARY):
             code = L.SLOT_TO_API[team]
-            wanted = (self.data.real_lines.get(code) or {}).get('slots')
+            real = self.data.real_lines.get(code) or {}
+            wanted = real.get('slots')
+            if real.get('letters'):          # the captains of the team's last games (NHL.com's game rosters)
+                self.real_letters(team, {rows[int(i)]: v for i, v in real['letters'].items() if int(i) in rows})
             if not wanted:
                 continue
             problems = self.real_line_up(team, wanted, rows)
@@ -1074,6 +1079,8 @@ class Builder:
                 self.real_refused[code] = problems
             else:
                 self.real_lined.append(code)
+        if self.lettered & set(L.NHL_PRIMARY):
+            self.sync_mirrors()
 
     def real_club_lines(self, slots):
         """The real lines of the clubs outside the NHL (data pack part `club_lines`: an Extraliga club's latest match
@@ -1182,7 +1189,7 @@ class Builder:
         kinds = {0: 'C', 1: 'L', 2: 'R', 3: 'D', 4: 'G'}
         pos = {e: kinds[self.P.get(self.prow_of_entry(e), 'aljv')] for e in ents}
         names = {e: self.R.name(self.prow_of_entry(e)) for e in ents}
-        problems = lines.check_lineup(new, letters, pos, names)
+        problems = lines.check_lineup(new, letters, pos, names, nhl=team in L.NHL_PRIMARY)
         if not problems:
             lines.set_lineup(self, team, new, letters)
         return problems
@@ -1611,6 +1618,67 @@ class Builder:
         best = sorted((e for e in ents if self.cls(e) != 'G'), key=self.q, reverse=True)[:3]
         for k, e in enumerate(best):
             U.set(e, 'lcCm', 1 if k == 0 else 2)
+
+    def real_letters(self, team, letters):
+        """This season's captain and alternates (`letters` {player row: 'C' | 'A'}, from the team's games or its league's
+        list) onto `team`: the skaters of them who are on it, one captain at most, topped up to three with alternates for
+        its best dressed skaters (no captain left: three alternates, as the game allows). Written only when check_lineup
+        passes (else the team keeps its letters); True when written. `self.lettered`: the teams that got them."""
+        U = self.U
+        ents = [e for e in self.entries_on(team) if e not in self.deleted]
+        on = {self.prow_of_entry(e): e for e in ents}
+        skater = {e for e in ents if self.P.get(self.prow_of_entry(e), 'aljv') != 4}
+        new = {}
+        for prow, letter in sorted(letters.items(), key=lambda kv: (kv[1] != 'C', self.pid_of_entry(on[kv[0]])
+                                                                     if kv[0] in on else 0, kv[0])):
+            e = on.get(prow)
+            if e not in skater or len(new) == 3 or (letter == 'C' and 'C' in new.values()):
+                continue
+            new[e] = letter
+        if not new:
+            return False
+        for e in sorted((e for e in skater if U.get(e, 'jZSh') and e not in new),
+                        key=lambda e: (-self.q(e), self.pid_of_entry(e), e))[:3 - len(new)]:
+            new[e] = 'A'
+        if team in L.NHL_PRIMARY and len(new) != 3:
+            return False
+        slots, old = lines.lineup(self, team)
+        kinds = {0: 'C', 1: 'L', 2: 'R', 3: 'D', 4: 'G'}
+        pos = {e: kinds[self.P.get(self.prow_of_entry(e), 'aljv')] for e in ents}
+        names = {e: self.R.name(self.prow_of_entry(e)) for e in ents}
+        if len(slots) == len(self.flags):       # only what the letters add counts (the lines may be mended later)
+            had = set(lines.check_lineup(slots, old, pos, names, nhl=team in L.NHL_PRIMARY))
+            if set(lines.check_lineup(slots, new, pos, names, nhl=team in L.NHL_PRIMARY)) - had:
+                return False
+        code = {v: k for k, v in lines.LETTERS.items()}
+        for e in ents:
+            U.set(e, 'lcCm', code.get(new.get(e), 0))
+        self.lettered.add(team)
+        return True
+
+    def national_letters(self, teams):
+        """Letters for national teams this run filled (no list names their captains): the captain is the skater who
+        captains his own NHL team or club, else one who wears an A there, else the best; the two alternates follow the
+        same order. Dressed skaters first. `self.national_lettered`: the teams."""
+        U = self.U
+        worn = {}                                   # player id -> 1 (C) / 2 (A) on his NHL team or club
+        for e in range(U.cur_rec):
+            t = U.get(e, 'BSXd')
+            if e not in self.deleted and t not in L.NATIONAL and U.get(e, 'lcCm') in lines.LETTERS:
+                p = self.pid_of_entry(e)
+                worn[p] = min(worn.get(p, 9), U.get(e, 'lcCm'))
+        for team in sorted(teams):
+            ents = self.entries_on(team)
+            skaters = [e for e in ents if self.P.get(self.prow_of_entry(e), 'aljv') != 4]
+            if not skaters:
+                continue
+            order = sorted(skaters, key=lambda e: (not U.get(e, 'jZSh'), worn.get(self.pid_of_entry(e), 9), -self.q(e),
+                                                   self.pid_of_entry(e), e))
+            for e in ents:
+                U.set(e, 'lcCm', 0)
+            for k, e in enumerate(order[:3]):
+                U.set(e, 'lcCm', 1 if k == 0 else 2)
+            self.national_lettered.add(team)
 
     def fill_lines(self, team):
         U = self.U
@@ -2410,11 +2478,15 @@ class Builder:
             mended.append(slot)
         if self.data.club_lines:            # last, when no step moves a player any more: the real lines of the clubs
             self.real_club_lines(slots)
+        for slot, letters in sorted(self.feed_letters.items()):    # every club of a league that ran: its own captains
+            if letters:
+                self.real_letters(slot, {self.prow_of_entry(e): v for e, v in sorted(letters.items())})
         self.log.section = SECTION_NATIONAL
         for team in sorted(L.NATIONAL & (set(self.departures) | set(self.arrivals) | self.position_teams)):
             if self.mendable(team):
                 self.deal_again(team)
                 mended.append(team)
+        self.national_letters(self.filled_now & L.NATIONAL)   # after the clubs' and the NHL's captains are this season's
         self.log.section = section
         return mended
 

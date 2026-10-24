@@ -37,6 +37,27 @@ def temporary(path):
     return os.path.normcase(os.path.abspath(path)).startswith(temp + os.sep)
 
 
+def update_context(rpcs3, slot, targets, steps, parts, in_place, photos=False, edits=False):
+    """The lines of an update's block in the error log: the roster, where it goes, what runs, and the folders it
+    uses (each one marked "missing" when it is not there: a tester's "[WinError 3]" named no folder)."""
+    def where(path):
+        return f"{path}{'' if path and os.path.exists(path) else '  (missing)'}" if path else "(none)"
+    lines = [f"roster: {getattr(slot, 'name', '?')} in {where(getattr(slot, 'folder', None))}",
+             f"version {getattr(slot, 'title_id', '?')}, saved for {', '.join(targets or [])}, "
+             f"{'in place' if in_place else 'as a new roster'}",
+             f"steps: {', '.join(steps) or '(none)'}; restore: {', '.join(sorted(parts)) or '(none)'}; "
+             f"photos: {'on' if photos else 'off'}; my edits: {'yes' if edits else 'no'}"]
+    if rpcs3 is None:
+        return lines
+    lines += [f"rpcs3: {where(getattr(rpcs3, 'where', None))}", f"save folder: {where(getattr(rpcs3, 'savedata', None))}",
+              f"patched: {', '.join(patchinstall.patched_titles(rpcs3)) or 'no'}"]
+    for title in dict.fromkeys([getattr(slot, 'title_id', None)] + list(targets or [])):
+        if title:
+            lines += [f"{title} game folder: {where(rpcs3.game_folder(title))}",
+                      f"{title} game: {where(rpcs3.game_disc(title))}"]
+    return lines
+
+
 class UpdateController:
     def __init__(self, host, settings=None, pack=None, photos=True):
         self.host = host
@@ -307,9 +328,11 @@ class UpdateController:
     def editor_busy(self):
         return bool(self.editor is not None and getattr(self.editor, 'busy', False))
 
-    def show_result(self, good, title, lines, buttons=(), items=()):
+    def show_result(self, good, title, lines, buttons=(), items=(), bad=()):
+        """`bad`: lines shown first, in red (what went wrong after the roster was saved)."""
         self.result = {'good': good, 'title': title, 'lines': list(lines), 'items': [list(i) for i in items],
-                       'buttons': [{'label': label, 'action': action} for label, action in buttons], 'dim': None}
+                       'buttons': [{'label': label, 'action': action} for label, action in buttons], 'dim': None,
+                       'bad': list(bad)}
         self.changed()
 
     def hide_result(self):
@@ -846,7 +869,12 @@ class UpdateController:
                                      rpcs3=None if rpcs3.plain else rpcs3)
             return result, savedata.running_rpcs3() is not None
 
-        jobs.run(work, done=lambda r: self._done(*r), failed=self._failed,
+        def context():
+            return update_context(rpcs3, slot, targets, steps, parts, in_place, photos=art is not None,
+                                  edits=bool(mine[0] or mine[1]))
+
+        self._context = context
+        jobs.run(work, done=lambda r: self._done(*r), failed=self._failed, context=context,
                  expected=(layout.LayoutError, datasource.Offline, FileNotFoundError, ArtError, StockError,
                            savedata.InPlaceError, patchinstall.PatchError))
 
@@ -895,12 +923,24 @@ class UpdateController:
                 said = [f"Done. {X.HOW_TO_USE_EXPORT}"]
             elif result.slot is None:
                 problems = result.build.problems
+                if problems:
+                    jobs.log_block(self._context_lines() + ["the safety checks failed:"]
+                                   + [f"  - {p}" for p in problems[:40]])
                 self._fail("The new roster failed the safety checks, so nothing was saved",
                            problems[:3] + ["Your existing rosters are untouched."])
                 said = ["   - " + p for p in problems[:15]]
             else:
+                for what, text, details in getattr(result, 'after', []):
+                    jobs.log_block(self._context_lines() + [f"after the save: {what}: {text}", details.rstrip()])
                 said = self._saved(result, rpcs3_running, items)
         self.say(*said)
+
+    def _context_lines(self):
+        context = getattr(self, '_context', None)
+        try:
+            return list(context()) if context else []
+        except Exception as err:
+            return [f"(the details could not be gathered: {err})"]
 
     def _saved(self, result, rpcs3_running, items):
         """The result box of a saved roster; returns the lines for the details."""
@@ -940,7 +980,13 @@ class UpdateController:
             title = f"Saved as \"{name}\""
             self.status = (f"Done: saved as \"{name}\".", 'good')
         said.append(where)
-        self.show_result(True, title, lines, buttons, items=items or [("Result", "Nothing needed changing.")])
+        bad = [f"{what}: {text}" for what, text, _details in getattr(result, 'after', [])]
+        if bad:                     # the roster is saved all the same: say so, and where the details are
+            bad.append(X.SAVED_DESPITE.format(log=datasource.app_dir('logs', 'error.log')))
+            buttons.append(("Error log", 'error_log'))
+            self.status = (self.status[0] + " " + X.SAVED_SOME_FAILED, 'bad')
+        self.show_result(True, title, lines, buttons, items=items or [("Result", "Nothing needed changing.")], bad=bad)
+        said[:0] = bad
         return said
 
     def result_action(self, action):
@@ -963,6 +1009,10 @@ class UpdateController:
                 self.host.open_url(self._update_page)
         elif action == 'details':
             self.host.send('details', {'open': True})
+        elif action == 'error_log':
+            path = datasource.app_dir('logs', 'error.log')
+            if os.path.exists(path):
+                self.host.open_path(path)
         elif action == 'close':
             self.hide_result()
 
@@ -1055,7 +1105,11 @@ class UpdateController:
             return pipeline.export_sysdata(file, steps, None, self.say, my_edits=mine[0] or None,
                                            team_edits=mine[1] or None), False
 
-        jobs.run(work, done=lambda r: self._done(*r), failed=self._failed,
+        def context():
+            return [f"export of {file}{'' if os.path.exists(file) else '  (missing)'}", f"steps: {', '.join(steps)}"]
+
+        self._context = context
+        jobs.run(work, done=lambda r: self._done(*r), failed=self._failed, context=context,
                  expected=(layout.LayoutError, datasource.Offline, FileNotFoundError, OSError))
 
     # --- what the tab shows -------------------------------------------------------------------------

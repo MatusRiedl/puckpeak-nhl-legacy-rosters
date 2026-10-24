@@ -1329,3 +1329,62 @@ def test_the_contract_button_on_the_card_opens_the_contract_of_his_club(app):
     api.contract_open(card['who'])
     c = office.contract_snapshot()
     assert c['name'] == row['name'] and office.team == junior
+
+
+def test_a_missing_folder_error_names_the_folder_and_is_logged(tmp_path, monkeypatch):
+    import threading
+    from legacy_roster.app import jobs
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
+    monkeypatch.setenv('HOME', str(tmp_path))
+    told = []
+
+    def work():
+        open(str(tmp_path / 'nowhere' / 'file.txt'))
+    jobs.run(work, failed=told.append, expected=(FileNotFoundError,)).join(10)
+    assert told and 'nowhere' in told[0]
+    logs = list((tmp_path / 'local').rglob('error.log'))
+    assert logs and 'FileNotFoundError' in logs[0].read_text(encoding='utf-8')
+
+def test_every_failure_leaves_a_block_with_what_the_program_was_doing(tmp_path, monkeypatch):
+    from legacy_roster import __version__
+    from legacy_roster.app import jobs
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
+    monkeypatch.setenv('HOME', str(tmp_path))
+
+    def work():
+        raise ValueError("a broken roster")
+    told = []
+    jobs.run(work, failed=told.append, expected=(ValueError,), context=lambda: ["roster: Mine", "rpcs3: G:/RPCS3"]).join(10)
+    assert told == ["a broken roster"]
+    text = next((tmp_path / 'local').rglob('error.log')).read_text(encoding='utf-8')
+    assert f"version {__version__}" in text and "roster: Mine" in text and "rpcs3: G:/RPCS3" in text
+    assert "ValueError: a broken roster" in text
+
+
+def test_a_failure_after_the_save_keeps_the_roster_saved_and_says_so(app, data, monkeypatch, tmp_path):
+    """A tester (0.51.0): "[WinError 3] The system cannot find the path specified" after "Saved as ..." and the window
+    said "Nothing was saved". What fails after the save is told in red under the saved roster's title, and logged."""
+    from legacy_roster import pipeline
+    from legacy_roster.app import texts as X
+    host, upd, _ed, _uni, sd = app
+    real = pipeline.write_report
+
+    def broken(result, title, *args, **kw):
+        if title.startswith(('failed', 'dryrun')):
+            return real(result, title, *args, **kw)
+        raise FileNotFoundError(3, "The system cannot find the path specified", 'X:/gone/reports')
+    monkeypatch.setattr(pipeline, 'write_report', broken)
+    slot = upd.slots[0]
+    result = pipeline.update(sd, slot.folder, [], "After the save", data=data)
+    assert result.slot is not None and os.path.isdir(result.slot.path)             # saved
+    assert result.after and 'X:/gone/reports' in result.after[0][1]
+    upd._context = lambda: ["roster: the test's"]
+    upd._done(result, False)
+    r = upd.result
+    assert r['good'] and r['title'].startswith("Saved as") and "Nothing was saved" not in r['title']
+    assert any('X:/gone/reports' in line for line in r['bad'])
+    assert any(line.startswith(X.SAVED_DESPITE.split('{')[0]) for line in r['bad'])
+    text = next((tmp_path / 'local').rglob('error.log')).read_text(encoding='utf-8')
+    assert "roster: the test's" in text and 'FileNotFoundError' in text

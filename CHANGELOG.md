@@ -3,6 +3,25 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.51.1 (2026-10-24)
+
+- **Real captains on every team.** The C and the two A's were picked by rating before (Winnipeg's captain Adam Lowry
+  had no letter, Mark Scheifele wore the C). Now every NHL team wears the letters of its last five games on NHL.com,
+  the AHL and CHL clubs those of their last five games, the Czech Extraliga clubs those of their latest matches, and
+  the other European clubs those of a larger database where their own league names none. A captain who is not on the
+  team leaves his C open: the team then has three alternates, as the game allows. National teams the program fills
+  are led by a player who captains his own team. Letters you set in the Roster editor are still kept.
+- **"Saved" means saved.** When something after the save fails (the pictures, the list of changes), the window now
+  says the roster is saved and shows what went wrong in red, instead of "Nothing was saved".
+- **A fuller error log.** Every failure now writes the program's version, the roster, the folders it used (each one
+  marked "missing" when it is not there) and the details to the error log (Show details > Error log). Send that file
+  with a bug report.
+- The update of the game's own roster always fills Seattle and Vegas (with "Restore default" and the game patch they
+  were left empty, and the update stopped with "Seattle Kraken has 0 captain(s)").
+- **Restore no longer stops with "The system cannot find the path specified"** when an older version put pictures into
+  a game folder that has moved or is gone (RPCS3 moved to another drive, the game reinstalled). There is no need to
+  delete the program's folder: it holds your edits and the roster backups.
+
 ## 0.51.0 (2026-10-24)
 
 - **The NHL's lines are the announced ones.** The lines, pairs, goalies, power play and penalty kill now come first from

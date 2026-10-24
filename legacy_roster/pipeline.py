@@ -5,6 +5,7 @@ import csv
 import datetime
 import os
 import sys
+import traceback
 from collections import Counter
 
 from . import contracts, datasource, draft, gamepatch, restore, savedata, schedule, sticks, stock
@@ -109,7 +110,8 @@ EXPERIMENTAL = {'shl', 'del', 'nl', 'norway', 'ahl', 'chl', 'stock', 'positions'
                 'current ratings', 'team sticks', 'nhl gear', 'puck peak texts', 'hidden menus',
                 'own art ids', 'jerseys every league', 'gear colours', 'farm clubs in the AHL',
                 'custom team kits', 'shared ice', 'picture numbers', 'own pictures on save',
-                'draft classes', 'new player records', 'no press start', 'real lines', 'club art 900'}
+                'draft classes', 'new player records', 'no press start', 'real lines', 'club art 900',
+                'real captains'}
 ALL_STEPS = CORE_STEPS      # what build() and update() run when no steps are given
 
 
@@ -214,6 +216,16 @@ class BuildResult:
         clubs_lined = getattr(self.builder, 'club_lined', None)
         if clubs_lined:
             out.append(("Club lines", f"{len(clubs_lined)} clubs play their real lines"))
+        lettered = getattr(self.builder, 'lettered', None) or set()
+        national = getattr(self.builder, 'national_lettered', None) or set()
+        if lettered or national:
+            nhl = len(lettered & set(L.NHL_PRIMARY))
+            parts = [f"{nhl} NHL teams" if nhl else '', f"{len(lettered) - nhl} clubs" if len(lettered) > nhl else '']
+            text = " and ".join(p for p in parts if p)
+            text = f"{text} wear this season's letters" if text else ''
+            if national:
+                text += (", " if text else '') + f"{len(national)} national teams are led by their players' own captains"
+            out.append(("Captains", text))
         starters = sum((getattr(self.builder, 'starter_deals', None) or {}).values())
         if starters:
             out.append(("Starter deals", f"{starters} player{'s' if starters != 1 else ''} without a contract got one "
@@ -624,6 +636,7 @@ class UpdateResult:
         self.patch_art = False          # the pictures and names went in with it (Season names Seattle and Vegas)
         self.look_teams = 0            # teams in this season's jerseys or centre ice (the look pack)
         self.own_pictures = False       # `art` is about the player's own pictures alone (photos and logos off)
+        self.after = []                 # [(what, message, details)]: parts after the save that failed (the roster is saved)
 
     def saved_where(self):
         """'BLES021530210 (EU) and BLUS315400200 (NA)': the new folders, for the player."""
@@ -802,7 +815,8 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         if data is None:
             pack = datasource.load_pack(say, offline)
             R = Roster(src_bytes)
-            L.check_base(R)
+            if L.check_base(R) == L.STOCK and NHL not in steps:
+                steps.append(NHL)       # Seattle and Vegas start empty on the game's own roster; only this step fills them
             data = datasource.gather(R, set(steps), pack, say, offline)
         if game_patch:
             data = copy.copy(data)
@@ -839,40 +853,53 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
             slot = savedata.install(folder, source, result.data, name, title_id=title_id)
             saved.append(slot)
             say(f"Saved as \"{slot.name}\" in {slot.folder} ({slot.region})")
+    # the roster is saved: what follows must not make the player think it was not (a tester's "[WinError 3]" after
+    # "Saved as" read "Nothing was saved"). Each part that fails is told in UpdateResult.after, with its details.
+    after = []
+
+    def then(what, work, failed=None):
+        try:
+            return work()
+        except Exception as err:
+            text = str(err) + (f": {err.filename}" if isinstance(err, OSError) and err.filename
+                               and str(err.filename) not in str(err) else '')
+            say(f"{what}: {text}")
+            after.append((what, text, traceback.format_exc()))
+            return failed
     title = f"{saved[0].folder}_{stamp}"
-    report = report_as(title)
+    report = then("The list of changes could not be written", lambda: report_as(title))
     db_note = None
     if game_patch and rpcs3 is not None and not rpcs3.plain:   # the patched game's db files carry its next seasons
-        db_note = patchinstall.refresh_db(rpcs3, targets, result.data, say)
+        db_note = then("The game patch could not be brought up to date",
+                       lambda: patchinstall.refresh_db(rpcs3, targets, result.data, say))
     art, look_teams = own_note, 0
     if result.art is not None and pictures is not None:
-        art, look_teams, noted = pictures.put_in(result, say)
+        art, look_teams, noted = then("The pictures did not go in", lambda: pictures.put_in(result, say),
+                                      (None, 0, False))
         if noted:                       # in the list of changes, by name: a player can tell us who
-            report = report_as(title)
+            report = then("The list of changes could not be written", lambda: report_as(title), report)
     done = UpdateResult(result, saved[0], report, name, art, slots=saved, in_place=in_place, backup=backup,
                         unchanged=unchanged)
+    done.after = after
     done.own_pictures = own
     done.patch = list(targets) if game_patch else None
     done.db_note = db_note if isinstance(db_note, str) else None
     done.patch_art = art_rpcs3 is not None
     done.look_teams = look_teams
     if restore.PATCH in parts and rpcs3 is not None:
-        try:
+        def unpatch():
             if patchinstall.installed(rpcs3):
                 patchinstall.remove(rpcs3, say)
                 done.restored.append("The game patch is out: the game is as it was.")
-        except patchinstall.PatchError as err:
-            say(str(err))
-            done.restored.append(str(err))
+        then("The game patch could not be taken out", unpatch)
     if restore.PICTURES in parts:
         from .art import install
-        try:
+
+        def unpicture():
             n = install.remove(say)
             done.restored.append("The game's own pictures, team names and jerseys are back." if n else
                                  "No photos or logos were installed: the pictures are the game's own.")
-        except install.ArtError as err:
-            say(str(err))
-            done.restored.append(str(err))
+        then("The game's own pictures could not be put back", unpicture)
     if restore.ROSTERS in parts:
         done.restored.insert(0, "The rosters start from " + restore.describe(default)[0].lower() + restore.describe(default)[1:])
     if restore.CALENDAR in parts:

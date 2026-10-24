@@ -180,6 +180,7 @@ function Result({ result }) {
       <div class="r-head"><div class="r-title">${r.title}</div>
         <button class="x" title="Close" onClick=${() => call('result_action', 'close')}>✕</button></div>
       <div class="r-body selectable">
+        ${(r.bad || []).map((line, k) => html`<p class="bad" key=${'b' + k}>${line}</p>`)}
         ${r.lines.map((line, k) => html`<p key=${k}>${line}</p>`)}
         ${r.items.length > 0 && html`<dl class="items">${r.items.map(([t, text], k) => html`
           <dt key=${'t' + k}>${t}</dt><dd key=${'d' + k}>${text}</dd>`)}</dl>`}

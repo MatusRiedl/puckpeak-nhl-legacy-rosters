@@ -5,21 +5,54 @@ The keys below are the public ones those websites send with every page view (che
 lscluster.hockeytech.com requests its website makes. One request per club; a roster row gives
 name, birthdate, position (C/LW/RW or F, D or LD/RD, G), shoots, height, weight, number,
 birthplace, a photo and, in the AHL, whether the player is on an NHL or an AHL contract. The
-club list gives each club's logo (PNG).
+club list gives each club's logo (PNG). The captain and alternates come from the club's last GAMES game summaries (their
+line-ups mark them: `status` 'C' / 'A'), counted over the games (providers/letters.py).
 """
 import re
 import urllib.parse
 
+from .letters import count_letters
 from .web import country_of_place, get_json, inches_to_cm, pounds_to_kg
 
 FEED = "https://lscluster.hockeytech.com/feed/index.php"
 KEYS = {'ahl': '50c2cd9b5e18e390', 'ohl': '2976319eb44abe94', 'whl': '41b145a848f4bd67', 'lhjmq': 'f322673b6bcae299'}
 POSITION = {'C': 'C', 'LW': 'L', 'RW': 'R', 'F': 'F', 'W': 'F', 'D': 'D', 'LD': 'D', 'RD': 'D', 'G': 'G'}
+GAMES = 5                       # a club's last games read for its captains
 
 
 def call(client, view, **params):
     query = dict(feed='modulekit', view=view, key=KEYS[client], client_code=client, fmt='json', lang='en', **params)
     return get_json(f"{FEED}?{urllib.parse.urlencode(query)}")['SiteKit']
+
+
+def game_summary(client, game_id):
+    query = dict(feed='gc', tab='gamesummary', game_id=game_id, key=KEYS[client], client_code=client, fmt='json',
+                 lang='en')
+    return get_json(f"{FEED}?{urllib.parse.urlencode(query)}")['GC']['Gamesummary']
+
+
+def lineup_letters(summary, team_id):
+    """{(first, last) lower case: 'C' | 'A'} of the club `team_id`'s line-up in one game summary."""
+    side = 'home_team_lineup' if str(summary['meta']['home_team']) == str(team_id) else 'visitor_team_lineup'
+    return {((p.get('first_name') or '').strip().lower(), (p.get('last_name') or '').strip().lower()): p['status']
+            for p in (summary.get(side) or {}).get('players', []) if p.get('status') in ('C', 'A')}
+
+
+def club_letters(client, season, team_id, cache, log=print):
+    """{(first, last) lower case: 'C' | 'A'}: the club's captain and alternates over its last GAMES finished games ({}
+    when the feed has none or cannot be read)."""
+    try:
+        games = [g for g in call(client, 'schedule', season_id=season, team_id=team_id)['Schedule'] if g.get('final') == '1']
+        games.sort(key=lambda g: (g['date_played'], int(g['game_id'])))
+        seen = []
+        for g in games[-GAMES:]:
+            if g['game_id'] not in cache:
+                cache[g['game_id']] = game_summary(client, g['game_id'])
+            seen.append(lineup_letters(cache[g['game_id']], team_id))
+        return count_letters(seen)
+    except (OSError, ValueError, KeyError, TypeError) as err:     # the captains are a bonus: the roster still counts
+        log(f"{client}: team {team_id}: captains not read: {err}")
+        return {}
 
 
 def regular_season(client, season_year):
@@ -75,14 +108,19 @@ def fetch(season_year, sources=(), log=print, client='ahl'):
     list now, with their photo (a junior the list leaves out stays with his club and keeps a picture:
     Landon DuPont, testers 0.8.0)."""
     season = regular_season(client, season_year)
-    clubs, logos = {}, {}
+    clubs, logos, summaries = {}, {}, {}
     for team in call(client, 'teamsbyseason', season_id=season)['Teamsbyseason']:
         rows = call(client, 'roster', season_id=season, team_id=team['id'])['Roster']
         players = [p for p in (parse_player(r) for r in rows) if p]
+        letters = club_letters(client, season, team['id'], summaries, log)
+        for p in players:
+            if p['pos'] != 'G':
+                p['letter'] = letters.get((p['first'].lower(), p['last'].lower()))
         clubs[team['name']] = players
         if (team.get('team_logo_url') or '').startswith('http'):
             logos[team['name']] = team['team_logo_url']
-        log(f"{client}: {team['name']}: {len(players)} players")
+        log(f"{client}: {team['name']}: {len(players)} players, "
+            f"{sum(1 for p in players if p['letter'])} letters")
     clubs['_logos'] = logos
     now = {(p['first'].lower(), p['last'].lower(), tuple(p['birth'])) for players in clubs.values()
            if isinstance(players, list) for p in players}

@@ -325,6 +325,7 @@ input.field:disabled { color: var(--faint); }
 .result .x:hover { color: var(--text); }
 .result .r-body { padding: 0 12px 6px 16px; overflow-y: auto; overflow-wrap: anywhere; min-height: 0; font-size: 13px; color: var(--muted); }
 .result .r-body p { margin: 0 0 4px; }
+.result .r-body p.bad { color: var(--red); }
 .result .items { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 6px 0 2px; font-size: 12.5px; }
 .result .items dt { color: var(--text); font-weight: 600; white-space: nowrap; }
 .result .items dd { margin: 0; color: var(--muted); }

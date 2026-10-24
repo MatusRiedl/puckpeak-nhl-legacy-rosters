@@ -1,6 +1,7 @@
 """The game patch in RPCS3 (patchinstall.py): RPCS3's switches as text, the files in and out again, on a fake RPCS3."""
 import copy
 import os
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -216,6 +217,23 @@ def test_the_db_files_of_the_32_team_test_move_from_the_pictures_list(tmp_path, 
     assert _read(os.path.join(rpcs3.game_folder(EU), 'db', 'nhlng.db')) == b'DB'
     patchinstall.remove(rpcs3, say=lambda m: None)
     assert not os.path.exists(os.path.join(rpcs3.game_folder(EU), 'db', 'nhlng.db'))
+
+
+def test_unpatch_gets_past_db_files_of_a_game_folder_that_is_gone(tmp_path, monkeypatch):
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
+    rpcs3 = _fake_rpcs3(tmp_path)
+    old = str(tmp_path / 'old_rpcs3' / 'USRDIR')                      # an RPCS3 that has moved since
+    os.makedirs(os.path.join(old, 'db'))
+    with open(os.path.join(old, 'db', 'nhlng.db'), 'wb') as f:
+        f.write(b'GAME')
+    writer = install._Writer([old], store=patchinstall.STORE)
+    writer.write(gamepatch.DB_FILE, b'DB', 'db:1')
+    writer.save()
+    shutil.rmtree(str(tmp_path / 'old_rpcs3'))
+    patchinstall.remove(rpcs3, say=lambda m: None)
+    assert list(install.load_manifest(patchinstall.STORE)['games']) == [old]
 
 
 def test_a_patch_needs_rpcs3_and_the_game(tmp_path, monkeypatch):

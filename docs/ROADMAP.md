@@ -544,6 +544,13 @@ Plan docs/plans/ok-let-me-know-soft-wilkes.md, notes docs/notes/lab-round-42.md.
   `SAVEDATA_DIRECTORY` (fixed in `update_in_place`), and the load path the program told players was wrong (fixed).
 - **Open:** what the game does with European / AHL-only deals when they end (after 2027-28).
 
+## Checks of 0.51.1 (2026-10-24; real captains, docs/notes/captains.md)
+- **Real captains** (`'real captains'` experimental): update a roster with the NHL, AHL and Extraliga steps, then in the
+  game: Winnipeg's C on Adam Lowry (Team Rosters / Edit Lines > Captains), an AHL club's C (Abbotsford: Wouters), an
+  Extraliga club's C (Sparta), one SHL or DEL club, and a national team. A Season game with Winnipeg shows the C on the
+  jersey. A team with three A and no C (a captain who left) plays without trouble.
+- **"Saved" with a failure after it**: only by hand (a missing pictures folder); the tests cover it.
+
 ## Checks of 0.50.4 (2026-10-24; real lines, the AHL from the live feed, Coachella / Henderson as art 900 / 901)
 - **Real lines** (`'real lines'` experimental; docs/notes/lines-from-games.md): update a roster with the NHL step, open
   Edit Lines for Edmonton (McDavid's real line, the power play units) and a team that traded lately; a player who left
