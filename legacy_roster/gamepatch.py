@@ -33,10 +33,11 @@ UPDATE_HASH = 'd4bbaf00a080a924e862c1b3f7705380a3499edb'
 VERSIONS = ('01.00', '01.01')
 YEARS_LATER = 11                                         # 2015 -> 2026
 YEAR_ENTRY = "NHL Legacy year 2026 (test)"
-PATCH_VERSION = '0.8'
-TEAMS_VERSION = '0.25'                                   # 0.23: the roster's player rights in six bits, Vegas's too (lab round 42);
+PATCH_VERSION = '0.9'                                    # 0.9: the Calendar screen's Home / Away marks
+TEAMS_VERSION = '0.26'                                   # 0.23: the roster's player rights in six bits, Vegas's too (lab round 42);
 #                                                          0.24: the same words, the news entry (NEWS_ENTRY) ticked with them;
-#                                                          0.25: the same words, also for update 1.01
+#                                                          0.25: the same words, also for update 1.01;
+#                                                          0.26: the year entry 0.9 (the Calendar screen's marks)
 INTRO_VERSION = '0.1'                                    # the intro entries (INTRO_ENTRIES)
 
 # FUN_00731ce8(out, year, month, day) turns a date into a day number; 0x731d04 copies the year (ori r29,r4,0). The patch
@@ -87,6 +88,16 @@ YEAR_LABELS = (
     (0x402d24, 0x60770000, 0x3ae30000 | YEARS_LATER,
      "GetSalaryCapYearStrings (entry 0xc8 of 0x1cd7c30) prints each contract season as \"%d-%d\" and \"%s-%s\" (Be a GM's "
      "Contract Status \"15-16\"): the league year + 11 (addi r23,r3,11; was ori r23,r3,0)"),
+    # The Calendar screen asks for each day's game with the year it shows (2026 with the patch) and GetTeamMatchIDByDate
+    # gives none for a year after the league year + 1: no Home / Away marks in Season / Be a GM (docs/notes/2026-27-gaps.md).
+    (0x407954, 0x30630001, 0x3063000c,
+     "GetTeamMatchIDByDate (entry 0xc of 0x1cd7e88, the Calendar screen's Home / Away marks): no game in a year after "
+     "the league year + 1; the screen's year is 11 later, so the league year + 12 (addic r3,r3,12; was addic r3,r3,1)"),
+    (0x407960, 0x809c0000, 0x3063ffff,
+     "GetTeamMatchIDByDate: every day up to the league year + 11 counts (addic r3,r3,-1 on the + 12; was the second call "
+     "for the league year, lwz r4,0(r28))"),
+    (0x407964, 0x63830000, 0x48000014,
+     "GetTeamMatchIDByDate: on to its compare at 0x407978 (b +0x14; was ori r3,r28,0)"),
 )
 
 
@@ -636,7 +647,7 @@ STAGE_K_CAVES = (
     ], "draft lottery: round 1's picks 15 and 16 before the playoff teams' records"),
 )
 # Words that are another instruction, not the game's with a new number (tools/audit_patch.py shows both)
-OTHER_INSTRUCTIONS = (0x3c4bd4, 0x3c5a34, 0xdfee0, 0x40cb7c, 0x16320c, 0x3721a4, 0x402d24)
+OTHER_INSTRUCTIONS = (0x3c4bd4, 0x3c5a34, 0xdfee0, 0x40cb7c, 0x16320c, 0x3721a4, 0x402d24, 0x407960, 0x407964)
 
 # The game's description of its database (db/nhlng-meta.xml, in cacheboot.big on the disc). The game reads a loose copy in
 # its own folder (dev_hdd0/game/<id>/USRDIR/db, lab log) and takes the Season and Be a GM tables' rows from it (a Season

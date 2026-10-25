@@ -592,9 +592,36 @@ def _cap(code, r4, r5):
 def test_contract_columns_show_the_real_seasons():
     label = {a: (old, new) for a, old, new, _ in gamepatch.YEAR_LABELS}[0x402d24]
     assert label == (0x60770000, 0x3ae30000 | gamepatch.YEARS_LATER)          # ori r23,r3,0 -> addi r23,r3,11
-    assert 0x402d24 in gamepatch.OTHER_INSTRUCTIONS and gamepatch.PATCH_VERSION == '0.8'
+    assert 0x402d24 in gamepatch.OTHER_INSTRUCTIONS and gamepatch.PATCH_VERSION == '0.9'
     text = gamepatch.patch_text()
     assert 'be32, 0x00402d24, 0x3ae3000b' in text
+
+
+def _year_check(screen_year, league_year, month, last_month, patched=True):
+    """GetTeamMatchIDByDate's year check (0x407944 .. 0x40799c) as the words run: True = the day is looked up."""
+    words = {0x407954: 0x30630001, 0x407960: 0x809c0000, 0x407964: 0x63830000}
+    if patched:
+        words.update({a: new for a, _, new, _ in gamepatch.YEAR_LABELS if a in words})
+    r3 = league_year + (words[0x407954] & 0xffff)                       # addic r3,r3,1 (12)
+    if screen_year > r3:
+        return False
+    if words[0x407960] >> 26 == 12:                                     # addic r3,r3,-1, then b to 0x407978
+        assert words[0x407964] == 0x48000014 and 0x407964 + 0x14 == 0x407978
+        r3 = (r3 + ((words[0x407960] & 0xffff) - 0x10000)) & 0xffffffff
+    else:
+        r3 = league_year                                                # the game asks for the league year again
+    return screen_year <= r3 or month < last_month
+
+
+def test_the_calendar_screen_finds_the_games_of_the_year_it_shows():
+    # the patch-off game: the screen shows 2015-16, the league year is 2015
+    assert _year_check(2015, 2015, 10, 7, patched=False) and _year_check(2016, 2015, 3, 7, patched=False)
+    assert not _year_check(2026, 2015, 10, 7, patched=False)            # the patched screen's year: no marks before 0.9
+    # with the patch the screen shows 2026-27 (season 1) and 2027-28 (season 2)
+    assert _year_check(2026, 2015, 10, 7) and _year_check(2027, 2015, 3, 7) and not _year_check(2027, 2015, 8, 7)
+    assert _year_check(2027, 2016, 10, 7) and not _year_check(2029, 2016, 1, 7)
+    text = gamepatch.patch_text()
+    assert all(f'be32, 0x{a:08x}, 0x{new:08x}' in text for a, _, new, _ in gamepatch.YEAR_LABELS if 0x407954 <= a <= 0x407964)
 
 
 def _run(code, reg, mem=None):

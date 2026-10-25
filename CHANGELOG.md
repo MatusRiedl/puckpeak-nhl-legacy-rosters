@@ -3,6 +3,15 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.52.0 (2026-10-25)
+
+- **The Calendar shows your games again** in Be a GM and Season mode on the patched game: every game day has the
+  other team's logo and the Home / Away corner, for the NHL team and its AHL club. Press **Patch again** in the Game
+  patch tab once (game patch 0.26).
+- An update no longer stops with "Kraken has 49 players (max 40)" when NHL.com's player search puts a whole farm team
+  with its NHL club (Coachella Valley's players with Seattle). Such players join their NHL team only while it has
+  room; the rest stay with their club.
+
 ## 0.51.2 (2026-10-24)
 
 - An update no longer stops with "Kraken has 49 players (max 40)" when the roster lists a player twice on one of its

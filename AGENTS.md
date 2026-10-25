@@ -62,7 +62,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    copy of the savedata folder, or `tools/window_shot.py` (it makes a fake RPCS3).
 6. **No git commit or push, and nothing published, without the owner's explicit go-ahead.**
    The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters (0.6.0
-   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, 0.50.4 to 0.51.2 on 2026-10-24, each with the owner's go-ahead). Every further commit,
+   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, 0.50.4 to 0.51.2 on 2026-10-24, 0.52.0 on 2026-10-25, each with the owner's go-ahead). Every further commit,
    push or release needs the go-ahead again. Before pushing, check that no base roster (`work/`),
    picture pack (`private/packs/`, a zip in `legacy_roster/data/`), anything from `private/`, personal path or user name
    goes in, and that `python tools/clean_check.py` finds nothing.
@@ -188,6 +188,18 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+**Version 0.52.0 (2026-10-25, released with the owner's go-ahead; plan docs/plans/can-you-check-and-partitioned-kitten.md):**
+(1) **"Kraken has 49 players" again after 0.51.2**: online, `datasource.find_missing` looks up players NHL.com's roster
+lists leave out and gives each his NHL organisation, so a farm club's players come back with their parent (Coachella
+Valley's as `SEA`); `nhl_rosters` put them all on the team. `Builder.searched_room` (before `nhl_rosters`): a searched
+player a club league lists stays there, the rest join while the team holds fewer than `NHL_KEEP_ROOM`; `b.nhl_listed`
+is what the NHL step placed (verify gets it). tests/test_nhl_search.py (fails on the old code). Online export of the
+community roster on 2026-10-25: Seattle 26, every team <= 40. The tester's file was not seen.
+(2) **Calendar marks** (patch 0.26, year entry 0.9, docs/notes/lab-round-49.md): `GetTeamMatchIDByDate` (`0x4078b0`)
+gave no game for a year after the league year + 1, and the screen's year is 11 later with the patch: three words in
+`YEAR_LABELS` (`0x407954` / `0x407960` / `0x407964`). Played in lab round 49 (Be a GM: NHL and AHL views); players
+see "Patch again".
 
 **Version 0.51.2 (2026-10-24, released with the owner's go-ahead; plan docs/plans/can-you-check-and-partitioned-kitten.md):**
 also `gamepatch.future_fit` shrinks the next season's calendar table to `schedule.PATCH_ROWS` when the patched game saved

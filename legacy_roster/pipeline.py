@@ -573,7 +573,7 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     problems, info = [], {}
     if check:
         say("Checking the new roster")
-        problems, info = verify(out, Roster(src_bytes), data.nhl_players if NHL in steps else None, rebuilt,
+        problems, info = verify(out, Roster(src_bytes), getattr(b, 'nhl_listed', data.nhl_players) if NHL in steps else None, rebuilt,
                                 edited=getattr(b, 'edited', None), calendar=b.calendar,
                                 calendar_source=calendar_from, depth=b.joined_depth, money=money,
                                 deals=b.data.contracts if NHL in steps else None,

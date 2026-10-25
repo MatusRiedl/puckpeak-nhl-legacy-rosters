@@ -835,10 +835,32 @@ class Builder:
         self.contract_kept.update(joined)
         return len(joined)
 
+    def searched_room(self, players):
+        """NHL.com's roster lists plus the players its player search found for the save's NHL teams (datasource.
+        find_missing: injured, or playing in the minors: the search names a farm player's NHL organisation, Coachella
+        Valley's players 'SEA'). A searched player whom a club league lists plays there; the others join their team
+        while it holds fewer than NHL_KEEP_ROOM (a tester's roster had Seattle's farm on Seattle: "Kraken has 49
+        players"). The rest count as not on NHL.com's roster. Returns the players the NHL step places, in their order."""
+        search = lambda p: p.get('source') == 'player search'
+        size = Counter(p['team'] for p in players if not search(p))
+        out, left = [], 0
+        for p in players:
+            if search(p):
+                if (norm(p['first']), norm(p['last'])) in self.league_names or size[p['team']] >= self.NHL_KEEP_ROOM:
+                    left += 1
+                    continue
+                size[p['team']] += 1
+            out.append(p)
+        if left:
+            self.log.append(['ALL', 'summary', "players NHL.com's search puts with an NHL team who stay in the minors",
+                             left, ''])
+        return out
+
     def nhl_rosters(self):
         """Put every player of the official rosters on his team (steps 1-3 of the original)."""
         R, U = self.R, self.U
-        api = match(R, [dict(p) for p in self.data.nhl_players])
+        self.nhl_listed = self.searched_room(self.data.nhl_players)
+        api = match(R, [dict(p) for p in self.nhl_listed])
         self.api = api
         self.api_rows = {p['row'] for p in api if p['row'] is not None}
         self.api_country = {p['row']: p.get('country') for p in api if p['row'] is not None}
