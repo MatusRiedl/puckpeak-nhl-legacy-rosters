@@ -24,6 +24,17 @@ CONFIG = "\n".join([
     ""])
 
 
+def test_the_blit_box_is_ticked_when_the_resolution_scale_is_not_100():
+    cfg = "Video:\n  Disable Blit Engine Upscaling: false\n  Renderer: Vulkan\n  Resolution Scale: 300\nVFS:\n  x: 1\n"
+    out = onlinecfg.blit_config(cfg)
+    assert "  Disable Blit Engine Upscaling: true\n" in out and "Resolution Scale: 300" in out and out.endswith("VFS:\n  x: 1\n")
+    assert onlinecfg.blit_config(out) == out
+    assert onlinecfg.blit_config(cfg.replace('300', '100')) == cfg.replace('300', '100')       # the default scale: as it is
+    assert "Disable Blit Engine Upscaling: true" in onlinecfg.blit_config("Video:\n  Resolution Scale: 200\n")   # a missing key is added
+    assert onlinecfg.blit_config("Audio:\n  Master Volume: 100\n") == "Audio:\n  Master Volume: 100\n"
+    assert "\r\n" in onlinecfg.blit_config(cfg.replace("\n", "\r\n"))
+
+
 def _rpcs3(tmp_path, config=CONFIG, custom=None, rpcn="Version: 2\nHost: np.rpcs3.net\nNPID: GuestPlayer\nPassword: secret\n"):
     root = tmp_path / 'rpcs3'
     (root / 'config' / 'custom_configs').mkdir(parents=True)

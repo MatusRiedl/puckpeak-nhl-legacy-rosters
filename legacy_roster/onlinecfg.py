@@ -94,6 +94,34 @@ def net_config(text, address):
     return newline.join(lines) + (newline if text.endswith('\n') or not text else '')
 
 
+def blit_config(text):
+    """`text` (a config.yml) with "Disable Blit Engine Upscaling" ticked when the resolution scale is not 100 %: RPCS3 has a
+    bug that makes matches load forever at another scale unless it is on (lab 2026-10-26: NA at 300 % stalled with the box off
+    and loaded in 45 s with it on; the community says the same). At 100 % or with no scale named, nothing changes."""
+    newline = '\r\n' if '\r\n' in text else '\n'
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.rstrip() == 'Video:'), None)
+    if start is None:
+        return text
+    end = start + 1
+    while end < len(lines) and (lines[end].startswith((' ', '\t')) or not lines[end].strip()):
+        end += 1
+    scale = blit = None
+    for i in range(start + 1, end):
+        key, sep, value = lines[i].partition(':')
+        if sep and key == '  Resolution Scale':
+            scale = i
+        elif sep and key == '  Disable Blit Engine Upscaling':
+            blit = i
+    if scale is None or lines[scale].partition(':')[2].strip().strip('"\'') == '100':
+        return text
+    if blit is None:
+        lines.insert(scale + 1, '  Disable Blit Engine Upscaling: true')
+    else:
+        lines[blit] = '  Disable Blit Engine Upscaling: true'
+    return newline.join(lines) + (newline if text.endswith('\n') else '')
+
+
 def config_dir(rpcs3):
     """Where the app's own config goes: the program's folder, except for the Flatpak RPCS3, which cannot see it: there it goes
     into the Flatpak's own folder (the same path inside and outside the sandbox)."""
@@ -123,7 +151,7 @@ def write_config(rpcs3, title, address):
     """Write the app's own config for booting `title` online (the player's config for the game with the Net block set) to
     online/config_<TITLE>.yml in the program's folder. Returns its path. The player's own files are not touched."""
     path = os.path.join(config_dir(rpcs3), f'config_{title}.yml')
-    text = net_config(base_config(rpcs3, title), address)
+    text = blit_config(net_config(base_config(rpcs3, title), address))
     with open(path + '.tmp', 'w', encoding='utf-8', newline='') as f:
         f.write(text)
     os.replace(path + '.tmp', path)

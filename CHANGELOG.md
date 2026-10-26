@@ -14,6 +14,8 @@ What changed in each version, for players. Developers: details in [AGENTS.md](AG
   folder goes, which patch entries to tick in RPCS3, how to load the roster and how to undo it. A roster file (SYS-DATA)
   still works when you have no RPCS3; pictures, the patch and the game's own roster need your copy of the game.
   Command line: `export-files`.
+- **Play online: no more endless loading** when RPCS3's resolution scale is not 100 %. The program now ticks RPCS3's
+  "Disable Blit Engine Upscaling" in its own online config (your own RPCS3 settings are not touched).
 
 ## 0.70.0 (2026-10-26, test version)
 
