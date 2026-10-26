@@ -607,7 +607,7 @@ def _team_lines(b, slot, saved):
         return
     slots = {s: entry[w] for s, w in saved.get('slots', {}).items() if s in lines.S}
     letters = {entry[w]: l for w, l in saved.get('letters', {}).items() if l in ('C', 'A')}
-    problems = lines.check_lineup(slots, letters, pos, name, nhl=slot in L.NHL_PRIMARY)
+    problems = lines.check_lineup(slots, letters, pos, name, nhl=slot in L.NHL_PRIMARY, repeats=True)
     if problems:
         b.log.append(['edits', 'edit skipped', team, f"your lines: {problems[0]} The update's lines are used", ''])
         return

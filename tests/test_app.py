@@ -689,7 +689,7 @@ def test_equipment_choices_go_to_the_player_and_the_team_and_can_be_taken_back(a
     assert not ed.edits and 'equipment' not in (ed.teams.get('0') or {}) and eq.snapshot() is None
 
 
-def test_the_lines_window_swaps_places_checks_the_rules_and_keeps_the_lines(app):
+def test_the_lines_window_moves_only_the_picked_place_checks_the_rules_and_keeps_the_lines(app):
     from legacy_roster.app.lines import LinesController
     host, _upd, ed, _uni, _sd = app
     ln = LinesController(host, ed)
@@ -702,8 +702,15 @@ def test_the_lines_window_swaps_places_checks_the_rules_and_keeps_the_lines(app)
     assert s['problems'] == [] and [t['id'] for t in s['tabs']][0] == 'even' and not s['mine']
     l1, l2 = ln.slots['l1lw'], ln.slots['l2lw']
     ln.pick_slot('l1lw')
-    ln.place(l2)                                    # he plays in the lines already: the two swap
-    assert (ln.slots['l1lw'], ln.slots['l2lw']) == (l2, l1)
+    ln.place(l2)                                    # he plays in the lines already: nobody else moves, he is there twice
+    assert (ln.slots['l1lw'], ln.slots['l2lw']) == (l2, l2)
+    assert any('is twice in lines' in p for p in ln.snapshot()['problems'])
+    ln.pick_slot('l2lw')
+    ln.place(l1)                                    # the player gives the other place to the one who left: fixed
+    assert (ln.slots['l1lw'], ln.slots['l2lw']) == (l2, l1) and ln.snapshot()['problems'] == []
+    ln.pick_slot('pp2c')                            # a special-team group may use one player twice
+    ln.place(ln.slots['pp1c'])
+    assert ln.slots['pp2c'] == ln.slots['pp1c'] and ln.snapshot()['problems'] == []
     dressed = {ln.slots[x] for x in ln.slots if x[0] in 'lg' and not x.startswith('pk')}
     scratch = next((w for w, p in ln.players.items() if w not in dressed and p['pos'] != 'G'), None)
     if scratch is not None:                         # a scratch comes in: only the picked place changes (no cascade)
@@ -734,6 +741,8 @@ def test_the_lines_window_swaps_places_checks_the_rules_and_keeps_the_lines(app)
     ln.open()                                       # opened again: the roster's lines
     ln.pick_slot('l1lw')
     ln.place(l2)
+    ln.pick_slot('l2lw')
+    ln.place(l1)
     ln.set_letter(l2, 'C')
     assert list(ln.letters.values()).count('C') == 1 and ln.letters[l2] == 'C'
     assert ln.snapshot()['can_apply']
@@ -1313,9 +1322,9 @@ def test_lines_changed_but_not_applied_stay_with_their_team(app):
     assert next(r for r in ed.rail_view()['rows'] if r['id'] == edm)['dirty']
     api.tab('roster')
     api.rail_team(edm)
-    api.tab('lines')                                # back: the swap is still there, not applied
+    api.tab('lines')                                # back: the change is still there, not applied
     s = ln.snapshot()
-    assert s['touched'] and (ln.slots['l1lw'], ln.slots['l2lw']) == (l2, l1)
+    assert s['touched'] and (ln.slots['l1lw'], ln.slots['l2lw']) == (l2, l2) and l1 != l2
     assert 'lines' not in (ed.teams.get(str(edm)) or {})
 
 

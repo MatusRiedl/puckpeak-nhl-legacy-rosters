@@ -238,14 +238,17 @@ def lineup(b, team):
     return slots, letters
 
 
-def check_lineup(slots, letters, pos, name, nhl=True):
+def check_lineup(slots, letters, pos, name, nhl=True, repeats=False):
     """What is wrong with a team's lines as plain sentences ([] when the game can play them).
 
     `slots` {slot name: player}, `letters` {player: 'C' | 'A'}, `pos` {player on the team: 'C' 'L' 'R' 'D' 'G'},
     `name` {player: his name}. The rules are verify.py's and those every team of the game's own roster keeps: every
     slot has a player of the team, goalies only in goal and only goalies there, nobody twice in one group, the 20 of
     the four lines, three pairs and two goalies dress (with at least 6 defencemen) and only they play on special teams,
-    letters only on skaters of the team: one captain at most, and on an NHL team (`nhl`) three letters in all."""
+    letters only on skaters of the team: one captain at most, and on an NHL team (`nhl`) three letters in all.
+    `repeats`: the player's own lines may use one player in several places of a special-team group (power play,
+    penalty kill, overtime, shootout, extra attackers); the four lines, three pairs and two goalies still need 20
+    different players, the game dresses 20."""
     problems = []
     for group, names in GROUPS:
         seen = {}
@@ -258,7 +261,7 @@ def check_lineup(slots, letters, pos, name, nhl=True):
             elif (pos[who] == 'G') != (slot in ('g1', 'g2')):
                 problems.append(f"{name[who]} is a goalie: he can only play in goal." if pos[who] == 'G' else
                                 f"{slot_label(slot)}: only a goalie can play in goal.")
-            elif who in seen:
+            elif who in seen and not (repeats and group not in ('Lines', 'Goalies')):
                 problems.append(f"{name[who]} is twice in {group.lower()} ({slot_label(seen[who])}, {slot_label(slot)}).")
             else:
                 seen[who] = slot

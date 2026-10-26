@@ -21,6 +21,12 @@ What changed in each version, for players. Developers: details in [AGENTS.md](AG
 
 Also in this version (unreleased before):
 
+- **Lines: picking a player never moves anybody else.** Before, picking a player who already played in another place of
+  the same kind (a line, a pair) swapped the two, so fixing one spot sent him back to the other: a circle. Now only the
+  picked spot changes; a player left in two places is named in red until you give one of them to someone else. On the
+  power play, penalty kill, overtime, shootout and extra attackers one player may now hold several places. The four lines,
+  three pairs and two goalies still need 20 different players (the game dresses 20).
+
 - **Linux: the program starts RPCS3 for you** whether it is the `rpcs3` program, an AppImage or the Flatpak, finds RPCS3's
   log there, and the RPCS3 picker takes the program or its folder. Not tried on a real Linux PC yet.
 - **"Export files to a folder" (Windows, Linux, Flatpak, Mac).** It replaces "Export only SYS-DATA roster". Tick it in Setup

@@ -1,9 +1,8 @@
 """The Roster editor's "Lines" window without a window toolkit: one team's four lines, three pairs and two goalies,
 the power play, the penalty kill, overtime, the shootout, the extra attackers, and who wears the C and the A.
 
-The player clicks a place, then a player of the team: he goes there (swapping with the one who had it when he already
-plays in that group of units; a scratched player who comes into the lineup also takes over the special-team places of
-the one he replaces). The game's rules are checked as he goes (lines.check_lineup); Apply keeps the lines in edits.json
+The player clicks a place, then a player of the team: he goes there and nobody else moves (a scratched player who comes
+into the lineup can also take over the special-team places of the one he replaces). The game's rules are checked as he goes (lines.check_lineup); Apply keeps the lines in edits.json
 (`teams[slot]["lines"]`), and they go in after every update (edits.apply_teams) while they still fit the team.
 """
 import threading
@@ -43,19 +42,6 @@ def _short(slot):
     return LN.slot_label(slot).rsplit(' ', 1)[1]
 
 
-def _group_of(slot):
-    return next(names for _, names in LN.GROUPS if slot in names)
-
-
-def _kind(slot):
-    """The kind of place: goal, defence, forward ('S': a shooter or extra attacker, any skater)."""
-    if slot in ('g1', 'g2'):
-        return 'G'
-    if slot[0] in 'sx':
-        return 'S'
-    return 'D' if slot[-2:] in ('ld', 'rd') else 'F'
-
-
 class LinesController:
     def __init__(self, host, editor):
         self.host, self.editor = host, editor
@@ -64,7 +50,7 @@ class LinesController:
         self.team = None                # the team shown (None: the window is closed)
         self.tab = 'even'
         self.slots, self.letters = {}, {}       # {slot: person key}, {person key: 'C' | 'A'}
-        self.players = {}               # person key -> {'name', 'pos', 'ovr', 'num'}
+        self.players = {}               # person key -> {'name', 'pos', 'ovr', 'num', 'shoots' (L / R)}
         self.picked = None              # the place clicked, waiting for a player
         self.replaced = None            # (the player who left a dressed place, the one who took it): `carry`
         self.touched = False
@@ -118,7 +104,7 @@ class LinesController:
             p = snap.players.get(R.link_to_pid.get(U.get(e, 'TWSX')))
             if p is None:
                 continue
-            players[p.who] = {'name': p.name, 'pos': p.pos, 'ovr': p.ovr, 'num': U.get(e, 'tRVs')}
+            players[p.who] = {'name': p.name, 'pos': p.pos, 'ovr': p.ovr, 'num': U.get(e, 'tRVs'), 'shoots': p.shoots}
             for name, tag in LN.S.items():
                 if U.get(e, tag):
                     slots.setdefault(name, p.who)
@@ -214,18 +200,15 @@ class LinesController:
             self.changed()
 
     def place(self, who):
-        """The player `who` goes to the place clicked, and nowhere else changes: when he already plays in this group in a
-        place of the same kind (a forward line, a pair, goal) the two swap; in another kind of place the player stays
-        where he was and the checks say he is there twice. The one he replaces keeps his special-team places (they are
-        not dressed any more: `carry` moves them to the new player when the player asks)."""
+        """The player `who` goes to the place clicked, and nowhere else changes: a player already in another place stays
+        there too (the checks say he is there twice until the player gives that place to somebody else). The one he
+        replaces keeps his special-team places (they are not dressed any more: `carry` moves them to the new player
+        when the player asks)."""
         with self.lock:
             slot = self.picked
             if self.team is None or slot is None or who not in self.players:
                 return
             had = self.slots.get(slot)
-            mine = next((s for s in _group_of(slot) if s != slot and self.slots.get(s) == who), None)
-            if mine is not None and _kind(mine) == _kind(slot):
-                self.slots[mine] = had
             self.slots[slot] = who          # (a scratched captain keeps his letter: the game allows it)
             self.replaced = (had, who) if slot in DRESSED and had not in (None, who) else None
             self.picked = None
@@ -266,7 +249,7 @@ class LinesController:
     def _problems(self):
         pos = {w: p['pos'] for w, p in self.players.items()}
         name = {w: p['name'] for w, p in self.players.items()}
-        return LN.check_lineup(self.slots, self.letters, pos, name, nhl=self.team in L.NHL_PRIMARY)
+        return LN.check_lineup(self.slots, self.letters, pos, name, nhl=self.team in L.NHL_PRIMARY, repeats=True)
 
     def apply(self):
         ed = self.editor

@@ -63,6 +63,9 @@ def test_the_rules_name_what_is_wrong():
     assert lines.check_lineup(slots, letters, pos, name) == []
     assert any('goalie' in p for p in lines.check_lineup(dict(slots, l1c='g0'), letters, pos, name))
     assert any('twice' in p for p in lines.check_lineup(dict(slots, l2c='f0'), letters, pos, name))
+    assert any('twice' in p for p in lines.check_lineup(dict(slots, l2c='f0'), letters, pos, name, repeats=True))
+    assert lines.check_lineup(dict(slots, pp2c=slots['pp1c'], s2=slots['s1']), letters, pos, name, repeats=True) == []
+    assert any('twice' in p for p in lines.check_lineup(dict(slots, pp2c=slots['pp1c']), letters, pos, name))
     assert any('special teams' in p for p in lines.check_lineup(dict(slots, s1='x'), letters, pos, name))
     assert any('captain' in p for p in lines.check_lineup(slots, {'f0': 'C', 'f1': 'C', 'f2': 'A'}, pos, name))
     assert any('three letters' in p for p in lines.check_lineup(slots, {'f0': 'C'}, pos, name))

@@ -651,7 +651,7 @@ export function JerseysTab({ u }) {
 
 // --- Lines: click a place, then a player (app/lines.py) ----------------------------------------------------
 function LnPlayer({ p }) {
-  return p ? html`<span class="ln-who"><b>${p.name}</b><span class="faint">${p.pos} · ${p.ovr ?? '-'}</span></span>`
+  return p ? html`<span class="ln-who"><b>${p.name}</b><span class="faint">${p.pos} · ${p.ovr ?? '-'}${p.pos !== 'G' && p.shoots ? ' · shoots ' + p.shoots : ''}</span></span>`
     : html`<span class="faint">empty</span>`;
 }
 
