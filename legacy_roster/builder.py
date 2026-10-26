@@ -34,7 +34,7 @@ class Data:
 
     def __init__(self, nhl_players=None, ratings_list=None, iihf=None, season_year=2026, leagues=None, nhl_logos=None,
                  nhl_last=None, drafts=None, schedule=None, calendar=None, contracts=None, ratings_full=None,
-                 league_schedules=None, real_lines=None, club_lines=None):
+                 league_schedules=None, real_lines=None, club_lines=None, equipment=None):
         self.nhl_players = nhl_players or []   # flat list, see datasource.flatten_nhl()
         self.ratings_list = ratings_list           # [{'name','team','position','birth','ovr','attrs'}] or None
         self.ratings_full = ratings_full                # the full ratings (data pack part `ratings_full`), with the ratings step
@@ -52,6 +52,7 @@ class Data:
         self.contracts = contracts or []       # real 2026-27 NHL contracts (contracts.py), only with the NHL step
         self.club_lines = club_lines or {}      # club slot (str) -> {'slots': {slot name: [first, last, birth year]}} (data pack part `club_lines`)
         self.real_lines = real_lines or {}     # NHL team code -> {'slots': {slot name: NHL.com id}} (data pack part `lines`)
+        self.equipment = equipment             # real sock tucks, pant lengths, neck guards (data pack part `equipment`, datasource.equipment_part)
 
 
 LINK_LIMIT = 16000      # player link ids from here up are the game's own
@@ -137,6 +138,41 @@ NHL_COLOUR_HEX = ("cf4520 89734c", "041e41 004a98", "ffb81c 010101", "003087 ffb
 NHL_COLOURS = tuple(tuple(tuple(int(h[i:i + 2], 16) for i in (0, 2, 4)) for h in pair.split()) for pair in NHL_COLOUR_HEX)
 NHL_CITIES = {22: "Salt Lake, UT", 30: "Seattle, WA", 31: "Las Vegas, NV"}      # the cities the rosters still get wrong
 NHL_LOOK = {slot: (NHL_ARENAS[slot], city) + NHL_COLOURS[slot] for slot, city in NHL_CITIES.items()}
+# The AHL clubs' arenas by slot (name, city, capacity), as the clubs play now (docs/notes/equipment-accuracy.md section 5).
+# The rosters name the buildings of the 2014 clubs of those slots (Utica's Comets in Albany, Laval's Rocket in St. John's).
+# Left out because the roster is right: Charlotte, Grand Rapids, Hershey, Lehigh Valley, Wilkes-Barre/Scranton, and Manitoba,
+# who share Winnipeg's row. Coachella Valley (234) and Henderson (235) borrow rows of other clubs and get their own;
+# the Barracuda (54) leave the Sharks' row. Two of the names differ from the database's on purpose: Rosemont, not Chicago;
+# Pechanga Arena for San Diego; Hamilton's TD Coliseum (the database holds a placeholder).
+AHL_ARENAS = {
+    32: ("Utica Memorial Auditorium", "Utica, NY", 4000),
+    33: ("Dignity Health Arena", "Bakersfield, CA", 13399),
+    34: ("CAA Arena", "Belleville, ON", 3257),
+    35: ("TD Coliseum", "Hamilton, ON", 17383),
+    37: ("Blue Arena", "Loveland, CO", 5289),
+    39: ("PeoplesBank Arena", "Hartford, CT", 9801),
+    41: ("Casey's Center", "Des Moines, IA", 8851),
+    42: ("Rocket Mortgage FieldHouse", "Cleveland, OH", 17000),
+    45: ("UW-Milwaukee Panther Arena", "Milwaukee, WI", 9652),
+    46: ("Toyota Arena", "Ontario, CA", 9736),
+    47: ("MassMutual Center", "Springfield, MA", 6679),
+    48: ("Amica Mutual Pavilion", "Providence, RI", 14500),
+    49: ("Blue Cross Arena at the War Memorial", "Rochester, NY", 11200),
+    50: ("BMO Center", "Rockford, IL", 8500),
+    51: ("Place Bell", "Laval, QC", 6250),
+    52: ("Allstate Arena", "Rosemont, IL", 16692),
+    53: ("Pechanga Arena San Diego", "San Diego, CA", 12920),
+    54: ("Tech CU Arena", "San Jose, CA", 4200),
+    55: ("Tucson Arena", "Tucson, AZ", 7440),
+    56: ("Scotiabank Saddledome™", "Calgary, AB", 19289),
+    57: ("Upstate Medical University Arena", "Syracuse, NY", 6230),
+    58: ("H-E-B Center", "Cedar Park, TX", 6800),
+    59: ("Coca-Cola Coliseum", "Toronto, ON", 8295),
+    60: ("Rogers Forum", "Abbotsford, BC", 7000),
+    234: ("Acrisure Arena", "Palm Desert, CA", 9918),
+    235: ("Lee's Family Forum", "Henderson, NV", 9500),
+}
+AHL_ALONE = {234, 235}      # rows shared with a club or a copy that stays where it was (Colorado's AllState Arena, Seattle's copy)
 # their helmets, gloves and goalie gear (Builder.nhl_gear): a coloured part becomes the first colour here, a dark one the
 # second; white and black stay (Utah: black, Seattle: deep sea blue, Vegas: gold and steel grey)
 NHL_GEAR = {22: ((32, 32, 32), (32, 32, 32)), 30: ((0, 35, 63), (0, 35, 63)), 31: ((238, 192, 84), (60, 59, 65))}
@@ -196,6 +232,7 @@ class Builder:
         # the full ratings (rate_full): first, before the ratings list and the estimate
         self.full_ratings = ratings.full_index(data.ratings_full) if data.ratings_full else None
         self.full_rated = set()    # pids the full ratings were written for in this run
+        self.real_gear = None      # (first, last) -> [(birth, entry)] of the real equipment (real_equipment), made when first needed
         self.full_quality = {}     # pid -> the full ratings' overall on the level scale (ratings.overall_level)
         self.rated_by = {}          # pid -> where this run took his ratings from: 'full', 'list', 'estimate'
         self.full_dates = 0        # records given the full ratings' birthdate (the DEL gives only an age)
@@ -515,6 +552,12 @@ class Builder:
         self.full_quality.pop(pid, None)
         self.rated_by.pop(pid, None)
         self.full_rated.discard(pid)
+        if pos != 4:        # the record's last wearer's tucks, tape and visor go: a new player starts with Edit Pro's plain choices
+            from . import equipment
+            row = self.equipment_row(prow)
+            if row is not None:
+                table = self.R.f[equipment.TABLE]
+                equipment.write(table, row, equipment.clean(equipment.NEW_PLAYER, table)[0])
         return prow
 
     def make_room(self, pos, who, target=None):
@@ -1410,15 +1453,16 @@ class Builder:
                     for f in self.flags + ['jZSh', 'lcCm', 'tRVs', 'sFgQ']:
                         U.set(e, f, U.get(src, f))
 
-    def set_arena(self, slot, name, city=None, alone=False):
-        """The arena name (and `city`) of a team, on the arena row it uses. A row other teams use too (a custom copy of an
-        NHL team, a farm club in the same building) is renamed for all of them; a row another NHL team uses (Seattle and
-        Vegas started on one), or with `alone` any team outside the slot's own copies, is copied first while the table has
-        room (the copy keeps the arena's art, so the ice and the boards stay). False when that needed room the table has
-        not; True when something was written; None when the row already said so."""
+    def set_arena(self, slot, name, city=None, alone=False, capacity=None):
+        """The arena name (and `city`, and `capacity`) of a team, on the arena row it uses. A row other teams use too (a
+        custom copy of an NHL team, a farm club in the same building) is renamed for all of them; a row another NHL team
+        uses (Seattle and Vegas started on one), or with `alone` any team outside the slot's own copies, is copied first
+        while the table has room (the copy keeps the arena's art, so the ice and the boards stay). False when that needed
+        room the table has not; True when something was written; None when the row already said so."""
         T, A = self.R.T, self.R.f['OEtS']
         row = T.get(slot, 'arenaid')
-        if A.get(row, 'arenaname') == name and (city is None or A.get(row, 'cityname') == city):
+        if (A.get(row, 'arenaname') == name and (city is None or A.get(row, 'cityname') == city)
+                and (capacity is None or A.get(row, 'maxattendance') == capacity)):
             return None
         prime = L.MIRROR_OF.get(slot, slot)
         family = {prime} | set(L.MIRRORS.get(prime, ()))
@@ -1432,7 +1476,19 @@ class Builder:
         A.set(row, 'arenaname', name)
         if city is not None:
             A.set(row, 'cityname', city)
+        if capacity is not None:
+            A.set(row, 'maxattendance', capacity)
         return True
+
+    def ahl_identity(self):
+        """The arena of every AHL club in AHL_ARENAS (and Coachella Valley's and Henderson's) with its city and capacity. A
+        club in a building of its own gets a row of its own while the table has room; the clubs left out of the table
+        already name the right building (or share their NHL team's). Returns how many clubs changed; a second run
+        changes none; a club that needed a row the table has not keeps the shared one."""
+        done = 0
+        for slot, (name, city, capacity) in AHL_ARENAS.items():
+            done += bool(self.set_arena(slot, name, city, alone=slot in AHL_ALONE, capacity=capacity))
+        return done
 
     def nhl_identity(self):
         """The arena name of every NHL team (NHL_ARENAS), the city of Utah, Seattle and Vegas (NHL_CITIES) and every NHL
@@ -2422,6 +2478,45 @@ class Builder:
         so a second run changes nothing."""
         from . import sticks
         return max(colour) - min(colour) >= 40 or sticks.hue_of(colour) is not None
+
+    def real_equipment(self):
+        """Real sock tucks, pant lengths, neck guards and tape for players the data pack's `equipment` part has (equipment.real_values):
+        found from the record's own full name and birthdate alone (a name only is never enough: namesakes), so the next run
+        finds the same players. Models, shoulder pads, jersey tuck and visor are never touched. Runs before the player's
+        own choices (edits.apply), which win. Returns the number of players changed."""
+        from . import equipment
+        part = self.data.equipment
+        if not part:
+            return 0
+        if self.real_gear is None:
+            self.real_gear = {}
+            for entry in part['players']:
+                self.real_gear.setdefault((norm(entry['first']), norm(entry['last'])), []).append((tuple(entry['birth']), entry))
+        P = self.P
+        changed = 0
+        for prow in range(P.cur_rec):
+            first, last = P.get(prow, 'PedH'), P.get(prow, 'RMbQ')
+            if not first or not last:
+                continue
+            shown = P.get(prow, 'dnFq') + 1910
+            goalie = P.get(prow, 'aljv') == 4
+            found = None
+            for year in ((shown, shown - 10) if self.stale_years else (shown,)):
+                birth = (year, P.get(prow, 'pLKJ') + 1, P.get(prow, 'iwsK') + 1)
+                hits = [e for b, e in self.real_gear.get((norm(first), norm(last)), ()) if b == birth and bool(e.get('goalie')) == goalie]
+                if len(hits) == 1:
+                    found = hits[0]
+                    break
+            if found is None:
+                continue
+            kind = 'goalie' if goalie else 'skater'
+            row = self.equipment_row(prow, kind)
+            if row is None:
+                continue
+            table = self.R.f[equipment.KINDS[kind][0]]
+            ok, _bad = equipment.clean(equipment.real_values(found, goalie), table, kind)
+            changed += bool(equipment.write(table, row, ok, kind))
+        return changed
 
     def goalie_gear(self, mend=True):
         """A goalie who changed club (or is new: a record taken over) wears his old club's colours:

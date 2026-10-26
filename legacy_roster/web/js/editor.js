@@ -422,7 +422,9 @@ function EquipmentWindow({ q }) {
       <${Button} onClick=${() => call('equipment_close')}>Close<//>`}>
     <p class="small-note">Pick what the player uses. The game shows it in a new roster, or after "Save to this roster". The
       pictures are the game's own; a stick or helmet of 2026 is the nearest model the game has. Tape, helmet, visor and the tucks
-      can also be set for a whole team.</p>
+      can also be set for a whole team: "Apply to the whole team" writes every skater of the team who has no choice of his own.
+      Real sock tucks, pants and tape of NHL players, and neck guards of goalies, come from the program's data with every update;
+      what you pick here always wins over them.</p>
     ${q.note && html`<div class="note warn">${q.note}</div>`}
     ${q.goalie && html`<div class="eq-row mask-pic">
       <div class="t">Own picture on the mask${q.mask_picture ? html` <span class="pill">changed</span>` : ''}</div>

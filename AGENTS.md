@@ -192,6 +192,20 @@ wording (`progress.py`).
 
 ## Current state
 
+**Version 0.75.0 (2026-10-26, built, committed locally with the owner's go, not pushed; plan docs/plans/plan-the-debugging-and-magical-nest.md):**
+(1) **Real equipment** (`'real equipment'` experimental; notes docs/notes/equipment-accuracy.md, equipment-labels.md): lab round 51 named every
+number in the game's Edit Player menu (sock tuck 0 Full / 1 None / 2 Front / 3 Back, visor 0 Straight / 1 Curved / 2 None, tint, pads Small / Big,
+goalie neck Off / On; `equipment.OPTIONS`, `VISOR_FILE` for the menu pictures; the old window had the sock words in the wrong order). Data pack part
+`equipment` (private maker `private/equipment_db.py`, `--refresh equipment`, read by `datasource.equipment_part`, raw numbers: sock, pants, tape class,
+neck guard; the NHL's and the AHL's curated rows, 1,137 players; never a model number), `Data.equipment`, `Builder.real_equipment()` (full name +
+birthdate + goalie / skater, exactly one entry; `equipment.REAL` / `real_values` copy sock, pants 0/1, tape black 0 / white 1, neck), run in
+`pipeline.build` before the player's own edits, which win. `Builder.take_record` gives a new player `equipment.NEW_PLAYER` (not the last holder's gear).
+Read back on the community roster: 715 sock tucks, 143 pants, 425 tape, 51 neck guards changed, 0 other fields, second build identical.
+Players get it only after `tools/publish_packs.py` has put the new data pack on the server (owner's go). tests/test_real_equipment.py,
+test_equipment_data.py, test_equipmenttest.py. (2) **AHL arenas** (`builder.AHL_ARENAS`, `ahl_identity`, runs with the AHL step; Coachella Valley,
+Henderson and the Barracuda get rows of their own: 191 of 192 arena rows used). Not seen in the game yet: the new look of sock tucks on the ice, the AHL
+arena captions. Custom match dropped (owner). Not pushed.
+Below, 0.70.0 as it stood:
 **Version 0.70.0 (2026-10-26, committed locally with the owner's go, not pushed; plan docs/plans/plan-the-debugging-and-magical-nest.md, PLAN.md top):**
 the owner's tester list `Features`. 32 NHL arenas + colours (`builder.NHL_LOOK`, `nhl_identity` on every roster), the Jerseys tab's colour / arena edits
 written into `ttOk` / `OEtS` (`edits._team_colours_arena`; `'team colours and arenas'` experimental, notes docs/notes/arenas-colours.md), Lines `place`

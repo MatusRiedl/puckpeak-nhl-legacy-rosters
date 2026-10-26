@@ -272,6 +272,19 @@ def usable(pack):
     return isinstance(pack, dict) and isinstance(pack.get('format'), int) and OLDEST_FORMAT <= pack['format'] <= PACK_FORMAT
 
 
+EQUIPMENT_FORMAT = 1
+
+
+def equipment_part(pack):
+    """The pack's real-equipment part (`equipment`: {'format', 'count', 'values': 'raw', 'players': [{'first', 'last',
+    'birth': [y, m, d], 'pos', and, left out when at the default: 'sock', 'pants', 'neck', 'tape' ('black' | 'white'),
+    'goalie'}]}, keyed like `ratings_full`) or None when the pack has none or one in a layout this program does not know."""
+    part = (pack or {}).get('equipment')
+    if isinstance(part, dict) and part.get('format') == EQUIPMENT_FORMAT and part.get('values') == 'raw' and part.get('players'):
+        return part
+    return None
+
+
 def load_pack(progress=None, offline=False, bundled=None):
     """The newest data pack available: downloaded if a newer one is published, else the cached
     download, else the copy shipped with the program. Packs made for a newer program are skipped."""
@@ -334,6 +347,7 @@ def gather(R, steps, pack, progress=None, offline=False, fresh=False):
                 nhl_last=pack.get('nhl_last') if pipeline.NHL in steps else None,
                 contracts=pack.get('contracts') if pipeline.NHL in steps else None,
                 real_lines=pack.get('lines') if pipeline.NHL in steps else None,
+                equipment=equipment_part(pack) if pipeline.NHL in steps else None,
                 club_lines=pack.get('club_lines') if any(k in steps for k in pack.get('leagues', {})) else None,
                 drafts=pack.get('drafts'),
                 schedule=pack.get('schedule') if pipeline.SCHEDULE in steps else None,

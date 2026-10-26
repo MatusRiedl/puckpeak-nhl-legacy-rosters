@@ -48,9 +48,34 @@ MASK_TYPE = 'masktype'
 KINDS = {'skater': (TABLE, CODE, CHOICES), 'goalie': (GOALIE_TABLE, GOALIE_CODE, GOALIE_CHOICES)}
 # the choices that are the same for a whole team's look (the editor offers "same for the whole team")
 TEAM_WIDE = ('tape', 'helmet', 'visor', 'visor_tint', 'jersey_tuck', 'sock_tuck', 'shoulder_pads', 'pant_length')
-# what a new player gets, as in the game's Edit Pro > Customization (visor none, small shoulder pads, short pants, no tucks,
-# white tape); the numbers of the pads and pants are to be checked in the game
+# what a new player gets: Edit Pro's plain choices (a straight visor, small shoulder pads, short pants, socks tucked in
+# (Full), no jersey tuck, white tape). The words of every number: docs/notes/equipment-labels.md (lab round 51)
 NEW_PLAYER = {'visor': 0, 'visor_tint': 0, 'shoulder_pads': 0, 'pant_length': 0, 'jersey_tuck': 0, 'sock_tuck': 0, 'tape': 1}
+
+# Real equipment (data pack part `equipment`, Builder.real_equipment): the part's raw number -> this game's number, per
+# choice. Only what the lab named (docs/notes/equipment-labels.md); the part's model numbers are never used (the numbering
+# differs). A choice with no table here is not written.
+REAL = {
+    'sock_tuck': {0: 0, 1: 1, 2: 2, 3: 3},
+    'pant_length': {0: 0, 1: 1},
+    'neck': {0: 0, 1: 1},
+    'tape': {'black': 0, 'white': 1},
+}
+
+
+def real_values(entry, goalie=False):
+    """{choice: this game's number} for one entry of the data pack's `equipment` part: a skater's sock tuck, pant length and tape,
+    a goalie's neck guard and tape. A number the part leaves out is at the default (0); an unknown tape class
+    (neither black nor white) is left alone."""
+    out = {}
+    if goalie:
+        out['neck'] = REAL['neck'].get(entry.get('neck', 0))
+    else:
+        out['sock_tuck'] = REAL['sock_tuck'].get(entry.get('sock', 0))
+        out['pant_length'] = REAL['pant_length'].get(entry.get('pants', 0))
+    if entry.get('tape') in REAL['tape']:
+        out['tape'] = REAL['tape'][entry['tape']]
+    return {c: n for c, n in out.items() if n is not None}
 
 
 def tag(choice, kind='skater'):
@@ -106,9 +131,12 @@ def write(table, row, values, kind='skater'):
 
 # --- what the window shows ----------------------------------------------------------------------------------------
 # The choices with a menu picture on the game's disc (cache.big): choice -> (folder, file prefix, shift of the id).
-# The picture of visor type 1 is visor2.big (visor1.big is the "none" sign).
+# The pictures of the visor types are not in order: VISOR_FILE.
 MENU = {'stick': ('sticks', 'stick', 0), 'helmet': ('helmet', 'helmet', 0), 'gloves': ('gloves', 'gloves', 0),
-        'skates': ('skates', 'skate', 0), 'visor': ('visor', 'visor', 1)}
+        'skates': ('skates', 'skate', 0), 'visor': ('visor', 'visor', 0)}
+# visor type -> number of its picture file: visor2.big shows the straight visor, visor3.big the curved one, visor1.big
+# is the "none" sign (lab round 51)
+VISOR_FILE = {0: 2, 1: 3, 2: 1}
 MENU_ROOT = 'fe/ion/artassets/createplayer'
 
 
@@ -118,29 +146,30 @@ GOALIE_MENU = {'stick': ('goaliestick', 'goaliestick', 0), 'mask': ('mask', 'mas
 
 def menu_path(choice, number, kind='skater'):
     folder, prefix, shift = (GOALIE_MENU if kind == 'goalie' else MENU)[choice]
+    if choice == 'visor' and kind == 'skater':
+        number = VISOR_FILE[number]
     return f"{MENU_ROOT}/{folder}/{prefix}{number + shift}.big"
 
 
-# The choices without a picture. The words are the game's own, from its Edit Pro > Customization menu (the owner's
-# screenshots): Jersey Tuck None / Left / Right / Full, Sock Tuck None / Front / Back / Full, Stick Tape in ten colours
-# (the text file has all of those words). Which number is which is the order of the menu (the tape order is a guess
-# from the roster: 0 and 1 are what 6056 players have); the owner confirms them with `cli equipment-test`
-# (docs/notes/equipment.md).
-TAPE_COLOURS = ["Black", "White", "Blue", "Red", "Yellow", "Green", "Orange", "Light blue", "Pink", "Purple"]
+# The choices without a picture. The words are the game's own, from Edit Player > Customization, read in the lab (round 51,
+# docs/notes/equipment-labels.md): the sock tuck is 0 Full (the sock goes into the skate), 1 None, 2 Front, 3 Back; the
+# visor is 0 Straight, 1 Curved, 2 None, and its tint has no meaning without a visor.
+TAPE_COLOURS = ["Black", "White", "Blue", "Red", "Yellow", "Green", "Orange", "Light Blue", "Pink", "Purple"]
+TINTS = ["Clear", "Grey", "Yellow", "Orange", "Green", "Light Blue", "Blue", "Red"]
 OPTIONS = {
     'tape': list(enumerate(TAPE_COLOURS)),
     'jersey_tuck': [(0, "None"), (1, "Left"), (2, "Right"), (3, "Full")],
-    'sock_tuck': [(0, "None"), (1, "Front"), (2, "Back"), (3, "Full")],
-    'visor': [(0, "No visor"), (1, "Clear visor"), (2, "Tinted visor")],
-    'visor_tint': [(0, "Clear")] + [(n, f"Tint {n}") for n in range(1, 8)],
-    'shoulder_pads': [(0, "Small"), (1, "Large")],
+    'sock_tuck': [(0, "Full"), (1, "None"), (2, "Front"), (3, "Back")],
+    'visor': [(0, "Straight visor"), (1, "Curved visor"), (2, "No visor")],
+    'visor_tint': list(enumerate(TINTS)),
+    'shoulder_pads': [(0, "Small"), (1, "Big")],
     'pant_length': [(0, "Short"), (1, "Long")],
 }
 
 GOALIE_OPTIONS = {
     'tape': OPTIONS['tape'],
     'jersey_tuck': OPTIONS['jersey_tuck'],
-    'neck': [(0, "No neck guard"), (1, "Neck guard")],
+    'neck': [(0, "Off"), (1, "On")],
 }
 
 # Mask numbers (masktype 0) with a 3D texture file on the game disc: 0-291 except these (EU disc)

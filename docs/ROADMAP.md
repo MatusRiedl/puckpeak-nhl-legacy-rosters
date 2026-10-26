@@ -78,6 +78,14 @@ change): AHL `50c2cd9b5e18e390`, OHL `2976319eb44abe94`, WHL `41b145a848f4bd67`,
 
 ## Waiting for the game
 
+**Checks of 0.75.0 (owner, in the game):** (1) after an update with the new data pack, Arvidsson (Detroit) shows Sock Tuck None and Matthews None,
+Ovechkin / Makar Full, in Customize > Edit Player > Customization and on the ice (differences on the ice are small: the boot top); (2) a choice made
+in the Roster editor's Equipment window still wins after the next update; (3) a new player (Roster editor) starts with plain gear, not the last
+holder's; (4) AHL arena names in the game's intro captions (Coachella Valley: Acrisure Arena, Henderson: Lee's Family Forum, the Barracuda: Tech CU
+Arena, one renamed club); (5) the new data pack part `equipment` has to be on the server (`tools/publish_packs.py`, owner's go) before players get it.
+Not done: models (stick, helmet, gloves, skates, goalie pads), shoulder pads, jersey tuck and visor of real players (no usable data); the visor
+tint row is not greyed when the visor is "No visor" (the game does).
+
 Only the project owner can run these. They decide when a part leaves `pipeline.EXPERIMENTAL`
 (the window shows no mark any more; everything is on by default).
 

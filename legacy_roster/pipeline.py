@@ -111,7 +111,7 @@ EXPERIMENTAL = {'shl', 'del', 'nl', 'norway', 'ahl', 'chl', 'stock', 'positions'
                 'own art ids', 'jerseys every league', 'gear colours', 'farm clubs in the AHL',
                 'custom team kits', 'shared ice', 'picture numbers', 'own pictures on save',
                 'draft classes', 'new player records', 'no press start', 'real lines', 'club art 900',
-                'real captains'}
+                'real captains', 'real equipment'}
 ALL_STEPS = CORE_STEPS      # what build() and update() run when no steps are given
 
 
@@ -399,6 +399,9 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     identity = b.nhl_identity() if kind == L.STOCK or NHL in steps else 0
     if identity:
         log.append(['ALL', 'summary', "arena names and colours of the NHL teams", f"{identity} teams", ''])
+    farm_arenas = b.ahl_identity() if 'ahl' in steps else 0
+    if farm_arenas:
+        log.append(['ALL', 'summary', "arenas of the AHL clubs", f"{farm_arenas} clubs", ''])
     if NHL in steps and b.nhl_gear(own=normal_from or calendar_from):
         log.append(['ALL', 'summary', "helmets and gear of Utah, Seattle and Vegas", "in their colours", ''])
     # the club leagues as they will be built (with the player's own teams named after left-out clubs):
@@ -473,6 +476,11 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
         swapped = sticks.team_sticks(R, skip=b.deleted)     # not by a place the player is leaving
         if swapped:
             log.append(['ALL', 'summary', "sticks in team colours", len(swapped), ''])
+    if NHL in steps and b.data.equipment:       # how the players really dress: before the player's own choices, which win
+        log.section = SECTION_PLAYER_DATA
+        real = b.real_equipment()
+        if real:
+            log.append(['ALL', 'summary', "players given their real sock tucks, pants and neck guards", real, ''])
     log.section = SECTION_EDITS
     if my_edits:
         from . import edits

@@ -138,12 +138,18 @@ class EquipmentController:
                 m = pattern.match(name)
                 if m is None or int(m.group(1)) - shift < 0:
                     continue
+                if choice == 'visor':
+                    number = {f: t for t, f in E.VISOR_FILE.items()}.get(int(m.group(1)))
+                    if number is None:
+                        continue
+                else:
+                    number = int(m.group(1)) - shift
                 try:
                     img = Image.open(io.BytesIO(ArtFile(arc.read(name)).image()))
                     img.load()
                 except Exception:
                     continue
-                items[int(m.group(1)) - shift] = dataurl.picture(img, THUMB)
+                items[number] = dataurl.picture(img, THUMB)
             out[choice] = items
         return out
 

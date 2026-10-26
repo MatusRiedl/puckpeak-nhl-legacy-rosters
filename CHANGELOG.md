@@ -3,7 +3,23 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## Next version (unreleased)
+## 0.75.0 (2026-10-26)
+
+- **Real equipment for the players.** Players now dress like their real selves where the program's data knows them (almost
+  every NHL player, plus the AHL players and goalies it has): **sock tuck**, **pant length**, **stick tape colour** (black or
+  white) and the goalies' **neck guard** are filled in with every update. Viktor Arvidsson no longer tucks his socks, Auston
+  Matthews wears them the way he does in real life. Stick, helmet, gloves, skates and the other models are not copied (the
+  numbers do not match the game), and whatever you pick in the Roster editor's Equipment window always wins. Needs the
+  newest data pack (the program downloads it).
+- **The Equipment window uses the game's own words.** Tested in the game: sock tuck 0 is **Full** (the sock goes into the
+  skate, the usual tucked look), 1 None, 2 Front, 3 Back; visor Straight / Curved / No visor (and its tint colours by name,
+  with the right picture for each visor); shoulder pads Small / Big; goalie neck guard Off / On. Before, the window had the
+  sock words in the wrong order, which made tucked players look untucked. A choice made in the window reaches the game.
+- **New players start plain.** A new player used to wear the tucks, tape and visor of whoever held the record before.
+- **AHL arenas.** The AHL clubs play in their real, current arenas (Coachella Valley: Acrisure Arena, Henderson: Lee's
+  Family Forum, the Barracuda: Tech CU Arena, many more renamed), with their capacities.
+
+Also in this version (unreleased before):
 
 - **Linux: the program starts RPCS3 for you** whether it is the `rpcs3` program, an AppImage or the Flatpak, finds RPCS3's
   log there, and the RPCS3 picker takes the program or its folder. Not tried on a real Linux PC yet.

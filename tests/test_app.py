@@ -859,7 +859,11 @@ def test_a_newer_version_is_offered_once_the_question_on_screen_is_answered(app,
 def test_the_equipment_window_offers_the_games_own_words_for_tucks_and_tape():
     from legacy_roster import equipment as E
     assert [w for _, w in E.OPTIONS['jersey_tuck']] == ["None", "Left", "Right", "Full"]
-    assert [w for _, w in E.OPTIONS['sock_tuck']] == ["None", "Front", "Back", "Full"]
+    assert [w for _, w in E.OPTIONS['sock_tuck']] == ["Full", "None", "Front", "Back"]       # lab round 51: 0 is the tucked one
+    assert [w for _, w in E.OPTIONS['visor']] == ["Straight visor", "Curved visor", "No visor"]
+    assert [w for _, w in E.OPTIONS['visor_tint']][:3] == ["Clear", "Grey", "Yellow"] and len(E.OPTIONS['visor_tint']) == 8
+    assert E.OPTIONS['shoulder_pads'][1] == (1, "Big") and E.GOALIE_OPTIONS['neck'] == [(0, "Off"), (1, "On")]
+    assert E.menu_path('visor', 0) .endswith('visor2.big') and E.menu_path('visor', 2).endswith('visor1.big')
     assert len(E.OPTIONS['tape']) == 10 and E.OPTIONS['tape'][:2] == [(0, "Black"), (1, "White")]
     from legacy_roster.app.equipment import ORDER
     assert all(c in E.CHOICES for c in ORDER) and {'visor_tint', 'shoulder_pads', 'pant_length'} <= set(ORDER)

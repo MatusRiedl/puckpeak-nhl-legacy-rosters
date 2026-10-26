@@ -1,7 +1,7 @@
 """The 32 NHL teams' arena names and colours on any roster (builder.nhl_identity), and Utah's, Seattle's and Vegas's cities.
 Both rosters hold old or half-right names and colours (lab round 32; the testers' lists of 2026-10-26)."""
 from legacy_roster import layout as L
-from legacy_roster.builder import (GEAR_SLIPS, NHL_ARENAS, NHL_CITIES, NHL_COLOURS, NHL_GEAR, NHL_LOOK, Builder, Data)
+from legacy_roster.builder import (AHL_ARENAS, GEAR_SLIPS, NHL_ARENAS, NHL_CITIES, NHL_COLOURS, NHL_GEAR, NHL_LOOK, Builder, Data)
 from legacy_roster.roster import Roster
 
 
@@ -53,6 +53,27 @@ def test_set_arena_gives_a_team_alone_in_a_shared_building_a_row_of_its_own(base
     assert T.get(1, 'arenaid') != row and A.get(T.get(1, 'arenaid'), 'arenaname') == "Moose Ice"
     assert A.get(row, 'arenaname') != "Moose Ice" and T.get(44, 'arenaid') == row
     assert b.set_arena(1, "Moose Ice", alone=True) is None
+
+
+def test_every_ahl_club_plays_in_its_own_current_arena_and_the_table_has_room(base_bytes):
+    R = Roster(base_bytes)
+    b = Builder(R, Data(season_year=2026), layout=L.check_base(R))
+    b.nhl_identity()
+    rows_before = R.f['OEtS'].cur_rec
+    assert b.ahl_identity() == len(AHL_ARENAS)
+    A, T = R.f['OEtS'], R.T
+    for slot, (name, city, capacity) in AHL_ARENAS.items():
+        row = T.get(slot, 'arenaid')
+        assert (A.get(row, 'arenaname'), A.get(row, 'cityname'), A.get(row, 'maxattendance')) == (name, city, capacity), slot
+        assert len(name.encode()) <= A.field('arenaname').bits // 8 - 1
+    assert A.cur_rec - rows_before == 3 and A.cur_rec <= A.max_rec              # the Barracuda, Coachella and Henderson
+    own = [T.get(s, 'arenaid') for s in (54, 234, 235)]
+    assert len(set(own)) == 3 and not set(own) & {T.get(s, 'arenaid') for s in range(32)}
+    assert T.get(44, 'arenaid') == T.get(1, 'arenaid')                           # Manitoba stays with Winnipeg
+    assert A.get(T.get(25, 'arenaid'), 'arenaname') == NHL_ARENAS[25]            # the Sharks keep SAP Center
+    assert A.get(T.get(37, 'arenaid'), 'arenaname') == "Blue Arena"
+    once = R.f.build()
+    assert b.ahl_identity() == 0 and R.f.build() == once                          # a second time changes nothing
 
 
 ZONES = [[f"zone{z}_{c}" for c in 'rgb'] for z in range(1, 10)]

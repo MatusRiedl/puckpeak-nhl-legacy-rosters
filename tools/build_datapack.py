@@ -27,6 +27,8 @@ The pack holds everything the updater does not fetch live:
     contracts    the real 2026-27 NHL contracts (--refresh contracts [--db FILE]; legacy_roster/contracts.py)
     ratings_full the current ratings, player types and tendencies of every player, all leagues
                  (--refresh ratings_full [--db FILE], no network)
+    equipment    the real sock tuck, pants, tape and neck guard of the NHL's and AHL's players, as raw numbers
+                 (--refresh equipment [--db FILE], no network; `datasource.equipment_part`)
     club_lines   the clubs' real lines outside the NHL, per club slot: the Extraliga's match line-ups (--refresh
                  extraliga_lines, hokej.cz) over a larger private database's lines (--refresh club_lines [--db FILE],
                  no network; made from the pack's own rosters, so refresh the leagues first)
@@ -35,7 +37,7 @@ The pack holds everything the updater does not fetch live:
                  refreshed with lines / ahl / chl / extraliga_lines), else the larger database's (club_lines) where
                  the games named nobody on that team (give_letters; docs/notes/captains.md)
 
-ratings_list, contracts, ratings_full and the AHL's rosters are made by the maintainer's private tools (private/, kept
+ratings_list, contracts, ratings_full, equipment and the AHL's rosters are made by the maintainer's private tools (private/, kept
 out of git, DEVELOPING.md). Without them those parts are taken over from the pack being replaced, as they are.
 
 Before writing, every part is compared with the pack being replaced: a part that is gone or has
@@ -70,7 +72,11 @@ try:
     import club_lines_db  # noqa: E402
 except ImportError:
     contracts_db = ratings_full = ratings_list = club_rosters_db = club_lines_db = None
-PRIVATE_PARTS = ('ratings_list', 'contracts', 'ratings_full')
+try:
+    import equipment_db  # noqa: E402
+except ImportError:
+    equipment_db = None
+PRIVATE_PARTS = ('ratings_list', 'contracts', 'ratings_full', 'equipment')
 
 # one feed per part of a league (club_slots.json); a part's cache is tools/cache/<part>.json
 FEEDS = {'liiga': liiga.fetch, 'extraliga': czech.fetch,
@@ -95,7 +101,8 @@ SLOTS = os.path.join(ROOT, 'tools', 'club_slots.json')
 SEASON = 2026
 MIN_FULL_RATINGS = 300          # fewer fully rated players means the ratings parser broke (Oct 2026: 373)
 MIN_FULL_PLAYERS = 5000         # fewer players in ratings_full means its reader broke (Oct 2026: 6,968)
-MAX_DROP = 0.4                  # a part that loses more than this share of its entries stops the build
+MIN_EQUIPMENT = 500             # fewer players in equipment means its reader broke (Oct 2026: about 1,000)
+MAX_DROP = 0.4                 # a part that loses more than this share of its entries stops the build
 MIN_AGE, MAX_AGE = 15, 45       # club players outside these ages are typos in the feed
 LEAGUE_MIN_AGE = {'ahl': 17}    # juniors may be 15 (exceptional status), AHL players not
 MAX_SHARED_PHOTO = 3            # this many players with the same photo link: it is a placeholder
@@ -317,6 +324,9 @@ def check_drops(old, new, accept):
     count = len((new.get('ratings_full') or {}).get('players') or [])
     if 'ratings_full' in new and count < MIN_FULL_PLAYERS:
         problems.append(f"ratings_full: only {count} players (expected {MIN_FULL_PLAYERS} or more)")
+    count = len((new.get('equipment') or {}).get('players') or [])
+    if 'equipment' in new and count < MIN_EQUIPMENT:
+        problems.append(f"equipment: only {count} players (expected {MIN_EQUIPMENT} or more)")
     if problems and not accept:
         sys.exit("Not written -- a feed may have changed its layout:\n   " + "\n   ".join(problems) +
                  "\nCheck the provider; if the drop is real, run again with --accept-drops.")
@@ -328,11 +338,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--refresh', default='',
                     help="comma list: ratings, iihf, nhl (also nhl_last, drafts and schedule), lines, ahl_schedule, contracts, "
-                         "ratings_full, ahl_rosters, club_lines, extraliga_lines, schedules (every league's calendar) or <part>_schedule, or a league "
+                         "ratings_full, equipment, ahl_rosters, club_lines, extraliga_lines, schedules (every league's calendar) or <part>_schedule, or a league "
                          "(liiga, extraliga, shl, del, nl, norway, ahl, chl; rosters and calendar) or one part of it "
                          "(ohl, qmjhl, whl)")
     ap.add_argument('--db', default=contracts_db.DB if contracts_db else None,
-                    help="the database file for --refresh contracts / ratings_full / ahl_rosters (private/)")
+                    help="the database file for --refresh contracts / ratings_full / equipment / ahl_rosters (private/)")
     ap.add_argument('--research', help="lab research folder to use as the cache (work/research)")
     ap.add_argument('--accept-drops', action='store_true', help="write the pack even if a part shrank or vanished")
     ap.add_argument('--out', default=OUT)
@@ -498,8 +508,23 @@ def main():
         pack['sources']['ratings_full'] = {'label': "Current ratings, player types and tendencies",
                                             'date': file_date(cache), 'count': len(pack['ratings_full']['players'])}
 
+    # the real equipment of the NHL and AHL players (raw numbers; the builder says what they mean)
+    cache = os.path.join(CACHE, 'equipment.json')
+    if 'equipment' in refresh and equipment_db:
+        stats = {}
+        part = equipment_db.extract(args.db, stats)
+        equipment_db.report(part, stats)
+        os.makedirs(CACHE, exist_ok=True)
+        with open(cache, 'w', encoding='utf-8') as f:
+            json.dump(part, f, ensure_ascii=False)
+    if os.path.exists(cache):
+        with open(cache, encoding='utf-8') as f:
+            pack['equipment'] = json.load(f)
+        pack['sources']['equipment'] = {'label': "Real equipment of NHL and AHL players", 'date': file_date(cache),
+                                        'count': len(pack['equipment']['players'])}
+
     old = datasource.read_pack(args.out) if os.path.exists(args.out) else None
-    for key in PRIVATE_PARTS:                  # no private maker and no cache: keep what the pack has
+    for key in PRIVATE_PARTS:                 # no private maker and no cache: keep what the pack has
         if key not in pack and old and key in old:
             pack[key], pack['sources'][key] = old[key], old['sources'][key]
             print(f"{key}: kept from the pack being replaced (no maker in private/)")
