@@ -19,7 +19,7 @@ from legacy_roster.roster import Roster
 @pytest.fixture(autouse=True)
 def no_menu(monkeypatch):
     """The fake discs here have no boot.big: the main menu step writes nothing (tests/test_menus.py has it)."""
-    monkeypatch.setattr(menus, 'hidden_files', lambda disc, mode: {})
+    monkeypatch.setattr(menus, 'menu_files', lambda disc, mode: {})
 
 
 def dds_header(width, height, dxt5=True):

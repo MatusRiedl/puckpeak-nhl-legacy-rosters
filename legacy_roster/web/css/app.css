@@ -93,6 +93,10 @@ a:hover { color: #8fdcff; text-decoration: underline; }
   font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; transition: color .18s var(--ease); }
 .tabset button:hover { color: var(--text); }
 .tabset button.on { color: var(--pick-text); }
+.tabset button.gold { color: var(--gold-hi); letter-spacing: .6px; }
+.tabset button.gold:hover { color: #ffe08f; }
+.tabset button.gold.on { color: var(--gold-text); }
+.tabset .thumb.gold { background: linear-gradient(var(--gold-hi), var(--gold-deep)); box-shadow: 0 0 14px var(--gold-glow); }
 .tabset .thumb { position: absolute; z-index: 0; top: 2px; bottom: 2px; left: 0;
   background: linear-gradient(var(--pick-1), var(--pick-2)); box-shadow: 0 0 14px rgba(160, 210, 255, .25);
   transition: transform .26s var(--ease), width .26s var(--ease); }

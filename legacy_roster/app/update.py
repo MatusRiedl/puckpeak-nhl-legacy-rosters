@@ -59,7 +59,7 @@ def update_context(rpcs3, slot, targets, steps, parts, in_place, photos=False, e
 
 
 class UpdateController:
-    def __init__(self, host, settings=None, pack=None, photos=True):
+    def __init__(self, host, settings=None, pack=None, photos=False):
         self.host = host
         self.lock = threading.RLock()
         self.settings = S.load() if settings is None else settings
@@ -108,6 +108,10 @@ class UpdateController:
         self.use_edits = bool(remembered.get(S.EDITS, True))
         self.skip_intro = bool(remembered.get(S.SKIP_INTRO, True))
         self.no_login = bool(remembered.get(S.NO_LOGIN, False))
+        if S.PHOTOS_DEFAULT not in self.settings:       # 0.65: the switch starts off for everyone, once; ticking it again is kept
+            self.photos = False
+            self.settings[S.PHOTOS_DEFAULT] = True
+            self.save_settings()
         self.marks = {}             # row key -> its part of restore.py ("Restore" pressed)
         # the picture packs (packs.py), downloaded in the background while "Photos, logos and team names" is on
         self.fetch = 'ready' if all(packs.have(n) for n in packs.NAMES) else 'idle'     # running / failed

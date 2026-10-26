@@ -137,6 +137,7 @@ def apply_teams(b, teams, say=None):
             _team_equipment(b, slot, e['equipment'])
         if e.get('uniforms') or e.get('ice'):
             b.looks_edits[slot] = {k: e[k] for k in ('uniforms', 'ice') if e.get(k)}
+            _team_colours_arena(b, slot, e)
         if e.get('kit') and custom_kit.is_custom(slot):
             _team_kit(b, slot, e['kit'], keep_logo=bool(e.get('logo')))
         if e.get('strategy'):
@@ -146,6 +147,27 @@ def apply_teams(b, teams, say=None):
         b.log.append(['edits', 'team edited', b.R.team_name(slot), ', '.join(sorted(e)), ''])
     if teams and say:
         say(f"My edits: {len(teams)} teams")
+
+
+def _team_colours_arena(b, slot, e):
+    """The colours and the arena name the player gave a team in the Jerseys & ice tab, into the roster (the game's menus,
+    sticks and gear read them there): the two team colours (`ttOk`) and the arena name on the team's own arena row. The
+    pictures take the same values from `b.looks_edits`. A team whose arena needs a row of its own while the table is full
+    keeps its name (the list of changes says so)."""
+    T = b.R.T
+    given = ((e.get('uniforms') or {}).get('colours') or {})
+    for kind in ('primary', 'secondary'):
+        colour = custom_kit.rgb(given.get(kind))
+        if colour:
+            for channel, value in zip('rgb', colour):
+                T.set(slot, f"{kind}color_{channel}", value)
+    name = ((e.get('ice') or {}).get('arena') or '').strip()
+    if name:
+        limit = b.R.f['OEtS'].field('arenaname').bits // 8 - 1
+        while len(name.encode('utf-8')) > limit:
+            name = name[:-1]
+        if b.set_arena(slot, name, alone=True) is False:
+            b.log.append(['edits', 'arena not changed', b.R.team_name(slot), "the arena table has no room for its own row", ''])
 
 
 def _team_kit(b, slot, kit, keep_logo=False):

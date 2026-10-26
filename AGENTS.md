@@ -123,6 +123,7 @@ python -m legacy_roster update --rpcs3 <rpcs3.exe> --in-place  # update the pick
 python -m legacy_roster game-patch install [--skip-intro] [--no-login] --rpcs3 <rpcs3.exe>   # patch RPCS3 (32 teams, year 2026; RPCS3 closed; docs/GAME_PATCH.md section 7)
 python -m legacy_roster update --rpcs3 <rpcs3.exe> [--game-patch]   # follows RPCS3: patched -> 32-team roster, else normal (a patch roster is turned back); --game-patch patches first
 python -m legacy_roster game-patch status|remove --rpcs3 <rpcs3.exe>   # is RPCS3 patched / unpatch it
+python -m legacy_roster game-patch online|online-off --rpcs3 <rpcs3.exe>   # only the online entry (the community patch's words, `gamepatch.ONLINE_ENTRY`; docs/notes/multiplayer.md)
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1   # build dist\*.exe (close a running copy first)
 bash packaging/build.sh                                        # the same on a Mac or a Linux PC (its own system only)
 ```
@@ -178,6 +179,7 @@ bash packaging/build.sh                                        # the same on a M
 | Roster editor | `editor/model.py` (a roster as teams and players, `apply_edits`), `editor/view.py` (the tab: the picked roster as it is plus this visit's edits; saves in place or as new), `editor/pictures.py` (the player's picture on the card), `edits.py` (the player's edits, kept in edits.json and applied after every update); player type: `ratings.STYLES` / `GOALIE_STYLES` / `STYLE_CHOICES` (all named in the lab 2026-10-16), `style_label` / `style_choice`, `Builder.set_style`, `verify.style_problems`; face: `faces.py` (`DaPp` / `QDTK` / `jfuZ`, valid heads = table `vuqu`, `problems` for verify), `app/editor.py` `face_open` / `face_search` / `face_pick_*` (the "Face of a player" window), docs/notes/faces.md; **created look** (the game's Create Player: head shape, skin tone, hair, facial hair, eyebrows, eyes, black eye, scars, freckles; P1b): `faces.LOOK` / `write_look` / `read_look` / `random_look` / `look_problems` (verify), only on the reserved Create Player records 16000-16179 (`faces.RESERVED`, `free_reserved` highest id first, `KEEP_FREE` 10 skaters / 5 goalies for the game), edits.json `players[key]['look']` (`edits._look_records` / `_set_look`, `_create`), the card's Look... window (`app/editor.py` `look_open` / `look_set` / `look_random` / `look_done`, slice `look_pics`: the menu's pictures from the disc; `editor.js` `LookPart` / `LookWindow`; `tools/window_shot.py prospects-look`), docs/notes/draft-class.md "How the program makes a created look" |
 | Draft classes and my pro (P1 engine, P2 tab, P3 class files + random maker built; plan docs/plans/another-context-window-is-sorted-liskov.md) | `draftclass.py` (`DRAFT_SLOTS` European + CHL clubs, `TIER_BANDS` potential per growth tier, `eligible_year` 15 September rule, `apply` after the last `draft.apply`, `problems` for verify), a class player = a new player in edits.json with a `prospect` block (`class`, `tier`, `potential`); records held before the leagues (`edits.records_needed`, `Builder.hold_records`, `held_records`); a new player without his own number takes a free one (`edits._move(wins=False)`); `'draft classes'` / `'new player records'` experimental; the tab "Draft & Pro" (10th, Ctrl+0): `app/prospects.py` (`ProspectsController`, a follower; Add / pick open the editor's card: `EditorController.new_player(preset, extra)`, `open_person`), `web/js/prospects.js` (`ClassRail` in the team list's place, `ProspectsTab`), the card shared with the Roster tab (`editor.js` `useCardForm`); class files `draftclass.class_file` / `read_class` (JSON `legacy-roster-draft-class` v1, cards as typed, club by league + name, `shift_birth` to another draft; `ProspectsController.export_class` / `import_class` / `import_text`, report window), random maker `draftclass.make` (seeded; names mixed from non-NHL players of the same country, never a roster full name; `tiers_for` by strength; potential as the game's stars `draftclass.stars`; class files carry a created look; `spread` over the league's clubs; `ProspectsController.make_open` / `make_set` / `make`; `EditorController.next_note`); `tools/window_shot.py prospects|prospects-pro|prospects-make|prospects-class|prospects-import`; lab round 44 docs/notes/lab-round-44.md, research docs/notes/draft-class.md |
 | Picture packs (downloaded, 0.32.0) | `packs.py` (`manifest`, `path`, `have`, `missing`, `sync`, `fetch`, `prune`, `remove_all`; folder `app_dir('packs')`, `<name>-<sha12>.zip` + `state.json`; `LEGACY_ROSTER_PACKS`), `datasource.FILES_URL` / `files_url` (`LEGACY_ROSTER_FILES_URL`), `art/photopack.py` / `art/lookpack.py` open `packs.path(...)`, `app/update.py` `download_pictures` / `_photos_row` (the Photos row, first and gold), `tools/publish_packs.py`, `tools/clean_check.py`; the server: docs/notes/pack-hosting.md |
+| Online play (plan Multiplayer.txt, docs/notes/multiplayer.md; **0.60.0 test build, nothing released**) | `gamepatch.ONLINE_ENTRY` / `online_entry_lines` (the community patch's words, 1.00 and 1.01, own switch: `patchinstall.set_online`, state `online`), `onlinecfg.py` (RPCN name from rpcn.yml, the app's own config with the Net block, `launch_args`, `log_state`, `roster_crc`; the player's own config is only read), `lobby.py` (the server's lobby API client, `LEGACY_ROSTER_ONLINE_URL`), `app/online.py` (`OnlineController`, slice `online`, a follower: refresh, one-press setup (the online entry only), create (the picked roster is copied to the app's own "Puck Peak Online" save and uploaded) / join (the host's roster is downloaded, CRC checked, installed) / ready / leave, the patch word `patch_word()` (version or "none") compared with the host's, RPCS3 started once per lobby, steps by role: host Create Game Session, guest Browse + Join), `web/js/online.js` (the 11th tab "Play online", no number key), api `online_*`, `tools/window_shot.py online|online-lobby|online-ready|online-ingame|online-failed`, tests test_online / test_lobby / test_onlinecfg / `tests/fake_lobby.py`. Server: the private repo the private server repository ("Overtime" = the owner's own servers; the community server is never named here), deployed on the owner's box; the host is the reference (roster CRC + patch word), the host's gzip roster is kept in memory (8 MB each, 48 MB all), the host leaving closes the lobby; the in-game flow is not tried through the app yet (owner + one tester in 0.60.0) |
 | Packaging | `packaging/build.ps1`, `packaging/build.sh` (refuse a zip in `legacy_roster/data/` and a `clean_check` hit), `packaging/make_assets.py` |
 
 ## Writing for players
@@ -188,6 +190,36 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+**Version 0.70.0 (2026-10-26, committed locally with the owner's go, not pushed; plan docs/plans/plan-the-debugging-and-magical-nest.md, PLAN.md top):**
+the owner's tester list `Features`. 32 NHL arenas + colours (`builder.NHL_LOOK`, `nhl_identity` on every roster), the Jerseys tab's colour / arena edits
+written into `ttOk` / `OEtS` (`edits._team_colours_arena`; `'team colours and arenas'` experimental, notes docs/notes/arenas-colours.md), Lines `place`
+changes only the picked slot (`LinesController.carry`), mixed game versions allowed with a warning (`OnlineController.game_note`; the server's version gate
+is gone from the source, not deployed from here). Not yet: the in-game check of the arenas / colours, lab debugging of mixed versions, custom match, Linux, export.
+Below, 0.65.0 as it stood:
+**Version 0.65.0 (2026-10-26, test build for the owner's human test, not committed; plan PLAN.md top):** (1) "Photos, logos and team
+names" starts off for everyone once (`settings.PHOTOS_DEFAULT`, `UpdateController.__init__`; a later choice is kept); the online
+start (`patchinstall.set_screens`) now writes its own `mainmenuitems.big` (`MENU_SOURCE`, `_menu_in`, store `PATCH_STORE`) so zero
+presses work with Photos off, and `install_menus` skips a file the online setup put in. (2) Play online: Public is the default (app
+`OnlineController.public`, `lobby.create(public=True)`, server `LobbyApi` `IsPublic ?? true`). (3) **Spike S4 (docs/notes/online-settings.md):**
+Quick Match sends PeriodLength 5 / Rules 1 / Injuries / Fighting / Penalties / CreatedPlays as fixed search values; a server override
+of `PeriodLength` reached the game's data but the game still played 5 minutes, so there is **no match settings card** (the lobby says
+"standard online match"). (4) Lab (EU 1.00 host vs NA 1.00 guest, by hand through the lobby API): the two pair and reach Select Teams, no
+region gate; NA online needs `game-patch online` in its RPCS3 (done in lab2). **Game 1.01** (the owner's two update packages, installed in the lab copies only): the start entry is ported (`gamepatch.ONLINE_START_101` at 0x1063e24, 1.00's 0x1062514 moved by 0x1910, 21 words around it alike; `tools/audit_patch.py` on EU and NA 1.01: 0 problems), `patchinstall.auto_start` / `set_online_start` / `set_screens` follow the game version RPCS3 runs. Lab (2026-10-26): EU 1.01 alone went to Online Versus Play and searched by itself (no key); EU 1.01 host + NA 1.00 guest, ready lobby: both on Select Teams, Ranked, 5 MIN, NHL rules (docs/notes/update-101.md "Online start on 1.01"). NA 1.01 and EU 1.00 against EU 1.01 not played (same program as EU 1.01 / same word as 1.00). (5) **Server
+deployed 2026-10-26** (owner's go; backup `/opt/overtime-legacy-src-bak-20261026.tgz`, 41 tests in the box's SDK container, live smoke ok);
+the S4 logging / override code was removed before it. Not played through the exe by two people yet.
+
+**Version 0.60.0 (2026-10-25, test build for one tester, not committed; plan docs/plans/spicy-napping-mountain.md):** the Play
+online tab uses the **lobby host's roster** (owner's decision), not an official one from manifest.json. `app/online.py`
+(`create` copies the picked Setup roster into the online save and uploads it; `_sync_roster` downloads, checks the CRC and
+installs it for a guest, never while RPCS3 runs; `_sync_me` tells the server a changed patch), `lobby.py` (`put_roster`,
+`get_roster`, `update_me`), server routes `PUT/GET /api/lobby/{code}/roster`, `POST .../me`. Both players need the same
+patch word or Ready is refused (hint: update the program). **Online play needs the game patch** (owner, 2026-10-25): Set up online asks, then patches;
+the RPCS3 build (`onlinecfg.rpcs3_build`, log header) is told to the friend, a build under `onlinecfg.MIN_RPCS3` is refused; the game version 1.00 / 1.01 is not flagged
+(test first); plan docs/plans/last-message-from-you-effervescent-boot.md (Part B, settings in the app, is a lab spike first). Tests: test_online (19), test_lobby, test_onlinecfg;
+quicktest 214 passed. Public lobbies (`lobby.lobbies()`, `OnlineController.rows` / `list_once`, the tab's Private / Public switch and "Open lobbies" list) are built in the app and the server code; the server is not deployed yet. Not played in the game; which roster the game loads at boot is still unconfirmed, so the steps keep
+"Load the online roster". No commit, push or release without the owner's go-ahead.
+**Zero presses (2026-10-26, lab-proven on EU 1.00, not played through the app):** `art/onlinestart.py` (start cave + Welcome Back + matchmaking gate), `patchinstall.set_screens` / `auto_start` / `set_online_start`, `app/online.py` `_start_game` ticks the start entry for one launch; member tokens (`X-Lobby-Token`, `lobby._tokens`), `onlinecfg.roster_check`; the server's `PairLobbies` pairs only lobbies in state starting (source in the private server repository, deploy needs the owner's go); docs/notes/online-boot-hook.md, multiplayer.md "Security and what is stored".
 
 **Version 0.52.0 (2026-10-25, released with the owner's go-ahead; plan docs/plans/can-you-check-and-partitioned-kitten.md):**
 (1) **"Kraken has 49 players" again after 0.51.2**: online, `datasource.find_missing` looks up players NHL.com's roster
@@ -577,11 +609,11 @@ All-Star teams (ROADMAP.md). Checks: ROADMAP "Checks of 0.21.0".
   does not wear get a model of the same brand in a team colour, else a plain one. The swap runs in pipeline's NHL step,
   before the edits; `verify` runs `sticks.problems`. `'team sticks'` is experimental.
 - **Puck Peak texts** (`loc.PROMO`, docs/notes/promo-texts.md): the game's old offline news panel and the tuner-set notices,
-  with the names. Zamboni's news and the HUT banner stay (owner: keep Zamboni's messages and promotions).
+  with the names. The community server's news and the HUT banner stay (owner: keep the community server's messages and promotions).
   `'puck peak texts'` is experimental.
 - **Dead online entries hidden** (`art/menus.py`, docs/notes/menus.md): View Player Hub, Leaderboards and Lobby
   (COMMUNITY) are marked `isHidden` in a loose `fe/ion/game/menus/mainmenuitems.big` made from the player's `boot.big`
-  (`install.install_menus`, with the photos). HUT stays (Zamboni serves it, owner 2026-10-18). Lab probe 2026-10-18: the
+  (`install.install_menus`, with the photos). HUT stays (the community server serves it, owner 2026-10-18). Lab probe 2026-10-18: the
   game reads the loose file before boot.big, hidden entries leave no gap, the cursor skips them, no crash.
   `'hidden menus'` is experimental.
 - **Face of a player shows head pictures** (`app/editor.face_pics_view`, cache.big `createplayer/head/head<id>.big`).
@@ -621,7 +653,7 @@ after the step-2 exe. The version jumps to 0.20.0 (the owner's pick: `app/selfup
   letters (a second run moved Coachella's A). Not copied: potential, traits, growth. Options: refit
   `estimate.LEAGUE_GAP` on the full list (estimated players sit 1-2 above rated team-mates in Extraliga, DEL, NL).
   tests/test_full_ratings.py, docs/notes/full-ratings.md.
-- **"No online login at start"**: the owner played online through Zamboni with it on; the "leave it off to play online"
+- **"No online login at start"**: the owner played online through the community server with it on; the "leave it off to play online"
   warnings are gone, the switch stays.
 - **Promo texts** (main menu tiles, news): docs/notes/promo-texts.md, `tools/find_texts.py`; nothing changed yet, the
   owner writes the Puck Peak words later.
@@ -681,7 +713,7 @@ roster cut (`0x1ca618` mode 7) never ran; `future_fit` now stores the next seaso
 (`FUTURE_DAYS`), season 2 opens on 6 Oct and all 31 computer teams get the cut (run E7: 0 teams lost a third of their NHL
 pay, 6 before; docs/notes/gm-brain.md, GAME_PATCH.md row 27). (3) **Intro skip** (owner's wish): two optional entries in
 `patch_text`, `INTRO_ENTRY` (the game's own quick boot + no autosave notice: Press Start at once, one press to the main
-menu) and `LOGIN_ENTRY` (no online login at boot; online modes still sign in when opened: the owner played through Zamboni with it on, 2026-10-18), played in the lab (docs/notes/intro-skip.md).
+menu) and `LOGIN_ENTRY` (no online login at boot; online modes still sign in when opened: the owner played through the community server with it on, 2026-10-18), played in the lab (docs/notes/intro-skip.md).
 Also fixed: `donors.real_birth_year` made 75 community-updated undrafted records
 (Krug, Goodrow) ten years older (now it needs `TNEo` at 12 or younger); this also touched the normal update.
 **Round 28 (2026-10-16, docs/notes/be-a-pro.md):** season 2 to the June 2028 draft played (84 GP, all 7 rounds, no hang).

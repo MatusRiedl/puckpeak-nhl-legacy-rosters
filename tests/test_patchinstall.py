@@ -116,7 +116,7 @@ def test_patch_this_game_and_unpatch_leave_rpcs3_as_it_was(tmp_path, monkeypatch
     for title in (EU, NA):
         assert patchinstall.state(rpcs3)[title] == {'patched': True, 'version': gamepatch.TEAMS_VERSION,
                                                      'game': '01.00', 'stale': False,
-                                                     'intro': True, 'login': False, 'news': True,
+                                                     'intro': True, 'login': False, 'news': True, 'online': False,
                                                      'rights': None}   # a fake meta; the news always ticked
         assert _read(patchinstall.patch_file(rpcs3, title)) == gamepatch.player_patch_text().encode()
         assert _read(os.path.join(rpcs3.game_folder(title), 'db', 'nhlng-meta.xml')) == b'META'
@@ -151,7 +151,7 @@ def test_entries_of_our_names_that_were_ticked_before_come_back_where_they_were(
     # the lab (or a player by hand) ticked patches named like our intro entries, between other entries
     entry = lambda name: [f"  {name}:", "    NHL Legacy:", "      BLUS31540:", "        01.00:", "          Enabled: true"]
     before = "\n".join([f"PPU-{gamepatch.NA_HASH}:", *entry("NHL Legacy year 2026 (test)"), *entry(INTRO),
-                        *entry(LOGIN), *entry("ZamboniMultiplayerPatch")]) + "\n"
+                        *entry(LOGIN), *entry("SomeoneElsesPatch")]) + "\n"
     monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
     monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
     monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
@@ -406,3 +406,102 @@ def test_the_intro_skip_also_skips_press_start_and_unpatch_takes_it_out(tmp_path
     patchinstall.remove(rpcs3, say=lambda m: None)
     patchinstall.install_patch(rpcs3, [EU], b'roster', intro=True, login=False, say=lambda m: None)
     assert not os.path.exists(press(EU))
+
+
+def test_online_play_is_its_own_switch_that_the_other_switches_leave_alone_and_unpatch_takes_out(tmp_path, monkeypatch):
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
+    monkeypatch.setattr(patchinstall, 'db_files', lambda disc, roster: (b'META', b'DB'))
+    ONLINE = gamepatch.ONLINE_ENTRY
+    rpcs3 = _fake_rpcs3(tmp_path)
+    _write(patchinstall.config_file(rpcs3), CONFIG.encode())
+    assert patchinstall.state(rpcs3)[EU]['online'] is False
+    patchinstall.set_online(rpcs3, [EU, NA], True, say=lambda m: None)      # no 32-team patch needed
+    config = lambda: _read(patchinstall.config_file(rpcs3)).decode()
+    for title in (EU, NA):
+        assert patchinstall.ticked(config(), title) == {ONLINE} == patchinstall.ticked(config(), title, '01.01')
+    st = patchinstall.state(rpcs3)
+    assert st[EU]['online'] and st[NA]['online'] and not st[EU]['patched'] and not st[EU]['stale']
+    body = _read(patchinstall.patch_file(rpcs3, EU)).decode()
+    assert "be32, 0x008bc4bc, 0x4e800020" in body and "be32, 0x0087b11c, 0x2c030001" in body
+    patchinstall.install_patch(rpcs3, [EU, NA], b'roster', intro=True, login=False, say=lambda m: None)
+    assert patchinstall.ticked(config(), EU) == {PLAYER, NEWS, INTRO, ONLINE}   # the 32 teams keep online ticked
+    patchinstall.set_switches(rpcs3, [EU, NA], False, False)
+    assert ONLINE in patchinstall.ticked(config(), EU) and INTRO not in patchinstall.ticked(config(), EU)
+    patchinstall.set_online(rpcs3, [EU], False, say=lambda m: None)
+    assert ONLINE not in patchinstall.ticked(config(), EU) and ONLINE in patchinstall.ticked(config(), NA)
+    assert PLAYER in patchinstall.ticked(config(), EU)                          # the 32 teams stay
+    patchinstall.remove(rpcs3, say=lambda m: None)
+    assert config() == CONFIG and not os.path.exists(patchinstall.patch_file(rpcs3, EU))
+
+
+def test_online_play_needs_rpcs3_closed_and_a_real_rpcs3(tmp_path, monkeypatch):
+    rpcs3 = _fake_rpcs3(tmp_path)
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: 'rpcs3.exe')
+    with pytest.raises(patchinstall.PatchError):
+        patchinstall.set_online(rpcs3, [EU], True)
+    with pytest.raises(patchinstall.PatchError):
+        patchinstall.set_online(SimpleNamespace(plain=True), [EU], True)
+
+
+def test_the_online_start_is_ticked_for_one_launch_only_and_needs_the_screens_and_game_1_00(tmp_path, monkeypatch):
+    from legacy_roster.art import onlinestart
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
+    monkeypatch.setattr(patchinstall, 'db_files', lambda disc, roster: (b'META', b'DB'))
+    made = []
+    monkeypatch.setattr(onlinestart, 'screen_files',
+                        lambda disc: made.append(disc) or {onlinestart.WELCOME_REL: b'WELCOME', onlinestart.MATCH_REL: b'MATCH'})
+    from legacy_roster.art import menus
+    monkeypatch.setattr(menus, 'menu_files', lambda disc, mode=None: {menus.REL: b'MENU'})
+    START, ONLINE = gamepatch.ONLINE_START_ENTRY, gamepatch.ONLINE_ENTRY
+    rpcs3 = _fake_rpcs3(tmp_path)
+    _write(patchinstall.config_file(rpcs3), CONFIG.encode())
+    config = lambda: _read(patchinstall.config_file(rpcs3)).decode()
+    loose = lambda rel: os.path.join(rpcs3.game_folder(EU), *rel)
+    assert not patchinstall.auto_start(rpcs3, EU)
+    patchinstall.set_online(rpcs3, [EU], True, say=lambda m: None)
+    assert made == ['disc.iso'] and _read(loose(onlinestart.WELCOME_REL)) == b'WELCOME' and patchinstall.screens_in(rpcs3, EU)
+    assert _read(loose(menus.REL)) == b'MENU'               # the start's cave is in the main menu: photos off still has it
+    os.remove(loose(menus.REL))                             # a Photos restore took the menu away: the start is by hand until set up again
+    assert not patchinstall.screens_in(rpcs3, EU)
+    patchinstall.set_screens(rpcs3, [EU], True, say=lambda m: None)    # set up again: the menu comes back, the screens stay
+    assert made == ['disc.iso'] and patchinstall.screens_in(rpcs3, EU) and _read(loose(menus.REL)) == b'MENU'
+    assert not patchinstall.auto_start(rpcs3, EU)                       # the quick boot (intro skip) is missing
+    patchinstall.set_switches(rpcs3, [EU], True, False)                 # (only patched versions change)
+    patchinstall.install_patch(rpcs3, [EU], b'roster', intro=True, login=False, say=lambda m: None)
+    base = patchinstall.ticked(config(), EU)
+    assert {ONLINE, gamepatch.INTRO_ENTRY} <= base and START not in base
+    assert patchinstall.auto_start(rpcs3, EU)
+    assert patchinstall.set_online_start(rpcs3, [EU], True) == [EU]
+    assert patchinstall.ticked(config(), EU) == base | {START}
+    assert patchinstall.set_online_start(rpcs3, [EU], False) == [EU]
+    assert patchinstall.ticked(config(), EU) == base
+    patchinstall.set_online(rpcs3, [EU], True, say=lambda m: None)         # again: not made again, entry stays off
+    assert made == ['disc.iso'] and START not in patchinstall.ticked(config(), EU)
+    patchinstall.set_online_start(rpcs3, [EU], True)
+    patchinstall.set_online(rpcs3, [EU], True, say=lambda m: None)         # a switch change clears the one-launch tick
+    assert START not in patchinstall.ticked(config(), EU)
+    patchinstall.set_online(rpcs3, [EU], False, say=lambda m: None)
+    made.clear()
+    monkeypatch.setattr(patchinstall, 'game_version', lambda r, t: '01.01')
+    patchinstall.set_online(rpcs3, [EU], True, say=lambda m: None)         # update 1.01: the same screens, its own patch word
+    assert made == ['disc.iso'] and patchinstall.screens_in(rpcs3, EU)
+    patchinstall.set_switches(rpcs3, [EU], True, False)
+    patchinstall.install_patch(rpcs3, [EU], b'roster', intro=True, login=False, say=lambda m: None)
+    assert patchinstall.auto_start(rpcs3, EU) and patchinstall.set_online_start(rpcs3, [EU], True) == [EU]
+    assert START in patchinstall.ticked(config(), EU, '01.01') and START not in patchinstall.ticked(config(), EU, '01.00')
+    assert patchinstall.set_online_start(rpcs3, [EU], False) == [EU]
+    assert START not in patchinstall.ticked(config(), EU, '01.01')
+    monkeypatch.undo()
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
+    patchinstall.set_online(rpcs3, [EU], False, say=lambda m: None)
+    assert not os.path.exists(loose(onlinestart.WELCOME_REL)) and not patchinstall.screens_in(rpcs3, EU)
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: 'rpcs3.exe')
+    with pytest.raises(patchinstall.PatchError):
+        patchinstall.set_online_start(rpcs3, [EU], True)
+    assert patchinstall.set_online_start(rpcs3, [EU], False) == [EU]        # unticking is fine while RPCS3 runs

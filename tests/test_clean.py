@@ -16,7 +16,7 @@ def test_no_published_file_the_data_pack_or_a_picture_pack_names_a_source():
 def test_the_check_finds_the_words_it_looks_for_and_leaves_ordinary_ones():
     maker, game = 'E' + 'A', 'NH' + 'L'
     lines = [f"{maker}'s ratings", f"{game} 2{6 + 1} looks", f"rate_{maker.lower()}", f"{maker.lower()}_ratings",
-             f"{game.lower()}2{7}looks.zip", 'P' + 'S5 dump']
+             f"{game.lower()}2{7}looks.zip", 'P' + 'S5 dump', 'Zam' + 'boni3 fork']
     assert len(list(clean_check.hits_in('x', '\n'.join(lines)))) == len(lines)
     ordinary = ["the team's area", "real years", "NHL.com rosters", "json.dump(pack)", "NHL Legacy Edition", "TEAM_EAST",
                 "each player", "2026-27 contracts"]

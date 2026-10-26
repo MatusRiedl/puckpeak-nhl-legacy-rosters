@@ -51,7 +51,7 @@ LANGUAGES = ('eng_us', 'fre_fr', 'ger_de', 'swe_se', 'fin_fi', 'cze_cz', 'rus_ru
 # the game's dead advertising lines show Puck Peak, the same words in every language (docs/notes/promo-texts.md): the
 # main menu's offline news (title / body 0 EASHL, 1 HUT, 2 GM Connected, 3 the fighting tip, 4 Live the life, the NHL 94
 # title / body), the tuner-set notices. The HUT banner (FUT_NEWS_AND_EVENTS) stays the game's own (owner, 2026-10-18:
-# Zamboni serves HUT again). Online the server's news replaces these; the game patch's NEWS_ENTRY keeps them. Found by
+# the community server serves HUT again). Online the server's news replaces these; the game patch's NEWS_ENTRY keeps them. Found by
 # the key as stored (most hashes are not the key's CRC). A change of the table or of PROMO_VERSION rewrites every
 # installed text file once ('#2': no HUT banner; '#3': the news bodies invite to the Discord, the tuner notices keep the
 # site; '#4': every news panel text, also the fighting tip and NHL 94, owner 2026-10-22).

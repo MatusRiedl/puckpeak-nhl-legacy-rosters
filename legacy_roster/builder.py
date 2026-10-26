@@ -115,13 +115,28 @@ def drop_removed_player(R):
     return name
 
 
-# Utah, Seattle and Vegas: arena, city, colours. The game's own roster has Arizona's arena and colours in slot 22 and the
-# All-Star slots' (Nashville's arena for both) in 30 and 31. The community roster has colours of its own (kept) but still
-# Arizona Arena (Glendale) in 22 and one row "Bridgestone Arena, Nashville" for 30 and 31 (lab round 32: Utah's game
-# intro said "Arizona Arena, GLENDALE, AZ").
-NHL_LOOK = {22: ("The Delta Center", "Salt Lake, UT", (106, 179, 230), (32, 32, 32)),
-            30: ("Climate Pledge Arena", "Seattle, WA", (150, 217, 216), (0, 35, 63)),
-            31: ("T-Mobile Arena", "Las Vegas, NV", (238, 192, 84), (60, 59, 65))}
+# Utah, Seattle and Vegas also get a city: both rosters still hold Arizona Arena (Glendale) in 22 and one row "Bridgestone
+# Arena, Nashville" for 30 and 31 (lab round 32: Utah's game intro said "Arizona Arena, GLENDALE, AZ"); the game's own
+# roster has Arizona's colours in slot 22 and the All-Star slots' in 30 and 31.
+#
+# Every NHL team's arena name (with its (R) / (TM) mark) and two team colours as the testers listed them (2026-10-26, docs/notes/
+# arenas-colours.md), by slot; both rosters held 2014 or half-right names and colours. `nhl_identity` writes them.
+NHL_ARENAS = ("Honda Center®", "Canada Life Centre™", "TD Garden®", "KeyBank Center®", "Scotiabank Saddledome™",
+              "Lenovo Center™", "United Center®", "Ball Arena™", "Nationwide Arena®", "American Airlines Center®",
+              "Little Caesars Arena®", "Rogers Place™", "Amerant Bank Arena®", "CRYPTO.COM Arena™", "Grand Casino Arena™",
+              "Centre Bell™", "Bridgestone Arena™", "Prudential Center®", "UBS Arena®", "Madison Square Garden®",
+              "Canadian Tire Centre™", "Xfinity Mobile Arena™", "Delta Center®", "PPG Paints Arena®", "Enterprise Center™",
+              "SAP Center at San Jose®", "Benchmark International Arena™", "Scotiabank Arena®", "Rogers Arena™",
+              "Capital One Arena®", "Climate Pledge Arena®", "T-Mobile Arena™")
+NHL_COLOUR_HEX = ("cf4520 89734c", "041e41 004a98", "ffb81c 010101", "003087 ffb81c", "c8102e f1be48", "cc0000 000000",
+                  "ce1126 000000", "6f263d 236192", "003366 cc0033", "00843d a7a9ac", "ce1126 ffffff", "00205b d14520",
+                  "cf102d 091f3f", "a2aaad 010101", "024930 af1e24", "af1e2d 192168", "ffb81c 041e42", "cc0000 000000",
+                  "00468b f26924", "0033a0 c8102e", "da1a32 b79257", "d24303 000000", "6cace4 010101", "ffb81c 000000",
+                  "0173b7 f9b619", "006d75 000000", "002868 ffffff", "00205b ffffff", "00205b 046a38", "cf0a2c 041e41",
+                  "96d8d8 001425", "b9975b 333f48")
+NHL_COLOURS = tuple(tuple(tuple(int(h[i:i + 2], 16) for i in (0, 2, 4)) for h in pair.split()) for pair in NHL_COLOUR_HEX)
+NHL_CITIES = {22: "Salt Lake, UT", 30: "Seattle, WA", 31: "Las Vegas, NV"}      # the cities the rosters still get wrong
+NHL_LOOK = {slot: (NHL_ARENAS[slot], city) + NHL_COLOURS[slot] for slot, city in NHL_CITIES.items()}
 # their helmets, gloves and goalie gear (Builder.nhl_gear): a coloured part becomes the first colour here, a dark one the
 # second; white and black stay (Utah: black, Seattle: deep sea blue, Vegas: gold and steel grey)
 NHL_GEAR = {22: ((32, 32, 32), (32, 32, 32)), 30: ((0, 35, 63), (0, 35, 63)), 31: ((238, 192, 84), (60, 59, 65))}
@@ -1395,27 +1410,39 @@ class Builder:
                     for f in self.flags + ['jZSh', 'lcCm', 'tRVs', 'sFgQ']:
                         U.set(e, f, U.get(src, f))
 
-    def nhl_identity(self, colours=True):
-        """The arena, city and (`colours`: the game's own roster) colours of slots 22 (Utah), 30 (Seattle) and 31
-        (Vegas) (NHL_LOOK). A slot whose arena another team shares gets an arena row of its own while the table has room
-        (the copy keeps the arena's art, so the ice and the boards stay). Returns how many slots changed; a second run
-        changes none."""
+    def set_arena(self, slot, name, city=None, alone=False):
+        """The arena name (and `city`) of a team, on the arena row it uses. A row other teams use too (a custom copy of an
+        NHL team, a farm club in the same building) is renamed for all of them; a row another NHL team uses (Seattle and
+        Vegas started on one), or with `alone` any team outside the slot's own copies, is copied first while the table has
+        room (the copy keeps the arena's art, so the ice and the boards stay). False when that needed room the table has
+        not; True when something was written; None when the row already said so."""
         T, A = self.R.T, self.R.f['OEtS']
+        row = T.get(slot, 'arenaid')
+        if A.get(row, 'arenaname') == name and (city is None or A.get(row, 'cityname') == city):
+            return None
+        prime = L.MIRROR_OF.get(slot, slot)
+        family = {prime} | set(L.MIRRORS.get(prime, ()))
+        sharers = [t for t in range(T.cur_rec) if t != slot and T.get(t, 'arenaid') == row]
+        if any(t not in family for t in sharers) if alone else any(t < 32 for t in sharers):
+            if A.cur_rec >= A.max_rec:
+                return False
+            row = A.add_record(template=row)
+            A.set(row, 'index', row)
+            T.set(slot, 'arenaid', row)
+        A.set(row, 'arenaname', name)
+        if city is not None:
+            A.set(row, 'cityname', city)
+        return True
+
+    def nhl_identity(self):
+        """The arena name of every NHL team (NHL_ARENAS), the city of Utah, Seattle and Vegas (NHL_CITIES) and every NHL
+        team's two colours (NHL_COLOURS). Returns how many teams changed; a second run changes none. (A team whose arena
+        needed a row of its own when the table was full keeps the shared one; its colours are written all the same.)"""
+        T = self.R.T
         done = 0
-        for slot, (arena, city, primary, secondary) in NHL_LOOK.items():
-            changed = False
-            row = T.get(slot, 'arenaid')
-            if A.get(row, 'arenaname') != arena:
-                if any(t != slot and T.get(t, 'arenaid') == row for t in range(T.cur_rec)):
-                    if A.cur_rec >= A.max_rec:
-                        continue
-                    row = A.add_record(template=row)
-                    A.set(row, 'index', row)
-                    T.set(slot, 'arenaid', row)
-                A.set(row, 'arenaname', arena)
-                A.set(row, 'cityname', city)
-                changed = True
-            for kind, rgb in ((('primary', primary), ('secondary', secondary)) if colours else ()):
+        for slot in range(32):
+            changed = bool(self.set_arena(slot, NHL_ARENAS[slot], NHL_CITIES.get(slot)))
+            for kind, rgb in zip(('primary', 'secondary'), NHL_COLOURS[slot]):
                 for channel, value in zip('rgb', rgb):
                     if T.get(slot, f"{kind}color_{channel}") != value:
                         T.set(slot, f"{kind}color_{channel}", value)

@@ -448,8 +448,8 @@ Lab round 33 (2026-10-18, docs/notes/lab-round-33.md) played most of them; the o
 - Main menu with "Photos, logos and team names": no View Player Hub, Leaderboards, Lobby (COMMUNITY); HUT still
   there; every other entry opens. **Passed**: COMMUNITY holds only My Highlights; PLAY, CUSTOMIZE, LIVE THE LIFE, NHL 94
   open. The loose `fe/ion/game/menus/mainmenuitems.big` is read before boot.big (docs/notes/menus.md).
-- The game's old offline news panel and the tuner-set notices say "Puck Peak" / "www.puckpeak.com"; Zamboni's news unchanged.
-  **Passed in English** (menu and loading screen; once HUT reaches Zamboni the panel shows Zamboni's news). Czech and
+- The game's old offline news panel and the tuner-set notices say "Puck Peak" / "www.puckpeak.com"; the community server's news unchanged.
+  **Passed in English** (menu and loading screen; once HUT reaches the community server the panel shows the community server's news). Czech and
   the tuner-set notice not seen.
 - Utah: black helmets and gloves (no Arizona red), sticks in team colours. **Passed** (white / grey sticks, the red is
   only Bauer's print). Seattle navy: **passed**. Philadelphia, Washington in their own colours: **passed**.
@@ -482,7 +482,7 @@ docs/plans/another-context-window-is-sorted-liskov.md.
   Round 41's open point. **Owner's call:** leave it (players load their roster through Customize > Save/Load/Delete >
   Load > Rosters, as the window says), or let the program set the time of the folder it just wrote so that it is the one
   that boots (only its own folder; no other save touched).
-- **Not tried:** Be a GM and online (Zamboni) with no Press Start; the NA disc (same file); a goalie career's ratings
+- **Not tried:** Be a GM and online (the community server) with no Press Start; the NA disc (same file); a goalie career's ratings
   (not editable yet).
 - **Played by the agent (47c, the built exes):** the window edited a lab career (name, XP, Passing; the backup equals
   the career before, byte for byte); `cli game-patch install --skip-intro --no-login` booted with no key pressed; Load
@@ -514,7 +514,7 @@ Notes docs/notes/lab-round-45.md. Played by the agent in the lab, made through t
   the potentials the window gave; every look on Edit Players as set; my pro (Seattle) with his own face in a new Be a GM
   (after the fix: `builder.own_links`, `faces.link_problems`). The patch's news entry boots and the panel shows the
   gg.puckpeak.com line.
-- **To check (owner):** the news panel while signed in online (Zamboni): Puck Peak's line, not the server's news. A
+- **To check (owner):** the news panel while signed in online (the community server): Puck Peak's line, not the server's news. A
   created look in a running Be a Pro career (my pro picked in Be a Pro, a game played). The career start may move my pro
   to another team of the organisation (Corvin went to Coachella Valley): fine, or should the window warn?
 

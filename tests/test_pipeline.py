@@ -5,7 +5,7 @@ import pytest
 
 from legacy_roster import layout as L
 from legacy_roster import draft, lines, pipeline, ratings, schema
-from legacy_roster.builder import NHL_LOOK, Builder, Data
+from legacy_roster.builder import NHL_ARENAS, NHL_COLOURS, NHL_LOOK, Builder, Data
 from legacy_roster.matching import closest, match
 from legacy_roster.roster import Roster
 from legacy_roster.verify import verify
@@ -42,18 +42,22 @@ def test_hard_limits_no_new_team_and_no_team_changes_league(built, base_bytes):
     src, new = Roster(base_bytes), Roster(built.data)
     assert new.T.cur_rec == src.T.cur_rec == L.TEAM_COUNT
     assert new.T.column('league') == src.T.column('league')
-    # the team table is not touched, but for Utah's, Seattle's and Vegas's arena (builder.nhl_identity: Seattle and Vegas
+    # the team table is not touched beyond the NHL teams' arena and colours (builder.nhl_identity: Seattle and Vegas
     # shared one arena row; Vegas gets its own)
     n = src.T.rec_len
-    for t in range(L.TEAM_COUNT):
-        if t not in NHL_LOOK:
-            assert new.T.records[t * n:(t + 1) * n] == src.T.records[t * n:(t + 1) * n]
+    for t in range(32, L.TEAM_COUNT):
+        assert new.T.records[t * n:(t + 1) * n] == src.T.records[t * n:(t + 1) * n]
     A = new.f['OEtS']
-    for slot, (arena, city, _primary, _secondary) in NHL_LOOK.items():
+    own = {src.T.alias['arenaid']} | {src.T.alias[f"{kind}color_{c}"] for kind in ('primary', 'secondary') for c in 'rgb'}
+    for slot in range(32):
         row = new.T.get(slot, 'arenaid')
-        assert (A.get(row, 'arenaname'), A.get(row, 'cityname')) == (arena, city)
-        assert all(new.T.get(slot, f) == src.T.get(slot, f) for f in src.T.fields
-                   if f != src.T.alias['arenaid'])                              # the community's colours too
+        assert A.get(row, 'arenaname') == NHL_ARENAS[slot]
+        if slot in NHL_LOOK:
+            assert A.get(row, 'cityname') == NHL_LOOK[slot][1]
+        assert [tuple(new.T.get(slot, f"{kind}color_{c}") for c in 'rgb') for kind in ('primary', 'secondary')] == \
+            list(NHL_COLOURS[slot])
+        assert all(new.T.get(slot, f) == src.T.get(slot, f) for f in src.T.fields if f not in own)
+    assert len({new.T.get(slot, 'arenaid') for slot in range(32)}) == 32                    # each NHL team its own row
 
 
 def test_nhl_and_national_teams_dress_a_legal_line_up(built):

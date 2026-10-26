@@ -1,5 +1,6 @@
 """The player's own edits (edits.py): applied after the update, kept through later updates."""
 from legacy_roster import edits, faces, pipeline, verify
+from legacy_roster.builder import NHL_COLOURS
 from legacy_roster.editor import model
 from legacy_roster import layout as L
 from legacy_roster.roster import Roster
@@ -81,6 +82,27 @@ def test_edits_are_kept_on_the_pc(tmp_path):
     edits.save({'a|b|2000-01-01': {'label': 'A B', 'set': {'num': 9}}}, f)
     edits.save(file=f, teams={'5': {'full': 'X'}})                # saving teams keeps the players
     assert edits.load(f)['a|b|2000-01-01']['set'] == {'num': 9} and edits.load_teams(f) == {'5': {'full': 'X'}}
+
+
+def test_a_teams_colours_and_arena_from_the_jerseys_tab_reach_the_roster(base_bytes, data):
+    """The Jerseys & ice tab's Main / Second colour and arena name are written into the team table and the arena table
+    (the game's menus read them there), also with no update step (the Roster editor's Save), and a second build is the same."""
+    teams = {'1': {'uniforms': {'colours': {'primary': '#112233'}}, 'ice': {'arena': 'Test Arena™'}},       # Winnipeg
+             '0': {'ice': {'arena': 'Ducks Pond'}}}                                                         # Anaheim
+    for steps in ([], pipeline.ALL_STEPS):                  # the editor's Save, and an update (the edit beats the NHL table)
+        res = pipeline.build(base_bytes, data, steps=steps, team_edits=teams)
+        assert res.ok, res.problems[:5]
+        R, src = Roster(res.data), Roster(base_bytes)
+        T, A = R.T, R.f['OEtS']
+        assert tuple(T.get(1, f"primarycolor_{c}") for c in 'rgb') == (17, 34, 51)
+        second = tuple(src.T.get(1, f"secondarycolor_{c}") for c in 'rgb') if not steps else NHL_COLOURS[1][1]
+        assert tuple(T.get(1, f"secondarycolor_{c}") for c in 'rgb') == second                              # not given
+        assert A.get(T.get(1, 'arenaid'), 'arenaname') == 'Test Arena™'
+        assert T.get(44, 'arenaid') == src.T.get(44, 'arenaid') != T.get(1, 'arenaid')                       # Manitoba's own row
+        assert A.get(T.get(44, 'arenaid'), 'arenaname') == src.f['OEtS'].get(src.T.get(44, 'arenaid'), 'arenaname') \
+            or steps                                                                                         # (an update renames it)
+        assert A.get(T.get(0, 'arenaid'), 'arenaname') == A.get(T.get(225, 'arenaid'), 'arenaname') == 'Ducks Pond'   # its copy
+        assert pipeline.build(res.data, data, steps=steps, team_edits=teams).data == res.data
 
 
 def test_a_team_edit_renames_the_team_and_gives_it_a_logo(base_bytes, data, pack, tmp_path):

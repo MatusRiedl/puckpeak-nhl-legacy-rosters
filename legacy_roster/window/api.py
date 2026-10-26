@@ -20,11 +20,12 @@ def _safe(method):
 
 class Api:
     def __init__(self, host, update, editor=None, uniforms=None, equipment=None, lines=None, strategy=None,
-                 calendar=None, office=None, prospects=None, career=None):
+                 calendar=None, office=None, prospects=None, career=None, online=None):
         self._host, self._update, self._editor, self._uniforms = host, update, editor, uniforms
         self._equipment, self._lines, self._strategy = equipment, lines, strategy
         self._calendar, self._office, self._prospects = calendar, office, prospects
         self._career = career
+        self._online = online
 
     # --- the page -------------------------------------------------------------------------------
     @_safe
@@ -322,6 +323,10 @@ class Api:
         self._lines.place(who)
 
     @_safe
+    def lines_carry(self):
+        self._lines.carry()
+
+    @_safe
     def lines_letter(self, who, letter=None):
         self._lines.set_letter(who, letter)
 
@@ -534,3 +539,37 @@ class Api:
     @_safe
     def career_save(self):
         self._career.save()
+
+    # --- Play online ---------------------------------------------------------------------------------------------------
+
+    @_safe
+    def online_check(self):
+        self._online.refresh()
+
+    @_safe
+    def online_setup(self):
+        self._online.setup()
+
+    @_safe
+    def online_create(self, public=None):
+        self._online.create(None if public is None else bool(public))
+
+    @_safe
+    def online_public(self, on):
+        self._online.set_public(bool(on))
+
+    @_safe
+    def online_list(self):
+        self._online.refresh_list()
+
+    @_safe
+    def online_join(self, code):
+        self._online.join(str(code))
+
+    @_safe
+    def online_ready(self, on):
+        self._online.ready(bool(on))
+
+    @_safe
+    def online_leave(self):
+        self._online.leave()

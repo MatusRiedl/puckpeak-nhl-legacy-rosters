@@ -3,6 +3,47 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.70.0 (2026-10-26, test version)
+
+- **All 32 NHL arenas and team colours are the real ones** (the game's venue list, Team Select, sticks and gear follow).
+- **Jerseys & ice: the colour and venue-name fields now change the game**, not only the pictures. A change reaches the
+  roster on the next update or the Roster editor's Save.
+- **Lines: a pick changes only the spot you picked.** A forward chosen for a defence spot no longer swaps lines, and a
+  new player no longer takes every power-play / penalty-kill place of the one he replaces; a button offers to put him there too.
+- **Play online: different games can play together.** Europe and US, or 1.00 and 1.01, are no longer refused; the lobby warns
+  that the match may lose step. Lobby server: the game-version check is gone.
+
+## 0.65.0 (2026-10-26, test version)
+
+- **"Photos, logos and team names" starts off.** It takes a long time, so you tick it yourself when you want it (everyone
+  starts off once; a choice you make afterwards is kept). Playing online never waits for pictures: only the roster and the
+  game patch have to match.
+- **Play online: Public is the default.** A lobby is listed for everybody unless you choose Private.
+- **The online start does not need the pictures any more.** Going straight to Select Teams works with Photos off.
+- The match itself is the game's standard online match (5 minute periods, NHL rules); the lobby says so. The game
+  takes these from its own Play Now settings, so they cannot be changed from the program.
+- **Server:** the lobby server on the Puck Peak box is updated (Public by default, members must prove who they are).
+  Update both PCs to 0.65.0.
+- **Both players need the same game: same region (Europe or US) and same version (1.00 or the update 1.01).** In our tests
+  only equal games stayed in step; mixed ones stalled while loading or lost step in the first period. The lobby now says so
+  and does not start such a pair; the open-games list greys them out.
+- The first start after a game or RPCS3 update can take up to half an hour while RPCS3 prepares the game; the steps say so.
+
+## 0.60.0 (2026-10-25, test version)
+
+- **New tab: Play online.** Set up online once (it adds the online part of the game patch to RPCS3 and your RPCN name is
+  read from RPCS3), then make a lobby or join your friend's with a six-letter code. When both press Ready, RPCS3 starts
+  on both PCs.
+- **The roster is the lobby host's.** Make a lobby with the roster you picked in Setup: it is copied to your own "Puck Peak
+  Online" save and sent to your friend, whose PC copies it when they join (a backup of that save is kept). Your other
+  rosters are not touched.
+- **Both of you play with the same game patch**, or both without it. If they differ, Ready waits and the tab says what
+  to press in the Game patch tab.
+- **Nothing to press in the game.** When both of you are Ready, the game starts, signs in and takes both of you straight to
+  Select Teams, with the game as it came on the disc and with its update 1.01 (EU and NA; an EU and an NA game can play each other). Pick your team and side.
+- **Safer lobbies.** Only someone who is in a lobby can ready, leave or change it, and a roster from a friend is checked
+  before the program puts it into your game.
+
 ## 0.52.0 (2026-10-25)
 
 - **The Calendar shows your games again** in Be a GM and Season mode on the patched game: every game day has the
@@ -340,11 +381,11 @@ test builds and never released; the number jumps so the program's own update che
   Abbotsford and the CHL's Brantford, Newfoundland and Wenatchee had no name there. They are named now.
 - **No dead online entries in the menus.** View Player Hub, Leaderboards and Lobby (their online servers are gone, so
   they never opened) and Hockey Ultimate Team are left out of the main menu and Play. Online versus, EASHL and GM
-  Connected stay (Zamboni serves them). "Restore" on the Photos row puts them back.
+  Connected stay (the community server serves them). "Restore" on the Photos row puts them back.
 - **Puck Peak in the game.** Every news text on the main menu (also the fighting tip and NHL 94) says "Puck Peak" and
   "Updates, patches, statistics! Join us on gg.puckpeak.com"; the "new tuner set" notices say "www.puckpeak.com", in
   every language. With the game patch the news panel keeps these lines when you play online too (without it the
-  online server's old news show there). Zamboni's other notices and the HUT banner stay as they are.
+  online server's old news show there). The community server's other notices and the HUT banner stay as they are.
 
 ### Roster, Lines, Strategy, Jerseys & ice
 

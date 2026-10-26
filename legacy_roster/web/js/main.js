@@ -1,5 +1,5 @@
-// The window: the arena, the header, ten tabs in one row (Setup, Game patch, Update | Roster, Lines, Strategy,
-// Jerseys & ice, Calendar, Front office, Draft & Pro), the Help bar. The team tabs share the team list on the left
+// The window: the arena, the header, eleven tabs in one row (Setup, Game patch, Update | Roster, Lines, Strategy,
+// Jerseys & ice, Calendar, Front office, Draft & Pro | MULTIPLAYER, gold), the Help bar. The team tabs share the team list on the left
 // (rail.js; Draft & Pro has its classes there, prospects.js) and, all but the Calendar, the Save bar under them. A tab is
 // drawn on its first visit, then kept.
 import { html, cls, useState, useEffect, useRef } from './lib.js';
@@ -13,12 +13,13 @@ import { RosterTab, LinesTab, StrategyTab, JerseysTab, SaveBar, EditorModals, sa
 import { CalendarTab } from './calendar.js';
 import { OfficeTab, ContractWindow } from './office.js';
 import { ProspectsTab, ClassRail } from './prospects.js';
+import { OnlineTab } from './online.js';
 
 const TABS = [
   { id: 'setup', label: 'Setup' }, { id: 'patch', label: 'Game patch' }, { id: 'update', label: 'Update' },
   { id: 'roster', label: 'Roster' }, { id: 'lines', label: 'Lines' }, { id: 'strategy', label: 'Strategy' },
   { id: 'jerseys', label: 'Jerseys & ice' }, { id: 'calendar', label: 'Calendar' }, { id: 'office', label: 'Front office' },
-  { id: 'prospects', label: 'Draft & Pro' },
+  { id: 'prospects', label: 'Draft & Pro' }, { id: 'online', label: 'MULTIPLAYER', gold: true },
 ];
 const TEAM_TABS = ['roster', 'lines', 'strategy', 'jerseys', 'calendar', 'office', 'prospects'];
 const OLD_NAMES = { editor: 'roster', uniforms: 'jerseys', strategies: 'strategy' };
@@ -77,6 +78,7 @@ function App() {
   const contract = useSlice('contract');
   const prospects = useSlice('prospects');
   const career = useSlice('career');
+  const online = useSlice('online');
   const [tab, setTab] = useState(() => tabOf(params.get('tab')));
   const [seen, setSeen] = useState(() => new Set(tab ? [tab] : []));
   const [from, setFrom] = useState(null);         // {dir: 'from-left' | 'from-right', team: the tab left was a team tab}
@@ -191,6 +193,7 @@ function App() {
       ${pane('setup', html`<${SetupTab} s=${update} version=${meta.version}/>`)}
       ${pane('update', html`<${UpdateTab} s=${update}/>`)}
       ${pane('patch', html`<${PatchTab} s=${update}/>`)}
+      ${pane('online', html`<${OnlineTab} s=${online}/>`)}
       <section class=${cls('pane', 'teamstage', noSave && 'nosave', teamTab && from && !from.team && from.dir)}
           hidden=${!teamTab}>
         ${tab === 'prospects' ? html`<${ClassRail} p=${prospects}/>` : html`<${Rail} s=${rail}/>`}

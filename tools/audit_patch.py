@@ -107,6 +107,16 @@ def main(argv):
         print(f"    our code for 0x{addr:08x} (then back to 0x{addr + 4:08x}):")
         for n, (word, what) in enumerate(gamepatch.ported_code(code, version)):
             print(f"      +{n * 4:02x}  0x{word:08x} {show(word, 0x10000 + n * 4):28}  {what}")
+    # the online entries: the game's word must be the one the entry says it replaces
+    for addr, old, new, why in (gamepatch.ONLINE + gamepatch.ONLINE_START if version == '01.00' else gamepatch.ONLINE_START_101):
+        have = word_at(data, segs, addr)
+        ok = have == old
+        bad += not ok
+        hooks.append((addr, old))
+        print(f"{'ok ' if ok else 'BAD'} 0x{addr:08x}  online: game 0x{old:08x} {show(old, addr)}, ours 0x{new:08x}"
+              + ('' if ok else f"   (the file has {'nothing' if have is None else f'0x{have:08x}'})"))
+    if version != '01.00':
+        print("    the online entry's own words for update 1.01 are the community patch's: not audited")
     print(f"{len(hooks)} replaced instructions, {bad} problems")
     return 1 if bad else 0
 

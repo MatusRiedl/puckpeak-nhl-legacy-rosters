@@ -11,7 +11,7 @@
                                                       a patched RPCS3 (game-patch install) gets a roster for 32
                                                       teams and the year 2026, an unpatched one a normal roster
             [--game-patch [--skip-intro] [--no-login]]   patch RPCS3 first (RPCS3 closed), then update
-    game-patch install [--skip-intro] [--no-login] | status | remove --rpcs3 <rpcs3.exe>
+    game-patch install [--skip-intro] [--no-login] | status | remove | online | online-off --rpcs3 <rpcs3.exe>
                                                       patch the game for 32 teams and the year 2026, is it patched,
                                                       take the patch out again
     export-roster --file <SYS-DATA> [--out <folder>] [--for-patch]   update a roster file without RPCS3: writes a new
@@ -422,9 +422,14 @@ def cmd_game_patch(args):
             patchinstall.install_patch(rpcs3, rpcs3.games(), intro=args.skip_intro, login=args.no_login)
             print("Now update a roster with --rpcs3: it is made for the patched game.")
             return
+        if args.action in ('online', 'online-off'):
+            patchinstall.set_online(rpcs3, rpcs3.games(), args.action == 'online')
+            return
     except (RuntimeError, datasource.Offline, OSError) as err:     # RPCS3 running, no disc
         sys.exit(str(err))
     for title, st in patchinstall.state(rpcs3).items():
+        if st['online']:
+            print(f"{savedata.region(title)}: online play is set up")
         if st['patched']:
             extra = [what for what, on in (("the intro skipped", st['intro']), ("no pop-ups at start", st['login'])) if on]
             print(f"{savedata.region(title)}: patched for 32 teams and the year 2026 ({st['version']}, game "
@@ -530,7 +535,7 @@ def main(argv=None):
     p = sub.add_parser('game-patch', help="patch the game for 32 teams and the year 2026, is it patched, take the patch "
                                           "out again")
     p.set_defaults(fn=cmd_game_patch)
-    p.add_argument('action', choices=('install', 'status', 'remove'))
+    p.add_argument('action', choices=('install', 'status', 'remove', 'online', 'online-off'))
     p.add_argument('--rpcs3', required=True, help="your rpcs3.exe (or the folder it is in)")
     p.add_argument('--skip-intro', action='store_true', help="with install: start at the main menu, no intro")
     p.add_argument('--no-login', action='store_true',

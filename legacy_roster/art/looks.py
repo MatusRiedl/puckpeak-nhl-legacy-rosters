@@ -601,7 +601,7 @@ def centre_logo(logo, arena, colour=(32, 32, 32), size=1024):
         k = min(box / logo.width, box / logo.height)
         mark = logo.convert('RGBA').resize((max(1, round(logo.width * k)), max(1, round(logo.height * k))), Image.LANCZOS)
         canvas.alpha_composite(mark, (cx - mark.width // 2, cx - mark.height // 2))
-    left, right = split_arena(arena or '')
+    left, right = split_arena((arena or '').translate({ord(c): None for c in '®™℠'}).strip())     # no marks on the ring
     size_px = min((_fit_size(t, scale) for t in (left, right) if t), default=0)       # both halves in one size
     for text, mid in ((left, -32), (right, 32)):
         _arc_word(canvas, text, mid, True, colour, scale, size_px)
@@ -1553,11 +1553,8 @@ def _nhl_look(R, slot, team, e, logo_links, nhl_logos, pack, cache):
     pack_centre = team.centre if team is not None else None
     mine, ice = e.get('uniforms') or {}, e.get('ice') or {}
     default = slot in NEW_TEAMS
-    if default:
-        arena, _city, primary, secondary = builder.NHL_LOOK[slot]
-    else:
-        primary, secondary = team_colours(R, slot)
-        arena = team_arena(R, slot)
+    primary, secondary = builder.NHL_COLOURS[slot]          # what an update writes (the roster may be older)
+    arena = builder.NHL_ARENAS[slot]
     c = mine.get('colours') or {}
     primary, secondary = parse_colour(c.get('primary'), primary), parse_colour(c.get('secondary'), secondary)
     arena = ice.get('arena') or arena

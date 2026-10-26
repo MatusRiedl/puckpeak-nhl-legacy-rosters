@@ -32,6 +32,7 @@ WORDS = re.compile('|'.join([
     r'(?i:' + _G + 'ratings' + r')',                        # the site that lists the maker's ratings
     r'(?i:\bp' + 's5' + r'\b)', r'(?i:play' + r'station\s*5)',
     r'\bPP' + r'SA\d{5}', r'\bapp' + r'0\b',                # the newer console's title ids and dump folder
+    r'(?i:zam' + 'boni)',                                   # the community server (our own is called Overtime)
 ]))
 
 

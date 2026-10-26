@@ -72,12 +72,13 @@ export function TabBar({ tabs, tab, onTab }) {
     return () => watch.disconnect();
   }, [tab]);
   const index = tabs.findIndex((t) => t.id === tab);
+  const onGold = index >= 0 && tabs[index].gold;
   const step = (d) => onTab(tabs[(index + d + tabs.length) % tabs.length].id);
   return html`<nav class="tabs">
     <span class="keycap" title="Ctrl+Page Up" onClick=${() => step(-1)}>L1</span>
     <div class="tabset" ref=${box}>
-      ${thumb && html`<span class="thumb" style=${{ width: thumb.w + 'px', transform: `translateX(${thumb.x}px)` }}></span>`}
-      ${tabs.map((t) => html`<button type="button" key=${t.id} class=${t.id === tab ? 'on' : ''} onClick=${() => onTab(t.id)}>${t.label}</button>`)}
+      ${thumb && html`<span class=${cls('thumb', onGold && 'gold')} style=${{ width: thumb.w + 'px', transform: `translateX(${thumb.x}px)` }}></span>`}
+      ${tabs.map((t) => html`<button type="button" key=${t.id} class=${cls(t.id === tab && 'on', t.gold && 'gold')} onClick=${() => onTab(t.id)}>${t.label}</button>`)}
     </div>
     <span class="keycap" title="Ctrl+Page Down" onClick=${() => step(1)}>R1</span>
   </nav>`;

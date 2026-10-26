@@ -128,7 +128,7 @@ def game(tmp_path, monkeypatch):
 def test_the_menu_goes_in_once_and_restore_takes_it_away(game, monkeypatch):
     from legacy_roster.art import install
     made = []
-    monkeypatch.setattr(menus, 'hidden_files', lambda disc, mode: made.append(mode) or {menus.REL: b'BIGF ' + mode.encode()})
+    monkeypatch.setattr(menus, 'menu_files', lambda disc, mode: made.append(mode) or {menus.REL: b'BIGF ' + mode.encode()})
     says, path = [], os.path.join(game, *menus.REL)
     writer = install._Writer([game])
     assert install.install_menus('disc', writer, says.append) == 1
@@ -146,7 +146,7 @@ def test_a_disc_without_the_menu_leaves_it_as_it_is(game, monkeypatch):
 
     def broken(disc, mode):
         raise KeyError(menus.MENU_FILE)
-    monkeypatch.setattr(menus, 'hidden_files', broken)
+    monkeypatch.setattr(menus, 'menu_files', broken)
     says = []
     assert install.install_menus('disc', install._Writer([game]), says.append) == 0
     assert says[0].startswith("Photos and logos: the main menu was left as it is")
@@ -154,13 +154,13 @@ def test_a_disc_without_the_menu_leaves_it_as_it_is(game, monkeypatch):
 
 
 @needs_disc
-def test_the_installed_menu_is_the_hidden_copy_of_the_disc(game, original):
-    from legacy_roster.art import install
+def test_the_installed_menu_is_the_hidden_copy_with_the_online_start(game, original):
+    from legacy_roster.art import install, onlinestart
     writer = install._Writer([game])
     assert install.install_menus(DISC, writer, lambda m: None) == 1
     writer.save()
     with open(os.path.join(game, *menus.REL), 'rb') as f:
-        assert f.read() == menus.hidden_file(original, menus.HIDE)
+        assert f.read() == onlinestart.start_file(original, menus.HIDE)
 
 
 # --- the lab probe -------------------------------------------------------------------------------

@@ -382,7 +382,7 @@ rebuilds every language file of the disc byte for byte.
   the strings `LINE1_NAME`/`LINE2_NAME`, 190 ms after the team's logo was read. Waiting for the in-game check.
 - **Promo texts (0.21.0).** The main menu's offline news panel (`TXT_OFFLINE_DYNAMIC_MSG_TITLE_<n>` / `_BODY_<n>`, 0-4;
   3 is the fighting tip, `_CLASSIC_` NHL 94) and the tuner-set notices (`TXT_TUNER_SET(S)_..._AVAIL(ABLE)`) are fixed
-  keys (the HUT banner `FUT_NEWS_AND_EVENTS(_DESC)` stays: Zamboni serves HUT): `loc.PROMO` writes them with `set_existing`, the
+  keys (the HUT banner `FUT_NEWS_AND_EVENTS(_DESC)` stays: the community server serves HUT): `loc.PROMO` writes them with `set_existing`, the
   same text in every language, each within the longest text any language keeps for that key (`promo_limits`).
   docs/notes/promo-texts.md.
 

@@ -201,7 +201,7 @@ file, so the program writes a corrected copy of that too:
   favourite team in your settings) get the current logos too: Utah's instead of the Coyotes'.
 - **The main menu** leaves out Hockey Ultimate Team, View Player Hub, Leaderboards and Lobby (their online servers
   are gone). The old offline news and the "new tuner set" notices say "Puck Peak" and
-  "www.puckpeak.com"; Zamboni's own news stays.
+  "www.puckpeak.com"; the community server's own news stays.
 - **Your own pictures are kept.** Before a picture is replaced, the one that was there is kept on
   your PC: the game's own, or one from a picture pack you installed yourself. If you install
   another pack later, its pictures are kept as well.

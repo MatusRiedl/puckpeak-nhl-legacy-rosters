@@ -11,7 +11,7 @@ constant file). The movie's start-up script fills the menu lists, one statement 
 `name` is the entry's text key (fe/loc/nhl_<language>.db). The entries this module hides
 (`DEAD`): OSDK_AP_VIEW_HUB, Leaderboards and OSDK_LOBBY in COMMUNITY (arrOnlineCommunity, which the
 script also names arrCommunity) and TXT_HUT (arrRootMenu: the main menu's "Featured" row, and PLAY).
-GM Connected, the EASHL and online versus (PLAY > Online) stay: the community server Zamboni serves them. The lab showed the game
+GM Connected, the EASHL and online versus (PLAY > Online) stay: the community server serves them. The lab showed the game
 reads a loose copy in USRDIR before boot.big (2026-10-18, docs/notes/menus.md).
 
 Two ways, chosen by `mode`:
@@ -44,7 +44,7 @@ from .disc import EbArchive, IsoImage
 ARCHIVE = 'boot.big'
 MENU_FILE = 'fe/ion/game/menus/mainmenuitems.big'
 REL = tuple(MENU_FILE.split('/'))
-MENUS_VERSION = '#3'            # change when the copy is made another way ('#3': HUT hidden too)
+MENUS_VERSION = '#4'            # change when the copy is made another way ('#3': HUT hidden too, '#4': the online start's cave)
 
 HIDE, REMOVE = 'hide', 'remove'
 
@@ -384,6 +384,13 @@ def original_file(disc):
 def hidden_files(disc, mode=HIDE):
     """{loose path (tuple, relative to the game's USRDIR): bytes} for the player's own disc."""
     return {REL: hidden_file(original_file(disc), mode)}
+
+
+def menu_files(disc, mode=HIDE):
+    """What the installer writes: the main menu without the dead entries, and the online start's cave (a branch of the menu
+    script that does not run until the game patch switches it on, art/onlinestart.py)."""
+    from . import onlinestart
+    return {REL: onlinestart.start_file(original_file(disc), mode)}
 
 
 def menu_entries(file_bytes):

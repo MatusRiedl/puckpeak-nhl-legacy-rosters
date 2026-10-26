@@ -2,6 +2,7 @@
 
     install_patch(rpcs3, titles, intro=, login=)   the window's Patch button (step 2), cli game-patch install
     set_switches(rpcs3, titles, intro, login)      the two small switches of a patched game, changed
+    set_online(rpcs3, titles, on)                  the online entry (our server's words) ticked or not, with or without the 32 teams
     refresh_db(rpcs3, titles, roster)              after a patched update: the db files hold that roster's calendars
     state(rpcs3) / patched_titles(rpcs3)           {title id: {'patched', 'version', 'game', 'stale', ...}} / the patched ones
     remove(rpcs3)                                  the Unpatch button (and Restore default)
@@ -31,16 +32,19 @@ import shutil
 import struct
 
 from . import datasource, gamepatch, savedata
-from .art import install, pressstart
+from .art import install, menus, onlinestart, pressstart
 from .roster import Roster
 from .sfo import Sfo
 
 STORE = install.PATCH_STORE
 GAME = "NHL Legacy"                 # the game's name in RPCS3's patch lists
-ENTRIES = (gamepatch.PLAYER_ENTRY, gamepatch.INTRO_ENTRY, gamepatch.LOGIN_ENTRY, gamepatch.NEWS_ENTRY)
+ENTRIES = (gamepatch.PLAYER_ENTRY, gamepatch.INTRO_ENTRY, gamepatch.LOGIN_ENTRY, gamepatch.NEWS_ENTRY,
+           gamepatch.ONLINE_ENTRY, gamepatch.ONLINE_START_ENTRY)   # the last one is ticked for one start only (set_online_start)
 NO_PRESS = True                     # the intro skip also skips Press Start (art/pressstart.py; lab 47d passed, EU; the
                                     # NA disc's file is the same bytes)
 PRESS_SOURCE = 'press:' + pressstart.PRESS_VERSION
+SCREENS_SOURCE = 'online:' + onlinestart.FILES_VERSION      # the Welcome back panel and the matchmaking screen (set_online)
+MENU_SOURCE = 'menus:' + menus.MENUS_VERSION + menus.HIDE   # the main menu with the start's cave: the same tag the Photos install writes
 
 
 class PatchError(RuntimeError):
@@ -372,7 +376,7 @@ def install_patch(rpcs3, titles, roster=None, intro=True, login=False, say=print
             hash_ = gamepatch.hash_of(title, version)
             if hash_ not in mine:       # how our names looked before our first change; kept until remove()
                 mine[hash_] = entries_before(before, hash_)
-            text = config_with(text, title, wanted, version)
+            text = config_with(text, title, wanted | _online_on(text, title, version), version)
     _store_saved(saved)
     if text != before:
         _write_config(rpcs3, text)
@@ -397,12 +401,128 @@ def set_switches(rpcs3, titles, intro, login):
     before = text = _read(config_file(rpcs3))
     for title in patched:
         for version in covered(_read(patch_file(rpcs3, title)), title):
-            text = config_with(text, title, wanted, version)
+            text = config_with(text, title, wanted | _online_on(text, title, version), version)
     if text != before:
         _write_config(rpcs3, text)
     if patched:
         set_press(rpcs3, patched, intro)
     return patched
+
+
+def _online_on(text, title, version):
+    """{ONLINE_ENTRY} when `text` (patch_config.yml) has it ticked for `title` in `version`, else nothing: the 32-team
+    switches keep an online setup as it is."""
+    return {gamepatch.ONLINE_ENTRY} & ticked(text, title, version)
+
+
+def set_online(rpcs3, titles, on, say=print):
+    """Tick (`on`) or untick the online entry (gamepatch.ONLINE_ENTRY) for the versions `titles` of the game, 1.00 and
+    update 1.01 alike; the patch file is written first when it is not there. It works without the 32-team patch and
+    leaves that and the intro switches as they are. RPCS3 closed; no disc needed. Returns the titles changed."""
+    titles = [t for t in gamepatch.HASHES if t in titles]
+    if rpcs3 is None or rpcs3.plain:
+        raise PatchError("Online play needs RPCS3: pick rpcs3.exe, not a folder of saves.")
+    if savedata.running_rpcs3():
+        raise PatchError("Close RPCS3 first: the game patch can only be put in or taken out while RPCS3 is closed.")
+    if on:
+        writer = install._Writer([patches_dir(rpcs3)], store=STORE)
+        text = gamepatch.player_patch_text().encode()
+        try:
+            for title in titles:
+                writer.write((os.path.basename(patch_file(rpcs3, title)),), text,
+                             f"patch:{gamepatch.TEAMS_VERSION}:" + hashlib.sha1(text).hexdigest())
+        finally:
+            writer.save()
+    set_screens(rpcs3, titles, on, say=say)
+    before = text = _read(config_file(rpcs3))
+    saved = _load_saved()
+    mine = _kept(saved, config_file(rpcs3))
+    for title in titles:
+        for version in gamepatch.VERSIONS:
+            hash_ = gamepatch.hash_of(title, version)
+            if hash_ not in mine:
+                mine[hash_] = entries_before(before, hash_)
+            keep = ticked(text, title, version) - {gamepatch.ONLINE_ENTRY, gamepatch.ONLINE_START_ENTRY}
+            text = config_with(text, title, keep | ({gamepatch.ONLINE_ENTRY} if on else set()), version)
+    _store_saved(saved)
+    if text != before:
+        _write_config(rpcs3, text)
+    say(("Online play is set up in RPCS3 for " if on else "Online play is switched off in RPCS3 for ")
+        + " and ".join(savedata.region(t) for t in titles))
+    return titles
+
+
+def set_screens(rpcs3, titles, on, disc=None, say=print):
+    """The Welcome back panel and the matchmaking screen that go on by themselves (art/onlinestart.py) in the game folders of
+    `titles` when `on`, else the game's own files back. Made from the player's disc; a disc whose files are not the ones the
+    change was made for keeps the screens as they are (the lobby's steps are then pressed by hand). Returns whether they are in."""
+    writer = install._Writer([rpcs3.game_folder(t) for t in titles], store=STORE)
+    try:
+        if not on:
+            for rel in (onlinestart.WELCOME_REL, onlinestart.MATCH_REL, menus.REL):     # the menu only if this store wrote it
+                writer.drop(rel)
+            return False
+        screens = all(writer.current(rel, SCREENS_SOURCE) for rel in (onlinestart.WELCOME_REL, onlinestart.MATCH_REL))
+        menu = _menu_in(rpcs3, titles)
+        if screens and menu:
+            return True
+        try:
+            source = disc or find_disc(rpcs3, titles)
+            files = {} if screens else onlinestart.screen_files(source)
+            if not menu:        # the start's cave sits in the main menu file, which the Photos install makes too (and then owns)
+                files[menus.REL] = menus.menu_files(source)[menus.REL]
+        except (ValueError, KeyError, OSError) as err:
+            say(f"Online play: the game's screens stay as they are, you press X on them yourself ({err})")
+            return False
+        for rel, data in sorted(files.items()):
+            writer.write(rel, data, MENU_SOURCE if rel == menus.REL else SCREENS_SOURCE)
+        return True
+    finally:
+        writer.save()
+
+
+def _menu_in(rpcs3, titles):
+    """Is the main menu with the start's cave in the game folders of `titles`, written by this program (here or by the Photos install)?"""
+    dirs = [rpcs3.game_folder(t) for t in titles]
+    return any(install._Writer(dirs, store=store).current(menus.REL, MENU_SOURCE) for store in (STORE, install.ART_STORE))
+
+
+def screens_in(rpcs3, title):
+    """Are the two screens and the main menu of set_screens in the game folder of `title` (written by this program, still ours)?"""
+    writer = install._Writer([rpcs3.game_folder(title)], store=STORE)
+    return (all(writer.current(rel, SCREENS_SOURCE) for rel in (onlinestart.WELCOME_REL, onlinestart.MATCH_REL))
+            and _menu_in(rpcs3, [title]))
+
+
+def auto_start(rpcs3, title):
+    """Can the game be started into the lobby's search by the patch (no key at all)? The patch file must hold the entry
+    (it does for 1.00 and update 1.01) and the two screens must be in."""
+    if rpcs3 is None or getattr(rpcs3, 'plain', False):
+        return False
+    version = game_version(rpcs3, title)
+    return (f"  {gamepatch.ONLINE_START_ENTRY}:" in _read(patch_file(rpcs3, title)) and screens_in(rpcs3, title)
+            and {gamepatch.ONLINE_ENTRY, gamepatch.INTRO_ENTRY} <= ticked(_read(config_file(rpcs3)), title, version))
+
+
+def set_online_start(rpcs3, titles, on):
+    """Tick (`on`) or untick the online start entry (gamepatch.ONLINE_START_ENTRY: the game goes to the lobby's search by
+    itself) for the game version each of `titles` has (1.00 or update 1.01); everything else stays ticked as it is. RPCS3 closed. It is ticked for one
+    start only: the program unticks it as soon as the game has read it (unticking is allowed while RPCS3 runs: it reads the
+    patch file at the game's start). Returns the titles changed."""
+    if on and savedata.running_rpcs3():
+        raise PatchError("Close RPCS3 first: the game patch can only be changed while RPCS3 is closed.")
+    before = text = _read(config_file(rpcs3))
+    done = []
+    for title in (t for t in gamepatch.HASHES if t in titles):
+        version = game_version(rpcs3, title)
+        keep = ticked(text, title, version) - {gamepatch.ONLINE_START_ENTRY}
+        if on and not auto_start(rpcs3, title):
+            continue
+        text = config_with(text, title, keep | ({gamepatch.ONLINE_START_ENTRY} if on else set()), version)
+        done.append(title)
+    if text != before:
+        _write_config(rpcs3, text)
+    return done
 
 
 def set_press(rpcs3, titles, on, disc=None, say=print):
@@ -496,7 +616,7 @@ def covered(body, title):
 def state(rpcs3):
     """{title id: {'patched': the 32-team entry is ticked for the game version RPCS3 runs and our patch file has it,
     'version': its patch version or None, 'game': the game version RPCS3 runs ('01.00', update '01.01'), 'stale': the
-    patch is in, but not for that game version (Patch again), 'intro', 'login', 'news': those entries ticked, 'rights':
+    patch is in, but not for that game version (Patch again), 'intro', 'login', 'news', 'online': those entries ticked, 'rights':
     the bits the game's db description gives the player rights (gamepatch.meta_rights; None without one)}} for both
     versions of the game."""
     out = {}
@@ -517,7 +637,7 @@ def state(rpcs3):
         stale = not patched and any(gamepatch.PLAYER_ENTRY in ticked(text, title, v) for v in has)
         out[title] = {'patched': patched, 'version': version, 'game': game, 'stale': stale,
                       'intro': gamepatch.INTRO_ENTRY in on, 'login': gamepatch.LOGIN_ENTRY in on,
-                      'news': gamepatch.NEWS_ENTRY in on, 'rights': rights}
+                      'news': gamepatch.NEWS_ENTRY in on, 'online': gamepatch.ONLINE_ENTRY in on, 'rights': rights}
     return out
 
 

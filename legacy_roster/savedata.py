@@ -788,6 +788,20 @@ def list_rosters(savedata):
     return sorted(slots, key=lambda s: s.modified, reverse=True)
 
 
+def boot_first(savedata, folder):
+    """Make the game load the roster save `folder` when it boots (lab round 47a: it loads the oldest roster written since
+    its last boot, and rewrites its settings save `<TITLE>1300` after every boot). The folder's own time is put one second
+    after the settings save's, so every roster written later is newer and this one is the oldest of those. Only the time of
+    this one folder changes. False when the folder or the settings save is not there."""
+    path = os.path.join(savedata, folder)
+    settings = os.path.join(savedata, folder[:9] + '1300')
+    if not (os.path.isdir(path) and os.path.isdir(settings)):
+        return False
+    stamp = os.path.getmtime(settings) + 1
+    os.utime(path, (stamp, stamp))
+    return True
+
+
 # The game lists 10 roster saves per version (cellSaveDataListLoad2, dirListMax 10): RPCS3 hands it
 # the first 10 folders <TITLE>02NN by name, so a roster in ...0210 or later never shows in the game.
 GAME_LISTS = 10

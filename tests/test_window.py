@@ -94,3 +94,46 @@ def test_the_pages_server_takes_many_connections_at_once():
             server.server_close()
     finally:
         WSGIServer.request_queue_size = was
+
+
+def test_the_play_online_tab_is_wired_to_python():
+    from legacy_roster.window.api import Api
+
+    class Online:
+        def __init__(self):
+            self.said = []
+
+        def refresh(self):
+            self.said.append('refresh')
+
+        def setup(self):
+            self.said.append('setup')
+
+        def create(self, public=None):
+            self.said.append('create' if public is None else ('create', public))
+
+        def set_public(self, on):
+            self.said.append(('public', on))
+
+        def refresh_list(self):
+            self.said.append('list')
+
+        def join(self, code):
+            self.said.append(('join', code))
+
+        def ready(self, on):
+            self.said.append(('ready', on))
+
+        def leave(self):
+            self.said.append('leave')
+
+    online = Online()
+    api = Api(None, None, online=online)
+    api.online_check(), api.online_setup(), api.online_create(), api.online_create(1), api.online_public(1), api.online_list()
+    api.online_join('kdm qrs'), api.online_ready(1), api.online_leave()
+    assert online.said == ['refresh', 'setup', 'create', ('create', True), ('public', True), 'list', ('join', 'kdm qrs'),
+                           ('ready', True), 'leave']
+    for name in ('js/online.js', 'js/main.js'):
+        with open(os.path.join(WEB, name), encoding='utf-8') as f:
+            text = f.read()
+        assert ("call('online_setup')" in text) if name == 'js/online.js' else ("{ id: 'online', label: 'MULTIPLAYER', gold: true }" in text)

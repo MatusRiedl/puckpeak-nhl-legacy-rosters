@@ -532,8 +532,10 @@ def install_menus(disc, writer, say, mode=None):
     source = 'menus:' + menus.MENUS_VERSION + str(mode)
     if writer.current(menus.REL, source):
         return 0
+    if _Writer(writer.game_dirs, store=PATCH_STORE).current(menus.REL, source):     # the online setup put the same file in
+        return 0
     try:
-        files = menus.hidden_files(disc, mode)
+        files = menus.menu_files(disc, mode)
     except (ValueError, KeyError, OSError) as err:     # a menu file that does not look like the game's own: left alone
         say(f"Photos and logos: the main menu was left as it is ({err})")
         return 0

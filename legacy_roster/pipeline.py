@@ -396,10 +396,9 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     if rescaled:
         log.append(['ALL', 'summary', "contracts moved to " + ("real dollars" if money == contracts.REAL else
                                                                 "the game's cap"), f"{rescaled} players", ''])
-    identity = b.nhl_identity(colours=kind == L.STOCK) if kind == L.STOCK or NHL in steps else 0
+    identity = b.nhl_identity() if kind == L.STOCK or NHL in steps else 0
     if identity:
-        log.append(['ALL', 'summary', "arenas and colours of Utah, Seattle and Vegas" if kind == L.STOCK else
-                    "arenas of Utah, Seattle and Vegas", identity, ''])
+        log.append(['ALL', 'summary', "arena names and colours of the NHL teams", f"{identity} teams", ''])
     if NHL in steps and b.nhl_gear(own=normal_from or calendar_from):
         log.append(['ALL', 'summary', "helmets and gear of Utah, Seattle and Vegas", "in their colours", ''])
     # the club leagues as they will be built (with the player's own teams named after left-out clubs):

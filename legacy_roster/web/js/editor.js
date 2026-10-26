@@ -511,7 +511,8 @@ function UniformsBody({ u }) {
   return html`
     <p class="small-note">Pick how each jersey version is made. The game shows the change after an update with "Photos, logos
       and team names" on; the Restore button of that row on the Update tab puts the game's own back. A jersey made from colours uses the
-      team's logo as its crest.</p>
+      team's logo as its crest. The two colours and the arena name below are saved into the roster too (Save, or the next update): the
+      game's menus, sticks and gear use them. Only a jersey set to "From the colours" follows the colours.</p>
     ${u.note && html`<div class="note warn">${u.note}</div>`}
     ${u.shared && html`<div class="note">${u.shared}</div>`}
     ${u.pack_note && html`<div class="note gold">${u.pack_note}</div>`}
@@ -548,6 +549,8 @@ function UniformsBody({ u }) {
               where the red line crosses, is made clear by the program.</div>` : html`
             <label class="pc-row arena"><span>Arena name on the ice</span>
               <${TextField} value=${u.ice.arena} onChange=${(t) => call('uniforms_arena', t)} delay=${400}/></label>
+            <div class="small-note faint">This is the arena's name in the game's menus and intros; the centre-ice logo shows it
+              round the ring when it is made from the logo.</div>
             <div class="small-note faint">A picture of your own: 1024 x 1024 with a clear background; the strip in the middle,
               where the red line crosses, is made clear by the program.</div>`}
           </div>
@@ -684,6 +687,7 @@ export function LinesTab({ n }) {
                   <span class="faint w">${p.where || (p.dressed ? '' : 'scratched')}</span></button>`)}</div>
             </div>`}
       </div>
+      ${n.carry && html`<div class="note ln-carry"><${Button} onClick=${() => call('lines_carry')}>${n.carry}<//></div>`}
       ${n.problems.length > 0 && html`<div class="note warn ln-problems">${n.problems.slice(0, 4).map((t) => html`<div key=${t}>${t}</div>`)}
         ${n.problems.length > 4 ? html`<div>... and ${n.problems.length - 4} more</div>` : ''}</div>`}
     </div>

@@ -57,7 +57,7 @@ def read(game, lang):
 
 def test_the_table_holds_short_texts_for_every_news_panel_text():
     assert len(loc.PROMO) == 16 and all(loc.PROMO.values())
-    assert not any(key.startswith('FUT_') for key in loc.PROMO)          # Zamboni's HUT banner stays
+    assert not any(key.startswith('FUT_') for key in loc.PROMO)          # the community server's HUT banner stays
     assert not set(KEPT) & set(loc.PROMO)
     news = [key for key in loc.PROMO if key.startswith('TXT_OFFLINE_DYNAMIC_MSG_')]
     assert len(news) == 12 and {loc.PROMO[key] for key in news if '_BODY_' in key} == {loc._NEWS}

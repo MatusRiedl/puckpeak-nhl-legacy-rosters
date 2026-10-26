@@ -1,23 +1,58 @@
-"""Utah, Seattle and Vegas on any roster (builder.nhl_identity): arena, city and colours. The community roster
-still holds Arizona Arena and Nashville's arena for them (lab round 32)."""
+"""The 32 NHL teams' arena names and colours on any roster (builder.nhl_identity), and Utah's, Seattle's and Vegas's cities.
+Both rosters hold old or half-right names and colours (lab round 32; the testers' lists of 2026-10-26)."""
 from legacy_roster import layout as L
-from legacy_roster.builder import GEAR_SLIPS, NHL_GEAR, NHL_LOOK, Builder, Data
+from legacy_roster.builder import (GEAR_SLIPS, NHL_ARENAS, NHL_CITIES, NHL_COLOURS, NHL_GEAR, NHL_LOOK, Builder, Data)
 from legacy_roster.roster import Roster
 
 
-def test_the_three_teams_get_their_arenas_and_colours_once(base_bytes):
+def test_every_nhl_team_gets_its_arena_and_colours_once(base_bytes):
     R = Roster(base_bytes)
     b = Builder(R, Data(season_year=2026), layout=L.check_base(R))
-    assert b.nhl_identity() == 3
+    assert b.nhl_identity() >= 30
     A, T = R.f['OEtS'], R.T
-    for slot, (arena, city, primary, secondary) in NHL_LOOK.items():
+    for slot in range(32):
         row = T.get(slot, 'arenaid')
-        assert (A.get(row, 'arenaname'), A.get(row, 'cityname')) == (arena, city) and A.get(row, 'index') == row
-        assert tuple(T.get(slot, f"primarycolor_{c}") for c in 'rgb') == primary
-        assert tuple(T.get(slot, f"secondarycolor_{c}") for c in 'rgb') == secondary
-    assert len({T.get(s, 'arenaid') for s in NHL_LOOK}) == 3                      # each its own arena
+        assert A.get(row, 'arenaname') == NHL_ARENAS[slot] and A.get(row, 'index') == row
+        if slot in NHL_CITIES:
+            assert A.get(row, 'cityname') == NHL_CITIES[slot]
+        assert tuple(T.get(slot, f"primarycolor_{c}") for c in 'rgb') == NHL_COLOURS[slot][0]
+        assert tuple(T.get(slot, f"secondarycolor_{c}") for c in 'rgb') == NHL_COLOURS[slot][1]
+    assert len({T.get(s, 'arenaid') for s in range(32)}) == 32                    # each its own arena (Seattle, Vegas split)
     once = R.f.build()
     assert b.nhl_identity() == 0 and R.f.build() == once                           # a second time changes nothing
+
+
+def test_a_custom_copy_and_a_farm_club_in_the_same_building_follow_the_rename(base_bytes):
+    R = Roster(base_bytes)
+    T, A = R.T, R.f['OEtS']
+    shared = {t: T.get(t, 'arenaid') for t in (0, 225, 1, 44)}                    # Anaheim and its copy, Winnipeg and Manitoba
+    assert shared[0] == shared[225] and shared[1] == shared[44]
+    Builder(R, Data(season_year=2026), layout=L.check_base(R)).nhl_identity()
+    assert T.get(225, 'arenaid') == T.get(0, 'arenaid') and A.get(T.get(225, 'arenaid'), 'arenaname') == "Honda Center®"
+    assert T.get(44, 'arenaid') == T.get(1, 'arenaid') and A.get(T.get(44, 'arenaid'), 'arenaname') == "Canada Life Centre™"
+
+
+def test_a_full_arena_table_keeps_the_shared_row_but_still_paints_the_colours(base_bytes):
+    R = Roster(base_bytes)
+    A, T = R.f['OEtS'], R.T
+    while A.cur_rec < A.max_rec:                                                  # use up the free rows
+        A.add_record(template=0)
+    b = Builder(R, Data(season_year=2026), layout=L.check_base(R))
+    b.nhl_identity()
+    assert T.get(30, 'arenaid') == T.get(31, 'arenaid')                           # no room to split them
+    assert tuple(T.get(31, f"primarycolor_{c}") for c in 'rgb') == NHL_COLOURS[31][0]
+    assert b.set_arena(31, "Somewhere Arena") is False
+
+
+def test_set_arena_gives_a_team_alone_in_a_shared_building_a_row_of_its_own(base_bytes):
+    R = Roster(base_bytes)
+    b = Builder(R, Data(season_year=2026), layout=L.check_base(R))
+    T, A = R.T, R.f['OEtS']
+    row = T.get(1, 'arenaid')
+    assert b.set_arena(1, "Moose Ice", alone=True) is True                        # Manitoba (44) shares it: Winnipeg splits
+    assert T.get(1, 'arenaid') != row and A.get(T.get(1, 'arenaid'), 'arenaname') == "Moose Ice"
+    assert A.get(row, 'arenaname') != "Moose Ice" and T.get(44, 'arenaid') == row
+    assert b.set_arena(1, "Moose Ice", alone=True) is None
 
 
 ZONES = [[f"zone{z}_{c}" for c in 'rgb'] for z in range(1, 10)]
@@ -78,7 +113,7 @@ def test_the_colours_the_old_step_put_on_philadelphia_and_washington_go_back(bas
     paint_the_old_way(R)
     damaged = R.f.build()
     E = R.f['vbHh']
-    assert any((106, 179, 230) in colours(E, row) for row in range(E.cur_rec) if E.get(row, 'team') == 22)
+    assert any(NHL_LOOK[22][2] in colours(E, row) for row in range(E.cur_rec) if E.get(row, 'team') == 22)
     # with the game's own roster: exactly as it was
     own = Roster(base_bytes)
     b = Builder(R, Data(season_year=2026), layout=L.check_base(R))

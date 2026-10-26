@@ -107,9 +107,10 @@ class UniformsController:
             self.group = group
             if group and 'use' not in self.ice and group_ice.get('use'):
                 self.ice['use'] = group_ice['use']
-            if self.default_team:
+            if slot in looks.NHL:       # an NHL team: what an update writes (builder.NHL_ARENAS / NHL_COLOURS)
                 from .. import builder
-                arena, _city, primary, secondary = builder.NHL_LOOK[slot]
+                primary, secondary = builder.NHL_COLOURS[slot]
+                arena = builder.NHL_ARENAS[slot]
             else:
                 primary, secondary = looks.team_colours(R, slot)
                 arena = looks.team_arena(R, slot)

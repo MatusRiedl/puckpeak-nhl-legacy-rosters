@@ -429,3 +429,41 @@ table.mini tr.mine td { background: var(--row-sel); }
   .card.patch .sub { display: block; }
   .card.patch .patch-state { margin-top: 8px; }
 }
+
+/* --- Play online ------------------------------------------------------------------------------- */
+.tabset button:nth-of-type(11) { margin-left: 13px; }
+.tabset button:nth-of-type(11)::before { content: ''; position: absolute; left: -7px; top: 5px; bottom: 5px; width: 1px;
+  background: var(--line); }
+.online .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.online .on-actions { margin-top: 10px; }
+.online .on-account .who { font-size: 16px; font-weight: 700; color: var(--text); }
+.online .om { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 14px; font-weight: 600; }
+.online .om .dot { width: 16px; text-align: center; color: var(--faint); }
+.online .om.ok .dot { color: var(--good); }
+.online .om.ok .lab { color: var(--text); }
+.online .om.no .lab { color: var(--muted); }
+.online .om-note { padding: 8px 10px; font-size: 13px; line-height: 1.4; background: var(--row); box-shadow: inset 3px 0 0 var(--panel-bd); }
+.online .om-note.good { box-shadow: inset 3px 0 0 var(--good); color: var(--good); }
+.online .om-note.bad { box-shadow: inset 3px 0 0 var(--amber); color: var(--amber); }
+.online .on-code { flex: 1; min-width: 140px; text-transform: uppercase; letter-spacing: 2px; }
+.online .on-code-big { font-size: 30px; font-weight: 800; letter-spacing: 6px; color: var(--gold-hi); }
+.online .om-members { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.online .om-member { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 10px; align-items: baseline;
+  padding: 6px 10px; background: var(--row); box-shadow: inset 3px 0 0 var(--panel-bd); font-size: 13.5px; }
+.online .om-member.me { box-shadow: inset 3px 0 0 var(--accent); }
+.online .om-member .who { font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+.online .om-member .role, .online .om-member .prog, .online .om-member .om-flag { white-space: nowrap; color: var(--muted); font-size: 12px; }
+.online .om-member .om-flag.ok { color: var(--good); font-size: 12px; }
+.online .om-member .om-flag.no { color: var(--amber); font-size: 12px; }
+.online .om-why { margin: 8px 0; padding: 8px 10px; color: var(--amber); background: var(--row); box-shadow: inset 3px 0 0 var(--amber);
+  font-size: 13px; line-height: 1.4; }
+.online .om-bring { margin: 6px 0; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.online .om-bring.no { color: var(--amber); font-weight: 400; }
+.online .om-open { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: 10px; align-items: center;
+  row-gap: 3px; padding: 7px 10px; margin-bottom: 4px; background: var(--row); }
+.online .om-open .who { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.online .om-open .ros, .online .om-open .meta { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.online .om-open .why { grid-column: 1 / -1; font-size: 12px; color: var(--amber); }
+.online .om-open.no .who, .online .om-open.no .ros { opacity: .6; }
+.online .om-steps { margin: 6px 0 10px 18px; padding: 0; font-size: 14px; line-height: 1.5; }
+.online .om-steps li { margin-bottom: 6px; }

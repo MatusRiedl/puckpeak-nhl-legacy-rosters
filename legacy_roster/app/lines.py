@@ -47,6 +47,15 @@ def _group_of(slot):
     return next(names for _, names in LN.GROUPS if slot in names)
 
 
+def _kind(slot):
+    """The kind of place: goal, defence, forward ('S': a shooter or extra attacker, any skater)."""
+    if slot in ('g1', 'g2'):
+        return 'G'
+    if slot[0] in 'sx':
+        return 'S'
+    return 'D' if slot[-2:] in ('ld', 'rd') else 'F'
+
+
 class LinesController:
     def __init__(self, host, editor):
         self.host, self.editor = host, editor
@@ -57,6 +66,7 @@ class LinesController:
         self.slots, self.letters = {}, {}       # {slot: person key}, {person key: 'C' | 'A'}
         self.players = {}               # person key -> {'name', 'pos', 'ovr', 'num'}
         self.picked = None              # the place clicked, waiting for a player
+        self.replaced = None            # (the player who left a dressed place, the one who took it): `carry`
         self.touched = False
         self.note = ''
         # the Lines tab (it follows the team picked in the team list; the old window is opened by hand)
@@ -90,6 +100,7 @@ class LinesController:
             mine = ((ed.teams.get(str(team)) or {}).get('lines'))
         with self.lock:
             self.team, self.tab, self.picked, self.touched, self.note = team, 'even', None, False, ''
+            self.replaced = None
             self.slots, self.letters, self.players = read
             if mine and all(w in self.players for w in list(mine['slots'].values()) + list(mine.get('letters', {}))):
                 self.slots, self.letters = dict(mine['slots']), dict(mine.get('letters', {}))
@@ -198,27 +209,40 @@ class LinesController:
         with self.lock:
             if self.team is None or slot not in LN.S:
                 return
+            self.replaced = None
             self.picked = None if self.picked == slot else slot
             self.changed()
 
     def place(self, who):
-        """The player `who` goes to the place clicked."""
+        """The player `who` goes to the place clicked, and nowhere else changes: when he already plays in this group in a
+        place of the same kind (a forward line, a pair, goal) the two swap; in another kind of place the player stays
+        where he was and the checks say he is there twice. The one he replaces keeps his special-team places (they are
+        not dressed any more: `carry` moves them to the new player when the player asks)."""
         with self.lock:
             slot = self.picked
             if self.team is None or slot is None or who not in self.players:
                 return
             had = self.slots.get(slot)
-            group = _group_of(slot)
-            mine = next((s for s in group if self.slots.get(s) == who), None)
-            dressed = {self.slots.get(s) for s in DRESSED}
-            if mine is not None:                     # he plays in this group already: the two swap places
+            mine = next((s for s in _group_of(slot) if s != slot and self.slots.get(s) == who), None)
+            if mine is not None and _kind(mine) == _kind(slot):
                 self.slots[mine] = had
-            elif slot in DRESSED and who not in dressed and had is not None:
-                for s, w in list(self.slots.items()):     # a scratch comes in: he takes every place of the one he replaces
-                    if w == had:
-                        self.slots[s] = who
             self.slots[slot] = who          # (a scratched captain keeps his letter: the game allows it)
+            self.replaced = (had, who) if slot in DRESSED and had not in (None, who) else None
             self.picked = None
+            self.touched = True
+            self.changed()
+        self.host.changed(RAIL)
+
+    def carry(self):
+        """The player who came into the lineup takes the special-team places of the one he replaced."""
+        with self.lock:
+            if self.team is None or not self.replaced:
+                return
+            old, new = self.replaced
+            for s, w in list(self.slots.items()):
+                if w == old and s not in DRESSED:
+                    self.slots[s] = new
+            self.replaced = None
             self.touched = True
             self.changed()
         self.host.changed(RAIL)
@@ -318,7 +342,12 @@ class LinesController:
                          fits=self.picked is None or (self.players[w]['pos'] == 'G') == picked_goal) for w in people]
             problems = self._problems()
             mine = bool((self.editor.teams.get(str(self.team)) or {}).get('lines'))
-            return {'team': self.team, 'title': f"{snap.team_name(self.team) if snap else ''}: lines",
+            carry = None
+            if self.replaced and self.replaced[0] in self.players and self.replaced[1] in self.players:
+                old, new = self.replaced
+                if any(w == old for s, w in self.slots.items() if s not in DRESSED):
+                    carry = f"{self.players[new]['name']} takes {self.players[old]['name']}'s special-team places too"
+            return {'carry': carry,'team': self.team, 'title': f"{snap.team_name(self.team) if snap else ''}: lines",
                     'tab': self.tab, 'tabs': [{'id': t, 'label': label} for t, label, _ in TABS],
                     'units': units, 'players': side, 'picked': self.picked,
                     'picked_label': LN.slot_label(self.picked) if self.picked else None,

@@ -1153,7 +1153,7 @@ INTRO = (
     (0xfb2f24, 0x41820024, 0x48000024,
      "FlowBoot::Start: beq -> b, always step 2: no autosave notice (SaveLoad message 12); autosave stays on"),
 )
-# Separate, so a player can keep the login at boot. The owner played online through Zamboni's servers with it on
+# Separate, so a player can keep the login at boot. The owner played online through the community server with it on
 # (2026-10-18): an online mode signs in when it is opened.
 LOGIN_ENTRY = "NHL Legacy no online login at boot"
 LOGIN = (
@@ -1163,7 +1163,7 @@ LOGIN = (
 )
 # The main menu's news panel (owner, 2026-10-22: every text there says gg.puckpeak.com; docs/notes/promo-texts.md). Signed
 # out, RequestDynamicMessages (0x7e98e4 -> 0x7e8cd8) builds the offline messages from the text file, so the program's loose
-# copy (loc.PROMO) shows; signed in (Zamboni) it asks the server, whose news are the game's 2014 texts (the owner's screens,
+# copy (loc.PROMO) shows; signed in (the community server) it asks the server, whose news are the game's 2014 texts (the owner's screens,
 # 2026-10-22: our loose file read, the server's old lines shown). OSDK's vt[0x98] says "signed in"; its beq to the
 # signed-out branch becomes b. Ticked with the patch, apart from the 32 teams. Lab (signed out, as always there): boots to
 # the main menu, the panel shows the text file's lines (lab round 45).
@@ -1184,6 +1184,46 @@ INTRO_ENTRIES = (
 )
 DATA_WORDS += (0x220a64c, 0x1cd411c)
 OTHER_INSTRUCTIONS += (0x220a64c, 0xfb2f24, 0x7e8d58)
+
+# Online play through our own server (Multiplayer.txt, docs/notes/multiplayer.md; the owner, 2026-10-25). The words are the
+# community's "multiplayer patch" (Kaap0, in RPCS3's own patch.yml), the same for the EU and the NA disc: 1.00 skips a
+# crash on the online path, the roster check and the tuner check. Update 1.01 has its own addresses (one program for both
+# versions), given by that patch; the game's old words there are not known, so its lines say
+# no "was". An entry of its own, ticked by "Set up online" (patchinstall.set_online), apart from the 32 teams.
+ONLINE_ENTRY = "NHL Legacy online play"
+ONLINE_VERSION = '0.1'
+ONLINE_NOTES = ("Lets the game sign in and play online through the Puck Peak server. It skips a crash on the online path, the "
+                "online roster check and the tuner check. The words are Kaap0's multiplayer patch. Works on its own.")
+ONLINE = (
+    (0x8bc4bc, 0x4bfd9d1c, 0x4e800020, "online crash fix: blr, the function returns at once"),
+    (0x8bc494, 0x4bfd9adc, 0x4e800020, "online crash fix: blr, the function returns at once"),
+    (0x104f0bc, 0x4bfd6578, 0x4bfd6524, "online roster check: the branch goes past the check"),
+    (0x211df0, 0x4bff8850, 0x4bff8760, "online tuner check: the branch goes past the check"),
+)
+ONLINE_101 = (
+    (0x87b11c, 0x2c030001, "online roster check (update 1.01's own address)"),
+    (0x87a010, 0x2c030001, "online tuner check (update 1.01's own address)"),
+)
+
+# The online start (docs/plans/glittery-cuddling-wave.md, docs/notes/online-boot-hook.md; the owner, 2026-10-25: Ready takes both
+# players to Select Teams without a press). The main menu's script reads IS_AUTO_SELECT_PLAYNOW_ON_BOOT =
+# ION_GameSetup.IsSelectPlayNowOnBoot() once at boot (globaldefines.big); retail answers no. The native method is the thunk
+# 0x10624f0: it loads an adapter, calls its vtable slot 0x6c (bctrl at 0x1062514), then 0x965424 turns r3 into the script's
+# true / false. The bctrl becomes li r3,1: the script is told yes, and the thunk and the shared slot stay as they are. The entry
+# is NOT ticked with the others: the program ticks it for one launch of a lobby's game and unticks it (patchinstall).
+ONLINE_START_ENTRY = "NHL Legacy online start"
+ONLINE_START_VERSION = '0.1'
+ONLINE_START_NOTES = ("Takes the game to online play by itself when the Puck Peak program starts it for a lobby. Do not tick it "
+                      "yourself, the program switches it on for one start only.")
+ONLINE_START = (
+    (0x1062514, 0x4e9e0421, 0x38600000,
+     "IsSelectPlayNowOnBoot: li r3,0 instead of the bctrl into the adapter's slot 0x6c: the menu script is told no, "
+     "so its second boot branch runs (art/onlinestart.py)"),
+)
+# Update 1.01: the same thunk, moved by 0x1910 (tools/port_patch.py: the 21 words around it are alike, score 1.00)
+ONLINE_START_101 = (
+    (0x1063e24, 0x4e9e0421, 0x38600000, "IsSelectPlayNowOnBoot at update 1.01's address: li r3,0 instead of the bctrl"),
+)
 
 # Update 1.01 (UPDATE_HASH). Its program is 1.00's with a few functions grown: every place the patch names sits 0 to 0x2030
 # bytes later and holds the same instruction (tools/port_patch.py found each by its neighbourhood and wrote patch101.py;
@@ -1355,6 +1395,21 @@ def intro_entry_lines(entry, title='BLES02153', version='01.00'):
             + [_write_line(a, old, new, why, version) for a, old, new, why in ws])
 
 
+def online_entry_lines(title='BLES02153', version='01.00'):
+    """The online entry's lines: 1.00's four words with the game's own, update 1.01's two as that patch gives them."""
+    lines = _head(ONLINE_ENTRY, ONLINE_VERSION, ONLINE_NOTES, title, version)
+    if version == '01.00':
+        return lines + [f"      - [ be32, 0x{a:08x}, 0x{new:08x} ]   # was 0x{old:08x}: {why}" for a, old, new, why in ONLINE]
+    return lines + [f"      - [ be32, 0x{a:08x}, 0x{new:08x} ]   # {why}" for a, new, why in ONLINE_101]
+
+
+def online_start_lines(title='BLES02153', version='01.00'):
+    """The online start entry's lines: the word at 1.00's address, or at update 1.01's."""
+    lines = _head(ONLINE_START_ENTRY, ONLINE_START_VERSION, ONLINE_START_NOTES, title, version)
+    words = ONLINE_START if version == '01.00' else ONLINE_START_101
+    return lines + [f"      - [ be32, 0x{a:08x}, 0x{new:08x} ]   # was 0x{old:08x}: {why}" for a, old, new, why in words]
+
+
 def hash_of(title, version='01.00'):
     """The PPU hash RPCS3 knows the game version `version` of `title` by (1.01: one program for EU and NA)."""
     return HASHES[title] if version == '01.00' else UPDATE_HASH
@@ -1408,11 +1463,13 @@ def player_entry_lines(title='BLES02153', version='01.00'):
 
 def player_patch_text(titles=tuple(HASHES), versions=VERSIONS):
     """The patch file the program installs: for each version in `titles` and game version in `versions` under its PPU
-    hash, PLAYER_ENTRY and the intro entries (patchinstall.py ticks them)."""
+    hash, PLAYER_ENTRY, the intro entries and the online entry (patchinstall.py ticks them)."""
     def lines_of(title, version):
         lines = player_entry_lines(title, version)
         for entry in INTRO_ENTRIES:
             lines += [""] + intro_entry_lines(entry, title, version)
+        lines += [""] + online_entry_lines(title, version)
+        lines += [""] + online_start_lines(title, version)
         return lines
     return _blocks(titles, versions, lines_of)
 

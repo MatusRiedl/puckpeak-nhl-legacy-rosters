@@ -31,6 +31,8 @@ states (the tab they show in brackets):
     prospects-import  the Draft & Pro tab: that class saved as a file and put into the draft after, with the report
     prospects-career  the Draft & Pro tab's Be a Pro careers: copies from LEGACY_ROSTER_CAREERS (folders of Be a Pro
                saves) in the pretend RPCS3, the first opened, 250 more Offense XP and Passing + 3 not saved
+    online     the Play online tab, not set up yet (online-lobby: a lobby, its host alone; online-ready: two players Ready;
+               online-ingame: the game started, a guest; online-failed: it could not sign in; online-mismatch: a guest without the host's game patch); made-up facts, no network
     patched    the Game patch tab: the EU game patched with an older patch (Patch again, Unpatch), a roster tagged "32 teams"
 
 The pretend RPCS3 has the base roster, an earlier update of it, and a copy saved for the NA version, so the
@@ -79,7 +81,8 @@ WEB = os.path.join(ROOT, 'legacy_roster', 'web')
 STATES = ('none', 'setup', 'ready', 'patch', 'updating', 'done', 'details', 'failed', 'delete', 'roster', 'editor', 'jerseys',
           'uniforms', 'equipment', 'export', 'export-ready', 'patched', 'full', 'lines', 'strategy', 'strategies', 'face',
           'calendar', 'office', 'contract', 'downloading', 'misfit', 'prospects', 'prospects-pro', 'prospects-look',
-          'prospects-make', 'prospects-class', 'prospects-import', 'prospects-career')
+          'prospects-make', 'prospects-class', 'prospects-import', 'prospects-career', 'online', 'online-lobby',
+          'online-ready', 'online-ingame', 'online-failed', 'online-mismatch', 'online-list')
 TEAM_STATES = {'roster': 'roster', 'editor': 'roster', 'equipment': 'roster', 'face': 'roster', 'jerseys': 'jerseys',
                'uniforms': 'jerseys', 'lines': 'lines', 'strategy': 'strategy', 'strategies': 'strategy',
                'calendar': 'calendar', 'office': 'office', 'contract': 'office', 'prospects': 'prospects',
@@ -174,6 +177,9 @@ def drive(args, c, work):
         tab = 'setup'
         if state == 'setup':
             upd.select(os.path.basename(BASE))
+    elif state.startswith('online'):
+        tab = 'online'
+        make_online(c, state)
     elif state == 'patch':
         tab = 'patch'
         upd.select(os.path.basename(BASE))
@@ -349,6 +355,58 @@ def make_prospects(c, state):
         pr.make_set('seed', 2027)
 
 
+def make_online(c, state):
+    """The Play online tab with made-up facts, no network: 'online' not set up yet, 'online-lobby' a lobby with its host
+    alone, 'online-ready' two players Ready, 'online-ingame' the game started (a guest), 'online-failed' it could not sign in."""
+    upd, on = c['update'], c['online']
+    upd.select(os.path.basename(BASE))
+    wait(lambda: not upd.scanning, 60)
+    on.account, on.checked, on.server = 'GuestPlayer', True, True
+    on.title = (upd.versions or ['BLES02153'])[0]
+    on.build = 20402
+    if state != 'online':
+        on.state = {'patched': True, 'online': True, 'version': '0.26', 'game': '01.00'}
+    else:
+        on.state = {'patched': False, 'online': False, 'version': None, 'game': '01.00'}
+    if state != 'online':
+        on.roster = {'name': 'Puck Peak Online 2026-10-25', 'folder': 'BLES021530299', 'crc': 'a1b2c3d4'}
+    me = {'name': 'GuestPlayer', 'role': 'host', 'roster_ok': True, 'patch_ok': True, 'ready': False, 'progress': 'in_game',
+          'patch': '0.26', 'version': '01.00'}
+    friend = {'name': 'Friend_77', 'role': 'guest', 'roster_ok': True, 'patch_ok': True, 'ready': False, 'progress': 'signed_in',
+              'patch': '0.26', 'version': '01.00'}
+    mine = {'crc': 'a1b2c3d4', 'size': 1048576}
+    if state == 'online-list':
+        on.public = True
+        on.open_lobbies = [
+            {'code': 'KDMQRS', 'host': 'Friend_77', 'roster_name': 'Community 2026-27 (updated)', 'patch': '0.26', 'version': '01.00',
+             'roster_size': 1048576, 'age_seconds': 40, 'members': 1, 'max': 2},
+            {'code': 'TWXYZA', 'host': 'PuckHunter', 'roster_name': 'Puck Peak Online', 'patch': '0.25', 'version': '01.00',
+             'roster_size': 1048576, 'age_seconds': 600, 'members': 1, 'max': 2},
+            {'code': 'BCDFGH', 'host': 'EUplayer', 'roster_name': 'My roster', 'patch': '0.26', 'version': '01.01',
+             'roster_size': 1048576, 'age_seconds': 3000, 'members': 1, 'max': 2}]
+    elif state == 'online-lobby':
+        on.brought = 'Community 2026-27 (updated)'
+        on.lobby, on.code = {'code': 'KDMQRS', 'state': 'open', 'reason': None, 'members': [me], 'roster': mine}, 'KDMQRS'
+    elif state == 'online-mismatch':
+        me.update(role='guest', patch='0.25', patch_ok=False)
+        friend.update(role='host', progress='hosting')
+        on.state['version'] = '0.25'
+        on.lobby = {'code': 'KDMQRS', 'state': 'open', 'reason': 'Friend_77 has game patch 0.26, GuestPlayer has game patch 0.25. '
+                    'Both need the same: update the program.', 'members': [friend, me], 'roster': mine}
+        on.code = 'KDMQRS'
+    elif state == 'online-ready':
+        me['ready'] = friend['ready'] = True
+        friend['rpcs3'] = '20393'
+        on.lobby, on.code = {'code': 'KDMQRS', 'state': 'starting', 'reason': None, 'members': [me, friend], 'roster': mine}, 'KDMQRS'
+    elif state in ('online-ingame', 'online-failed'):
+        me.update(role='guest', progress='browsing', ready=True)
+        friend.update(role='host', progress='hosting', ready=True)
+        on.lobby, on.code = {'code': 'KDMQRS', 'state': 'playing', 'reason': None, 'members': [friend, me], 'roster': mine}, 'KDMQRS'
+        on.launched = 'KDMQRS'
+        on.log = {'name': 'GuestPlayer', 'bound': True, 'signaling': state == 'online-ingame', 'refused': None, 'fatal': False}
+    on.changed()
+
+
 def make_career(c):
     """Up to three Be a Pro career copies (LEGACY_ROSTER_CAREERS) into the pretend RPCS3, the careers in view, the first
     opened, 250 more Offense XP and Passing + 3 typed."""
@@ -379,6 +437,7 @@ def controllers():
     from legacy_roster.app.equipment import EquipmentController
     from legacy_roster.app.lines import LinesController
     from legacy_roster.app.office import OfficeController
+    from legacy_roster.app.online import OnlineController
     from legacy_roster.app.prospects import ProspectsController
     from legacy_roster.app.season import SeasonSource
     from legacy_roster.app.strategy import StrategyController
@@ -395,16 +454,18 @@ def controllers():
     cal, office = CalendarController(host, ed, season), OfficeController(host, ed, season)
     car = CareerController(host, ed)
     pr = ProspectsController(host, ed, car)
+    online = OnlineController(host, upd, autopoll=False)
+    ed.follow_with('online', online)
     for name, snapshot in (('lines', ln.snapshot), ('strategy', st.snapshot), ('update', upd.snapshot), ('editor', ed.snapshot),
                            ('picture', ed.picture_view), ('face_pics', ed.face_pics_view), ('look_pics', ed.look_pics_view),
                            ('uniforms', uni.snapshot), ('thumbs', uni.thumbs_view),
                            ('equipment', eq.snapshot), ('equip_pics', eq.pics_view), ('rail', ed.rail_view),
                            ('calendar', cal.snapshot), ('office', office.snapshot), ('contract', office.contract_snapshot),
-                           ('prospects', pr.snapshot), ('career', car.snapshot)):
+                           ('prospects', pr.snapshot), ('career', car.snapshot), ('online', online.snapshot)):
         host.register(name, snapshot)
     upd.start_up()
     return host, {'host': host, 'update': upd, 'editor': ed, 'uniforms': uni, 'calendar': cal, 'office': office,
-                  'prospects': pr, 'career': car}
+                  'prospects': pr, 'career': car, 'online': online}
 
 
 # a state whose rows are below the fold: the list of steps scrolled to its end once the page is drawn

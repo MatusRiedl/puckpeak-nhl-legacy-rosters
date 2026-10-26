@@ -706,11 +706,26 @@ def test_the_lines_window_swaps_places_checks_the_rules_and_keeps_the_lines(app)
     assert (ln.slots['l1lw'], ln.slots['l2lw']) == (l2, l1)
     dressed = {ln.slots[x] for x in ln.slots if x[0] in 'lg' and not x.startswith('pk')}
     scratch = next((w for w, p in ln.players.items() if w not in dressed and p['pos'] != 'G'), None)
-    if scratch is not None:                         # a scratch comes in and takes over every place of the one he replaces
+    if scratch is not None:                         # a scratch comes in: only the picked place changes (no cascade)
         out = ln.slots['l1c']
+        before = dict(ln.slots)
         ln.pick_slot('l1c')
         ln.place(scratch)
-        assert out not in ln.slots.values() and ln.slots['l1c'] == scratch
+        assert ln.slots['l1c'] == scratch
+        assert {s: w for s, w in ln.slots.items() if s != 'l1c'} == {s: w for s, w in before.items() if s != 'l1c'}
+        if any(w == out for s, w in ln.slots.items() if s not in ('l1c',) and not s.startswith(('l', 'g'))):
+            assert 'special-team places' in ln.snapshot()['carry']
+            ln.carry()                              # the player asks: he takes the places of the one he replaced
+            assert out not in [w for s, w in ln.slots.items() if not s.startswith(('l', 'g'))]
+            assert ln.snapshot()['carry'] is None
+    fwd, dman = ln.slots['l2c'], ln.slots['l1ld']   # a defenceman's place picked for a forward: nobody else moves
+    before = dict(ln.slots)
+    ln.pick_slot('l1ld')
+    ln.place(fwd)
+    assert ln.slots['l1ld'] == fwd and ln.slots['l2c'] == fwd
+    assert {s: w for s, w in ln.slots.items() if s != 'l1ld'} == {s: w for s, w in before.items() if s != 'l1ld'}
+    assert any('is twice in lines' in p for p in ln.snapshot()['problems'])
+    ln.slots['l1ld'] = dman
     goalie = ln.slots['g1']
     ln.pick_slot('l3lw')
     ln.slots['l3lw'] = goalie                       # what the window would never do: the check names it
@@ -1073,17 +1088,27 @@ def test_the_exe_neither_uses_nor_remembers_an_rpcs3_in_the_temp_folder(app, tmp
 
 
 # --- "Photos, logos and team names": first, highlighted, its pictures downloaded automatically (packs.py) --------------
-def test_the_photos_row_is_first_highlighted_and_on_for_a_new_player(base_dir, tmp_path, monkeypatch, pack):
+def test_the_photos_row_is_first_highlighted_and_off_until_the_player_ticks_it(base_dir, tmp_path, monkeypatch, pack):
     from legacy_roster.app import texts as X
     from legacy_roster.app.update import UpdateController
     upd = UpdateController(FakeHost(), settings={}, pack=pack)          # nothing remembered: a first start
     row = upd._steps_view(False, False)[0]
-    assert row['key'] == 'photos' and row['featured'] and row['on'] and row['bar'] is None
-    assert row['sub'] == "Downloaded automatically (about 160 MB)" == X.photos_will()
+    assert row['key'] == 'photos' and row['featured'] and not row['on'] and row['bar'] is None
+    assert row['sub'] == X.PHOTOS_OFF
     assert not any(r.get('featured') for r in upd._steps_view(False, False)[1:])
-    upd.set_step('photos', False)
-    assert upd._steps_view(False, False)[0]['sub'] == X.PHOTOS_OFF
+    upd.set_step('photos', True)
+    assert upd._steps_view(False, False)[0]['sub'] == "Downloaded automatically (about 160 MB)" == X.photos_will()
     assert upd._steps_view(True, False)[0]['sub'] == X.PHOTOS_EXPORT and not upd._steps_view(True, False)[0]['on']
+
+
+def test_photos_start_off_for_a_player_who_had_them_on_and_a_new_choice_is_kept(base_dir, tmp_path, monkeypatch, pack):
+    from legacy_roster.app.update import UpdateController
+    saved = {'steps': {'photos': True}}                                 # 0.60 and older saved the old default
+    upd = UpdateController(FakeHost(), settings=saved, pack=pack)
+    assert not upd.photos and saved['steps']['photos'] is False and saved['photos_default']
+    upd.set_step('photos', True)                                        # ticked on purpose after the change: kept
+    again = UpdateController(FakeHost(), settings=saved, pack=pack)
+    assert again.photos
 
 
 def test_the_photos_row_never_says_where_its_pictures_come_from_or_what_they_are():

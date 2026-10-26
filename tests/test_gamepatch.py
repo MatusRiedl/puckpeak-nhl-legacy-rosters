@@ -47,7 +47,8 @@ def test_the_players_entry_holds_the_lab_entries_changes_in_one_switch():
     mine = yaml.safe_load(gamepatch.player_patch_text())
     for title, hash_ in (('BLES02153', gamepatch.EU_HASH), ('BLUS31540', gamepatch.NA_HASH)):
         entries = mine[f"PPU-{hash_}"]
-        assert list(entries) == [gamepatch.PLAYER_ENTRY] + [name for name, *_ in gamepatch.INTRO_ENTRIES]
+        assert list(entries) == ([gamepatch.PLAYER_ENTRY] + [name for name, *_ in gamepatch.INTRO_ENTRIES]
+                                 + [gamepatch.ONLINE_ENTRY, gamepatch.ONLINE_START_ENTRY])
         played = [gamepatch.YEAR_ENTRY] + [name for name, *_ in gamepatch.TEAM_STAGES]
         assert entries[gamepatch.PLAYER_ENTRY]['Patch'] == [p for name in played for p in lab[f"PPU-{hash_}"][name]['Patch']]
         assert list(entries[gamepatch.PLAYER_ENTRY]['Games']['NHL Legacy']) == [title]
@@ -70,8 +71,13 @@ def test_update_101_gets_the_same_patch_at_its_own_addresses():
     assert list(mine) == ["Version", f"PPU-{gamepatch.EU_HASH}", f"PPU-{gamepatch.NA_HASH}", f"PPU-{gamepatch.UPDATE_HASH}"]
     old, new = mine[f"PPU-{gamepatch.EU_HASH}"], mine[f"PPU-{gamepatch.UPDATE_HASH}"]
     assert list(old) == list(new)
-    for name in old:
+    for name in new:
         assert list(new[name]['Games']['NHL Legacy']) == ['BLES02153', 'BLUS31540']
+        if name == gamepatch.ONLINE_START_ENTRY:    # the start word's own address in 1.01 (tools/audit_patch.py checks it)
+            assert [p[1:] for p in new[name]['Patch']] == [[w[0], w[2]] for w in gamepatch.ONLINE_START_101]
+            continue
+        if name == gamepatch.ONLINE_ENTRY:      # update 1.01 has its own two words (checked in its own test)
+            continue
         assert len(old[name]['Patch']) == len(new[name]['Patch'])
         for (kind, a, word), (kind_101, a_101, word_101) in zip(old[name]['Patch'], new[name]['Patch']):
             assert kind == kind_101 and a_101 == gamepatch.at(a, '01.01')
@@ -795,3 +801,16 @@ def test_the_next_seasons_calendar_is_trimmed_when_the_patched_game_saved_it_wit
     F.grow(1459)                                                    # a roster the patched game saved itself
     gamepatch.future_fit(R)
     assert R.f[gamepatch.FUTURE_TABLE].max_rec == schedule.PATCH_ROWS
+
+
+def test_the_online_entry_has_the_community_words_for_1_00_and_update_1_01():
+    for title in gamepatch.HASHES:
+        old = "\n".join(gamepatch.online_entry_lines(title, '01.00'))
+        for addr, was, new, why in gamepatch.ONLINE:
+            assert f"be32, 0x{addr:08x}, 0x{new:08x} ]   # was 0x{was:08x}" in old
+        new = "\n".join(gamepatch.online_entry_lines(title, '01.01'))
+        assert "0x0087b11c, 0x2c030001" in new and "0x0087a010, 0x2c030001" in new and "was" not in new
+    assert [a for a, *_ in gamepatch.ONLINE] == [0x8bc4bc, 0x8bc494, 0x104f0bc, 0x211df0]
+    text = gamepatch.player_patch_text()
+    assert text.count(f"  {gamepatch.ONLINE_ENTRY}:") == 3        # EU 1.00, NA 1.00, update 1.01 (both titles in one)
+    assert gamepatch.ONLINE_ENTRY not in gamepatch.patch_text(teams=True)   # the lab's file stays as it was

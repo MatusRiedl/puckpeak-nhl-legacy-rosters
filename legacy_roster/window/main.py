@@ -135,6 +135,7 @@ def main(argv=None, after=None):
     from ..app.office import OfficeController
     from ..app.prospects import ProspectsController
     from ..app.career import CareerController
+    from ..app.online import OnlineController
     from ..app.season import SeasonSource
     from .api import Api
     from .host import WebHost
@@ -151,6 +152,8 @@ def main(argv=None, after=None):
     office = OfficeController(host, editor, season)
     career = CareerController(host, editor)          # running Be a Pro careers (saved only on the player's Save)
     prospects = ProspectsController(host, editor, career)
+    online = OnlineController(host, update)           # Play online: account, setup, lobby, the game (a follower: works while its tab shows)
+    editor.follow_with('online', online)
     host.register('update', update.snapshot)
     host.register('editor', editor.snapshot)
     host.register('picture', editor.picture_view)
@@ -168,13 +171,14 @@ def main(argv=None, after=None):
     host.register('contract', office.contract_snapshot)
     host.register('prospects', prospects.snapshot)
     host.register('career', career.snapshot)
-    api = Api(host, update, editor, uniforms, equipment, lines, strategy, calendar, office, prospects, career)
+    host.register('online', online.snapshot)
+    api = Api(host, update, editor, uniforms, equipment, lines, strategy, calendar, office, prospects, career, online)
     width, height, x, y = window_box(webview)
     window = webview.create_window(f"Puck Peak  -  Legacy Roster Updater {__version__}",
                                    url=os.path.join(WEB, 'index.html'), js_api=api, width=width, height=height,
                                    x=x, y=y, min_size=MIN_SIZE, background_color=BACKGROUND, text_select=False)
     host.attach(window)
-    window.events.closing += lambda: update.closing() and editor.closing() and career.closing()
+    window.events.closing += lambda: update.closing() and editor.closing() and career.closing() and online.closing()
     window.events.shown += lambda: dark_title_bar(window)
     update.start_up()
     host.every(15, update.tick)
@@ -183,7 +187,7 @@ def main(argv=None, after=None):
     update.download_pictures()
     controllers = {'host': host, 'update': update, 'editor': editor, 'uniforms': uniforms, 'equipment': equipment,
                    'lines': lines, 'strategy': strategy, 'calendar': calendar, 'office': office,
-                   'prospects': prospects, 'career': career}
+                   'prospects': prospects, 'career': career, 'online': online}
     roomy_server()
     try:
         webview.start(func=(lambda: after(window, controllers)) if after else None,
