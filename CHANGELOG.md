@@ -3,6 +3,18 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## Next version (unreleased)
+
+- **Linux: the program starts RPCS3 for you** whether it is the `rpcs3` program, an AppImage or the Flatpak, finds RPCS3's
+  log there, and the RPCS3 picker takes the program or its folder. Not tried on a real Linux PC yet.
+- **"Export files to a folder" (Windows, Linux, Flatpak, Mac).** It replaces "Export only SYS-DATA roster". Tick it in Setup
+  and the program makes everything it would put into RPCS3 (the roster, with Photos the pictures and names, with the game
+  patch the patch file) in a new folder `NHL Legacy export <date time>`, laid out like RPCS3's own folders, with a
+  `HOW-TO-INSTALL.txt`. Nothing in RPCS3 is changed. A window "Your files are ready" says, for your system, where each
+  folder goes, which patch entries to tick in RPCS3, how to load the roster and how to undo it. A roster file (SYS-DATA)
+  still works when you have no RPCS3; pictures, the patch and the game's own roster need your copy of the game.
+  Command line: `export-files`.
+
 ## 0.70.0 (2026-10-26, test version)
 
 - **All 32 NHL arenas and team colours are the real ones** (the game's venue list, Team Select, sticks and gear follow).

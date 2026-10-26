@@ -338,7 +338,7 @@ def find_disc(rpcs3, titles):
 def check(rpcs3, titles):
     """Raise PatchError, with what to do, when the patch cannot be put in now."""
     if rpcs3 is None or rpcs3.plain:
-        raise PatchError("The game patch needs RPCS3: pick rpcs3.exe, not a folder of saves.")
+        raise PatchError("The game patch needs RPCS3: pick the RPCS3 program (rpcs3.exe on Windows), not a folder of saves.")
     if savedata.running_rpcs3():
         raise PatchError("Close RPCS3 first: the game patch can only be put in or taken out while RPCS3 is closed.")
     if not find_disc(rpcs3, titles):
@@ -421,7 +421,7 @@ def set_online(rpcs3, titles, on, say=print):
     leaves that and the intro switches as they are. RPCS3 closed; no disc needed. Returns the titles changed."""
     titles = [t for t in gamepatch.HASHES if t in titles]
     if rpcs3 is None or rpcs3.plain:
-        raise PatchError("Online play needs RPCS3: pick rpcs3.exe, not a folder of saves.")
+        raise PatchError("Online play needs RPCS3: pick the RPCS3 program (rpcs3.exe on Windows), not a folder of saves.")
     if savedata.running_rpcs3():
         raise PatchError("Close RPCS3 first: the game patch can only be put in or taken out while RPCS3 is closed.")
     if on:

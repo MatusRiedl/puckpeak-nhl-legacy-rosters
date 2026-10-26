@@ -16,6 +16,7 @@ Where RPCS3 keeps its data depends on the system: on Windows next to rpcs3.exe; 
 ~/Library/Application Support/rpcs3 (data_folders()). The program itself may be rpcs3.exe, the
 rpcs3 program or AppImage, or RPCS3.app; the player may also point at the data folder.
 """
+import contextlib
 import datetime
 import glob
 import hashlib
@@ -42,6 +43,9 @@ WINDOWS, MAC = os.name == 'nt', sys.platform == 'darwin'
 PICK_RPCS3 = ("Pick the file rpcs3.exe in your RPCS3 folder." if WINDOWS else
               "Pick RPCS3.app, or RPCS3's folder (~/Library/Application Support/rpcs3)." if MAC else
               "Pick the rpcs3 program or AppImage, or RPCS3's folder (~/.config/rpcs3).")
+
+
+FLATPAK_ID = 'net.rpcs3.RPCS3'
 
 
 def data_folders():
@@ -282,16 +286,42 @@ class Rpcs3:
         self.user = user
         self.dev_hdd0 = _dev_hdd0(self.folder)
 
+    @property
+    def flatpak(self):
+        """Is this RPCS3 the Flatpak one (its data folder is the Flatpak's own)?"""
+        return FLATPAK_ID in self.folder.replace('\\', '/').split('/')
+
+    def command(self):
+        """The command that starts this RPCS3, as a list (a program, an AppImage, `flatpak run`, `open -a` on a Mac), or None
+        when the program is not known: only its data folder was picked and no RPCS3 is on the PATH. After a Mac's
+        `open -a` comes `--args`: what the caller adds goes to RPCS3."""
+        exe = self.exe
+        if exe:
+            if exe.lower().endswith('.app'):
+                return ['open', '-a', exe, '--args']
+            if not WINDOWS and exe.lower().endswith('.appimage') and not os.access(exe, os.X_OK):
+                try:
+                    os.chmod(exe, os.stat(exe).st_mode | 0o111)
+                except OSError:
+                    pass
+            return [exe]
+        if self.flatpak and shutil.which('flatpak'):
+            return ['flatpak', 'run', FLATPAK_ID]
+        found = shutil.which('rpcs3')
+        if found:
+            return [found]
+        return ['open', '-a', 'RPCS3', '--args'] if MAC else None
+
+    def launch_dir(self):
+        """The folder RPCS3 is started in (its own, for a program; None for the others)."""
+        return os.path.dirname(self.exe) if self.exe and not self.exe.lower().endswith('.app') else None
+
     def start(self):
         """Start RPCS3 (the program the player picked, else the one installed on this system)."""
-        exe = self.exe or shutil.which('rpcs3')
-        flags = getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
-        if exe and exe.lower().endswith('.app'):
-            launch(['open', '-a', exe])
-        elif exe:
-            launch([exe], cwd=os.path.dirname(exe), close_fds=True, creationflags=flags)
-        elif MAC:
-            launch(['open', '-a', 'RPCS3'])
+        command = self.command()
+        if command:
+            flags = getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+            launch([c for c in command if c != '--args'], cwd=self.launch_dir(), close_fds=True, creationflags=flags)
 
     def game_folder(self, title_id):
         """The game's own folder on RPCS3's hard disk (its update and any loose files):
@@ -399,6 +429,21 @@ def _active_user(root):
     return None
 
 
+def _program_in(folder):
+    """The RPCS3 program in `folder`: rpcs3.exe, rpcs3, or (not Windows) an RPCS3 AppImage by any version name; else None."""
+    for name in ('rpcs3.exe', 'rpcs3'):
+        if is_program(os.path.join(folder, name)):
+            return os.path.join(folder, name)
+    if not WINDOWS:
+        try:
+            names = sorted(os.listdir(folder))
+        except OSError:
+            return None
+        return next((os.path.join(folder, n) for n in names if n.lower().endswith('.appimage')
+                     and is_program(os.path.join(folder, n))), None)
+    return None
+
+
 def find_rpcs3(path, games=None):
     """Resolve RPCS3 to its NHL Legacy saves. `path`: the program (rpcs3.exe, rpcs3, an AppImage,
     RPCS3.app), the folder holding it or a folder inside that one (such as a save folder remembered
@@ -415,8 +460,7 @@ def find_rpcs3(path, games=None):
     elif os.path.isdir(path):
         folder = path
         while True:
-            exe = next((os.path.join(folder, n) for n in ('rpcs3.exe', 'rpcs3') if is_program(os.path.join(folder, n))),
-                       None)
+            exe = _program_in(folder)
             if exe or (not WINDOWS and has_data(folder)):     # Windows: the data is always next to rpcs3.exe
                 root = None if exe else folder
                 break
@@ -491,6 +535,19 @@ def running_rpcs3():
     return None
 
 
+@contextlib.contextmanager
+def exporting():
+    """While files are exported to a folder (export.py): no RPCS3 counts as running, because nothing is written into one.
+    Every caller asks `savedata.running_rpcs3()` through this module, so replacing it here reaches all of them."""
+    global running_rpcs3
+    real = running_rpcs3
+    running_rpcs3 = lambda: None            # noqa: E731
+    try:
+        yield
+    finally:
+        running_rpcs3 = real
+
+
 def end_process_of(path):
     """End the running process(es) whose exe is exactly `path` (Windows only). Returns how many were ended."""
     if not WINDOWS:
@@ -513,6 +570,19 @@ def end_process_of(path):
     return ended
 
 
+def _appimage_of(proc, pid):
+    """The AppImage file a running process was started from (its APPIMAGE variable), or None: inside a mounted AppImage the
+    process's own path is a temporary mount that is gone when it ends."""
+    try:
+        with open(os.path.join(proc, pid, 'environ'), 'rb') as f:
+            for entry in f.read().split(b'\0'):
+                if entry.startswith(b'APPIMAGE='):
+                    return entry[9:].decode('utf-8', 'replace') or None
+    except OSError:
+        pass
+    return None
+
+
 def _running_posix(proc='/proc'):
     """A running RPCS3 on Linux (`proc`: /proc) or a Mac (ps)."""
     is_rpcs3 = lambda cmd: (os.path.basename(cmd).lower() == 'rpcs3'
@@ -528,7 +598,7 @@ def _running_posix(proc='/proc'):
                 except OSError:
                     continue
                 if cmd and is_rpcs3(cmd):
-                    return cmd
+                    return _appimage_of(proc, pid) or cmd
             return None
         out = subprocess.run(['ps', '-axo', 'comm='], capture_output=True, text=True, timeout=5).stdout
         return next((line.strip() for line in out.splitlines() if is_rpcs3(line.strip())), None)

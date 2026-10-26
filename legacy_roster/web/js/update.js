@@ -22,7 +22,10 @@ function RpcsCard({ r, exp, busy }) {
         <${Button} kind="primary" disabled=${busy} onClick=${() => call('pick_game', false)}>Pick the game (.iso)...</${Button}>
         <${Button} disabled=${busy} onClick=${() => call('pick_game', true)}>or its folder...</${Button}>
       </div>`}
-      <${Checkbox} on=${exp.on} disabled=${busy} onChange=${(v) => call('set_export_only', v)}>Export only SYS-DATA roster</${Checkbox}>
+      ${exp.on && exp.game && html`<div class="note muted">${exp.game}</div>`}
+      <${Checkbox} on=${exp.on} disabled=${busy} onChange=${(v) => call('set_export_only', v)}>Export files to a folder</${Checkbox}>
+      ${exp.on && html`<div class="small-note">The files are made into a new folder and nothing in RPCS3 is changed.
+        A short text in the folder says where each part goes.</div>`}
     </div>
   </${Card}>`;
 }
@@ -84,11 +87,13 @@ function RosterCard({ s }) {
   const exp = s.export;
   return html`<${Card} n="2" title="Which roster do you work on?" grow className="rosters" style=${{ '--i': 3 }}>
     <div class="card-body fill">
-      ${exp.on ? html`<div>
-          <div class=${cls('note', exp.tone)} style=${{ marginTop: 0, marginBottom: '10px' }}>${exp.text}</div>
-          <${Button} kind="primary" disabled=${s.busy} onClick=${() => call('pick_export_file')}>Pick the roster file (SYS-DATA)...</${Button}>
-        </div>` : html`
-        <div class="small-note roster-use">The Update tab, the team tabs and their Save all use this roster.</div>
+      ${exp.on && html`<div class="export-src">
+          <div class=${cls('note', exp.tone)} style=${{ marginTop: 0, marginBottom: '8px' }}>${exp.text}</div>
+          <${Button} small kind=${exp.from_file ? 'primary' : 'ghost'} disabled=${s.busy} onClick=${() => call('pick_export_file')}>Or pick a roster file (SYS-DATA)...</${Button}>
+        </div>`}
+      ${html`
+        <div class="small-note roster-use">${exp.on ? 'The export starts from the roster you pick here, or from the roster file.'
+          : 'The Update tab, the team tabs and their Save all use this roster.'}</div>
         ${s.room && html`<div class=${cls('room', s.room.tone)}>
           ${s.room.counts.map((c) => html`<span key=${c.region} class=${cls('count', c.tone)}
               title=${s.room.tip}><${Flag} region=${c.region}/>${c.text}</span>`)}
@@ -123,7 +128,7 @@ function FromBar({ s }) {
   const r = s.rosters.find((x) => x.selected);
   const exp = s.export;
   return html`<div class="upd-from card">
-    ${exp.on ? html`<span class="faint">Making a new roster</span><span class=${cls('t', exp.tone)}>${exp.text}</span>`
+    ${exp.on ? html`<span class="faint">Exporting files from</span><span class=${cls('t', exp.tone)}>${exp.text}</span>`
       : r ? html`<span class="faint">Updating</span><b class="n">${r.name}</b><${RegionTag} region=${r.region}/>
           ${r.tag && html`<span class="chip patch">${r.tag}</span>`}
           ${r.misfit && html`<span class="chip hidden" title=${r.misfit}>Not loadable now: update it</span>`}
@@ -165,6 +170,7 @@ function StepsCard({ s }) {
       ${s.later && html`<div class="later">${s.later}</div>`}
       ${s.restore_all.shown && html`<div><${Button} small kind="danger" className="glow" disabled=${!s.restore_all.enabled}
           onClick=${() => call('restore_default')}>Restore default: rosters, calendar and pictures</${Button}></div>`}
+      ${s.export.on && html`<div class="later">${s.export.why}</div>`}
     </div>
   </${Card}>`;
 }

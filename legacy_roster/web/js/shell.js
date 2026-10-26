@@ -116,13 +116,39 @@ export function Details({ open, onClose }) {
 }
 
 // a question from Python (Delete, Restore default...), in the look of the game's Help box
+// Put text on the clipboard: the page's own way first, a hidden text box as the fallback (a plain page may refuse the first).
+function copyText(text) {
+  const fallback = () => {
+    const box = document.createElement('textarea');
+    box.value = text;
+    box.style.position = 'fixed';
+    box.style.opacity = '0';
+    document.body.appendChild(box);
+    box.select();
+    try { document.execCommand('copy'); } catch (e) { /* nothing more to try */ }
+    document.body.removeChild(box);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(fallback);
+  else fallback();
+}
+
 export function Question({ dialog, onAnswer }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { setCopied(false); }, [dialog && dialog.id]);
   if (!dialog) return null;
-  const cancel = dialog.buttons.find((b) => b.style === 'plain') || (dialog.buttons.length === 1 ? dialog.buttons[0] : null);
+  const cancel = dialog.buttons.find((b) => b.style === 'plain' && !b.keep) || (dialog.buttons.length === 1 ? dialog.buttons[0] : null);
   const kinds = { primary: 'pick', danger: 'danger', plain: 'ghost' };
-  return html`<${Modal} title=${dialog.title} onClose=${cancel ? () => onAnswer(dialog.id, cancel.answer) : null}
+  const press = (b) => {
+    if (b.copy) { copyText(dialog.copy); setCopied(true); return; }       // the window stays open
+    onAnswer(dialog.id, b.answer);
+  };
+  return html`<${Modal} title=${dialog.title} wide=${dialog.wide} onClose=${cancel ? () => onAnswer(dialog.id, cancel.answer) : null}
     buttons=${dialog.buttons.map((b, k) => html`<${Button} key=${k} kind=${kinds[b.style] || 'ghost'} big
-      onClick=${() => onAnswer(dialog.id, b.answer)}>${b.label}</${Button}>`)}>
+      onClick=${() => press(b)}>${b.copy && copied ? 'Copied' : b.label}</${Button}>`)}>
     ${dialog.lines.map((line, k) => html`<p key=${k}>${line}</p>`)}
+    ${(dialog.rows || []).map((row) => html`<div key=${row.head} class="q-row">
+      <div class="q-head">${row.head}</div>
+      <div class="q-text selectable">${row.text}</div></div>`)}
+    ${(dialog.notes || []).map((line, k) => html`<p key=${'n' + k} class="q-note">${line}</p>`)}
   </${Modal}>`;
 }

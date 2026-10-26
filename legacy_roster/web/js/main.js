@@ -193,7 +193,10 @@ function App() {
       ${pane('setup', html`<${SetupTab} s=${update} version=${meta.version}/>`)}
       ${pane('update', html`<${UpdateTab} s=${update}/>`)}
       ${pane('patch', html`<${PatchTab} s=${update}/>`)}
-      ${pane('online', html`<${OnlineTab} s=${online}/>`)}
+      ${pane('online', update && update.export && update.export.on
+        ? html`<div class="export-off"><div class="note muted">${update.export.why}</div>
+            <${Button} onClick=${() => call('set_export_only', false)}>Switch off "Export files to a folder"</${Button}></div>`
+        : html`<${OnlineTab} s=${online}/>`)}
       <section class=${cls('pane', 'teamstage', noSave && 'nosave', teamTab && from && !from.team && from.dir)}
           hidden=${!teamTab}>
         ${tab === 'prospects' ? html`<${ClassRail} p=${prospects}/>` : html`<${Rail} s=${rail}/>`}

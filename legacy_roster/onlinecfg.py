@@ -4,7 +4,7 @@ running RPCS3, standard library only. The player's own RPCS3 files are only read
     account(rpcs3)                  the RPCN name in config/rpcn.yml (never the password or the token)
     net_config(text, address)       a config.yml with the Net block set for our server, every other line as it was
     write_config(rpcs3, title, ip)  that config as the app's own file (online/config_<TITLE>.yml in the program's folder)
-    launch_args(rpcs3, title, cfg)  rpcs3.exe --no-gui --config <cfg> <game>
+    launch_args(rpcs3, title, cfg)  rpcs3.exe (AppImage, flatpak run ...) --no-gui --config <cfg> <game>
     log_state(text)                 what RPCS3's log says about the online sign-in
     read_shared(path)               RPCS3's log, which RPCS3 keeps open
     rpcs3_build(rpcs3)              the build number of the RPCS3 that wrote the log (None: not known yet)
@@ -94,10 +94,35 @@ def net_config(text, address):
     return newline.join(lines) + (newline if text.endswith('\n') or not text else '')
 
 
+def config_dir(rpcs3):
+    """Where the app's own config goes: the program's folder, except for the Flatpak RPCS3, which cannot see it: there it goes
+    into the Flatpak's own folder (the same path inside and outside the sandbox)."""
+    if rpcs3.flatpak:
+        where = os.path.join(rpcs3.folder, 'online')
+        os.makedirs(where, exist_ok=True)
+        return where
+    return datasource.app_dir('online')
+
+
+def log_path(rpcs3, posix=os.name != 'nt'):
+    """RPCS3's log: log/RPCS3.log in its folder (Windows, a portable copy), else in the cache folder of the system (Linux
+    ~/.cache/rpcs3, the Flatpak's own cache, a Mac's ~/Library/Caches/rpcs3). The newest of the files there is, else the first."""
+    home = os.path.expanduser('~')
+    cache = os.environ.get('XDG_CACHE_HOME') or os.path.join(home, '.cache')
+    places = [os.path.join(rpcs3.folder, 'log', 'RPCS3.log')]
+    if posix:
+        flatpak_cache = os.path.join(home, '.var', 'app', 'net.rpcs3.RPCS3', 'cache', 'rpcs3', 'RPCS3.log')
+        places += ([flatpak_cache, os.path.join(cache, 'rpcs3', 'RPCS3.log')] if rpcs3.flatpak
+                   else [os.path.join(cache, 'rpcs3', 'RPCS3.log'), os.path.join(home, 'Library', 'Caches', 'rpcs3', 'RPCS3.log'),
+                         flatpak_cache])
+    there = [p for p in places if os.path.isfile(p)]
+    return max(there, key=os.path.getmtime) if there else places[0]
+
+
 def write_config(rpcs3, title, address):
     """Write the app's own config for booting `title` online (the player's config for the game with the Net block set) to
     online/config_<TITLE>.yml in the program's folder. Returns its path. The player's own files are not touched."""
-    path = os.path.join(datasource.app_dir('online'), f'config_{title}.yml')
+    path = os.path.join(config_dir(rpcs3), f'config_{title}.yml')
     text = net_config(base_config(rpcs3, title), address)
     with open(path + '.tmp', 'w', encoding='utf-8', newline='') as f:
         f.write(text)
@@ -109,9 +134,10 @@ def launch_args(rpcs3, title, config, fullscreen=False):
     """The command line that boots `title` from RPCS3 with the app's config `config`, or None when RPCS3 or the game is not
     found. The game is the disc RPCS3 lists (RPCS3 itself runs update 1.01 when it is installed)."""
     disc = rpcs3.game_disc(title)
-    if not rpcs3.exe or not disc:
+    command = rpcs3.command()
+    if not command or not disc:
         return None
-    return [rpcs3.exe, '--no-gui'] + (['--fullscreen'] if fullscreen else []) + ['--config', config, disc]
+    return command + ['--no-gui'] + (['--fullscreen'] if fullscreen else []) + ['--config', config, disc]
 
 
 def read_shared(path, limit=None):
@@ -148,9 +174,9 @@ _BUILD = re.compile(r'RPCS3 v\d+\.\d+\.\d+-(\d+)-')
 def rpcs3_build(rpcs3):
     """The build number of the RPCS3 that wrote `log/RPCS3.log` ('RPCS3 v0.0.43-20402-d00d8023 Alpha' -> 20402), or None: no
     log yet, or rpcs3.exe is newer than the log (RPCS3 was updated and has not been started since)."""
-    path = os.path.join(rpcs3.folder, 'log', 'RPCS3.log')
+    path = log_path(rpcs3)
     try:
-        if rpcs3.exe and os.path.getmtime(rpcs3.exe) > os.path.getmtime(path):
+        if rpcs3.exe and os.path.isfile(rpcs3.exe) and os.path.getmtime(rpcs3.exe) > os.path.getmtime(path):
             return None
         found = _BUILD.search(read_shared(path, 4096))
     except OSError:

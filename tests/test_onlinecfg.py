@@ -32,7 +32,7 @@ def _rpcs3(tmp_path, config=CONFIG, custom=None, rpcn="Version: 2\nHost: np.rpcs
         (root / 'config' / 'custom_configs' / f'config_{EU}.yml').write_text(custom, encoding='utf-8', newline='')
     if rpcn is not None:
         (root / 'config' / 'rpcn.yml').write_text(rpcn, encoding='utf-8')
-    return SimpleNamespace(folder=str(root), exe=str(root / 'rpcs3.exe'),
+    return SimpleNamespace(folder=str(root), exe=str(root / 'rpcs3.exe'), flatpak=False, command=lambda: [str(root / 'rpcs3.exe')],
                            game_disc=lambda title: 'D:/games/nhl.iso' if title == EU else None)
 
 
@@ -86,7 +86,7 @@ def test_the_launch_line_boots_the_game_with_the_apps_config(tmp_path):
                                                                   'D:/games/nhl.iso']
     assert '--fullscreen' in onlinecfg.launch_args(rpcs3, EU, 'c.yml', fullscreen=True)
     assert onlinecfg.launch_args(rpcs3, 'BLUS31540', 'c.yml') is None                 # no game
-    assert onlinecfg.launch_args(SimpleNamespace(exe=None, game_disc=lambda t: 'd'), EU, 'c.yml') is None
+    assert onlinecfg.launch_args(SimpleNamespace(exe=None, command=lambda: None, game_disc=lambda t: 'd'), EU, 'c.yml') is None
 
 
 LOG = "\n".join([

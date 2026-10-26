@@ -389,6 +389,12 @@ input.field:disabled { color: var(--faint); }
 .modal .m-body { padding: 14px 22px; font-size: 14.5px; line-height: 1.5; color: #dce7f2; overflow: auto; min-height: 0; }
 .modal .m-body p { margin: 0 0 8px; }
 .modal .m-buttons { flex: none; display: flex; justify-content: center; gap: 10px; padding: 6px 22px 18px; }
+/* "Your files are ready": one row per folder, then the steps in RPCS3 */
+.modal .q-row { margin: 10px 0; border: 1px solid #36506d; background: rgba(255,255,255,.035); }
+.modal .q-head { padding: 5px 12px; font-weight: 700; letter-spacing: .04em; border-bottom: 1px solid #36506d; background: rgba(255,255,255,.05); }
+.modal .q-text { padding: 8px 12px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.modal .q-note { color: #c5d5e5; font-size: 13.5px; }
+.export-off { padding: 24px 28px; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; max-width: 640px; }
 
 /* --- small screens (768-line laptops) --------------------------------------------------------- */
 @media (max-height: 720px) {

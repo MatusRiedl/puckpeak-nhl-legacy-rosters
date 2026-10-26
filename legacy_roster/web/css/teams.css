@@ -96,7 +96,7 @@ input[type=range] { accent-color: var(--accent-hi); }
 .tp-jerseys .eq-rows, .tp-jerseys .eq-grid { max-height: none; overflow: visible; }
 .tp-jerseys .eq-opt { min-width: 112px; }
 .tp-jerseys .eq-opt img { width: 128px; height: 64px; }
-.tp-jerseys .uw-colours { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tp-jerseys .uw-colours.ct-team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .tp-jerseys .ct-logos { max-height: 268px; overflow: auto; }
 .tp-jerseys .ct-logos .eq-opt { min-width: 0; padding: 3px 4px; }
 .tp-jerseys .ct-logos .eq-opt img { width: 60px; height: 60px; }

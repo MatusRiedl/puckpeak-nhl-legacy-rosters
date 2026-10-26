@@ -27,6 +27,7 @@ photos.
 Needs Pillow (images.py); the window exe has it.
 """
 import concurrent.futures
+import contextlib
 import hashlib
 import io
 import json
@@ -79,7 +80,29 @@ class ArtError(RuntimeError):
 ART_STORE, PATCH_STORE = 'art', 'patch'
 
 
+_REDIRECT = None            # export.py: a folder that holds the lists and kept copies instead of the program's own
+_READ_ONLY_DIRS = ()        # game folders (USRDIR) that are only read while exporting (the update's text files)
+
+
+@contextlib.contextmanager
+def redirected(folder, read_dirs=()):
+    """While exporting files to a folder (export.py): the lists of written files and the kept copies go to `folder`, so the
+    player's own lists (what is installed in his RPCS3, what Restore puts back) are neither read nor changed. `read_dirs`:
+    game folders of the player's RPCS3 that are only read (update 1.01's text files)."""
+    global _REDIRECT, _READ_ONLY_DIRS
+    before = _REDIRECT, _READ_ONLY_DIRS
+    _REDIRECT, _READ_ONLY_DIRS = folder, tuple(read_dirs)
+    try:
+        yield
+    finally:
+        _REDIRECT, _READ_ONLY_DIRS = before
+
+
 def _paths(store=ART_STORE):
+    if _REDIRECT:
+        base = os.path.join(_REDIRECT, store)
+        os.makedirs(base, exist_ok=True)
+        return os.path.join(base, 'installed.json'), os.path.join(base, 'backup')
     return datasource.app_dir(store, 'installed.json'), datasource.app_dir(store, 'backup')
 
 
@@ -415,6 +438,8 @@ def scan_claims(rpcs3):
     for user in sorted(os.listdir(home)) if os.path.isdir(home) else []:
         folder = os.path.join(home, user, 'savedata')
         folders.setdefault(os.path.normcase(os.path.abspath(folder)), folder)
+    for folder in getattr(rpcs3, 'extra_savedata', ()):         # an export reads the player's own saves too (export.py)
+        folders.setdefault(os.path.normcase(os.path.abspath(folder)), folder)
     for folder in folders.values():
         for slot in savedata.list_rosters(folder):
             try:
@@ -470,7 +495,7 @@ def update_texts(game_dirs):
     jersey names) and newer ones. {} without the update."""
     from . import loc
     from .disc import EbArchive
-    for d in game_dirs:
+    for d in list(game_dirs) + list(_READ_ONLY_DIRS):
         path = os.path.join(d, UPDATE_ARCHIVE)
         if not os.path.isfile(path):
             continue
@@ -556,7 +581,7 @@ def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=
     without its dead entries goes in too (not with the player's own pictures alone).
     Returns (written, already there, failed)."""
     check(rpcs3, title_id, own=not menus)
-    if os.path.exists(lab.manifest_path()):
+    if not _REDIRECT and os.path.exists(lab.manifest_path()):       # an export never touches the player's RPCS3
         lab.remove(say=lambda msg: None)  # the one-off art test, if it is still installed
     say("Photos and logos: reading picture templates from your game")
     disc = Disc(rpcs3.game_disc(title_id))

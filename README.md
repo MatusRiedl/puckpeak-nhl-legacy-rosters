@@ -121,15 +121,22 @@ itself; if it does not, press **Find RPCS3** in Setup and pick it.
 
 ## Without RPCS3 (a Mac, a Linux PC, CrossOver, Wine)
 
-No RPCS3 to pick on this computer? In **Setup**, under **Where is RPCS3?**, tick **"Export only SYS-DATA
-roster"**. **Which roster do you work on?** then asks for the roster file: pick the `SYS-DATA` of the community
-roster you downloaded. On the **Update** tab, choose what to update and press **Make new roster**: a new
-folder (named by the date and time) with the updated `SYS-DATA` appears **next to the program**, and the
-window says where. Copy that file into a roster save folder of the game, in place of the file with the same
-name (keep the old one), then load the roster in the game and save it once.
-No pictures, logos or jerseys are in it (they are RPCS3's files), and the game's own roster (it is made from
-your game disc) is not available in this mode. On the command line:
-`export-roster --file <SYS-DATA> [--out <folder>]`.
+Tick **"Export files to a folder"** in **Setup**, under **Where is RPCS3?**. It works on every system, with or
+without RPCS3 (Windows, Linux, Flatpak, Mac, CrossOver, Wine). The program then changes nothing in RPCS3: on the
+**Update** tab press **Export files** and a new folder `NHL Legacy export <date time>` appears next to the program
+(or where you ask on the command line). It is laid out like RPCS3's own folders: `dev_hdd0/game/<game>/USRDIR/...`
+(pictures and names), `dev_hdd0/home/<user>/savedata/<game>02NN/` (the roster), `patches/` (the game patch), and a
+`HOW-TO-INSTALL.txt`. When it is ready, the window "Your files are ready" tells you, for your system (Windows, Linux,
+Flatpak or Mac), where RPCS3's folder is and how to copy each part in (on a Mac, merge the folders; do not replace
+`dev_hdd0`), which entries to tick in RPCS3 under **Manage > Game Patches**, how to load the roster, how to undo it
+(delete what you copied), and what to do when a roster of that name already exists (rename it to a free `...02NN`).
+Without RPCS3, **Which roster do you work on?** asks for the roster file: pick the `SYS-DATA` of the community
+roster you downloaded. Photos, logos and team names, the game patch and the game's own roster need your copy of the
+game: pick the .iso (or its folder) in Setup. Restore, "Update this roster", Play online and the Be a Pro / Season
+saves are off while you export, because they change RPCS3 itself. On the command line:
+`export-files [--rpcs3 <rpcs3> | --savedata <folder> | --source <SYS-DATA>] --out <folder> [--photos] [--game-patch]
+[--version EU|NA|both] [--game <iso>]` (it prints the same text). `export-roster --file <SYS-DATA>` still makes just
+the roster file.
 
 Pointing the program at a folder of roster saves instead still works on the command line
 (`--savedata <folder>` instead of `--rpcs3`).

@@ -18,11 +18,19 @@ BIN_NAME = "Recycle Bin" if savedata.WINDOWS else "Trash"
 DISC_NOTE = "From your game disc: the 2014-15 players, brought up to today"
 SAVE_NOTE = ("Updating this roster makes a backup first. Saving as a new roster leaves existing saves untouched. "
              "RPCS3 must be closed for in-place updates.")
-EXPORT_SAVE_NOTE = ("The new SYS-DATA is written into a new folder next to this program, named by the date and time. "
-                    "It has no name of its own and no pictures.")
-EXPORT_PICK = ("Pick the roster's SYS-DATA file (the community roster you downloaded). The new SYS-DATA is written next "
-               "to this program.")
-EXPORT_RPCS3 = "Not needed in this mode: the program only makes a roster file."
+EXPORT_SAVE_NOTE = ("Everything is made into a new folder (named by the date and time) and nothing in RPCS3 is changed. "
+                    "A short text in it says where each part goes.")
+EXPORT_PICK = ("Pick a roster of your RPCS3 below, or a roster file (the SYS-DATA of the community roster you downloaded). "
+               "The files are made into a new folder.")
+EXPORT_RPCS3 = ("Optional here: pick RPCS3 to start from your own rosters and to skip roster names you already use. "
+                "Nothing in it is changed.")
+EXPORT_GAME = "Pick your copy of the game (the .iso or its folder): the pictures, the game patch and the game's own roster need it."
+EXPORT_PATCH_ON = "The export holds the game patch: a roster for 32 teams, the patch's files, and what to tick in RPCS3."
+EXPORT_PATCH_OFF = "Not in the export: it holds a roster for the game as it is. Tick the box to add the game patch."
+EXPORT_PATCH_NOTE = ("RPCS3's own patch list is not changed: the instructions in the export say which patches to tick "
+                     "(Manage > Game Patches). Needs your copy of the game.")
+EXPORT_WHY = ("Restore, \"Update this roster\", Play online and the Be a Pro and Season saves are off while you export: they "
+              "change RPCS3 itself. Switch off \"Export files to a folder\" in Setup to use them.")
 ROOM_NOTE = "The game shows at most 10 rosters per version. Keep 10 or fewer."
 ROOM_FULL_SHORT = "Full: the game shows only 10. Delete a roster you no longer play, or pick \"Update this roster\"."
 ROOM_FULL = savedata.FULL_TEXT
@@ -35,8 +43,9 @@ PHOTOS_RUNNING = "Downloading automatically... {pct} %"
 PHOTOS_READY = "Downloaded automatically. Ready."
 PHOTOS_RETRY = "Not downloaded yet. It tries again automatically."
 PHOTOS_OFF = "Off: nothing is downloaded."
-PHOTOS_NEEDS_RPCS3 = "Needs RPCS3: pick rpcs3.exe in step 1."
-PHOTOS_EXPORT = "Not in this mode: pictures need RPCS3."
+PROGRAM = "rpcs3.exe" if savedata.WINDOWS else "the RPCS3 program"       # what the player is asked to pick, in his system's word
+PHOTOS_NEEDS_RPCS3 = f"Needs RPCS3: pick {PROGRAM} in step 1."
+PHOTOS_EXPORT = "Pick your copy of the game in Setup first: the pictures are made from it."
 PHOTOS_WAITING = "Waiting for the download... {pct} %"
 PHOTOS_SHORT = "Some pictures could not be downloaded; the next update tries again."
 SAVED_DESPITE = ("The roster is saved: you can load it in the game. The details of what went wrong are in {log}; "
@@ -48,7 +57,14 @@ PATCH_TITLE = "32 teams and the year 2026 (game patch)"
 PATCH_SUB = "Seattle and Vegas in Season and Be a GM: 32 NHL and 32 AHL teams, 84 games. New."
 NOT_PATCHED = "Not patched: updates make rosters for the game as it is."
 PATCHED_NOTE = "every update makes a roster for it"
-PATCH_NEEDS_RPCS3 = "The game patch needs RPCS3: pick rpcs3.exe in step 1."
+PATCH_NEEDS_RPCS3 = f"The game patch needs RPCS3: pick {PROGRAM} in step 1."
+
+
+def linux_pick(folders):
+    """The question that opens the RPCS3 picker on Linux: the program (an AppImage or the rpcs3 binary) is best, the folder
+    is enough to find the saves and to patch, but then the program cannot start RPCS3 for you (the Flatpak starts anyway)."""
+    return ["Pick the RPCS3 program (the rpcs3 file or its AppImage): the program then finds your saves and can start RPCS3.",
+            "Or pick RPCS3's folder (" + ", ".join(folders) + "). With the Flatpak, pick that folder."]
 PATCH_NEEDS_GAME = "RPCS3 does not list the game yet: start it once from RPCS3's game list."
 PATCH_ASK = ["This patches the game in RPCS3 (every version you have) for 32 teams and the year 2026.",
              "While it is patched, every update makes a roster for the patched game. The patched game shows other "

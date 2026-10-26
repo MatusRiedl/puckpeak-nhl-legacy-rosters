@@ -19,6 +19,9 @@
     photos remove                                     take the photos and logos away again
     packs download | status | remove                  the pictures for --photos: download them now, show what is on
                                                       this PC, free the space (update --photos downloads by itself)
+    export-files [--rpcs3 <rpcs3.exe> | --savedata <folder>] [--source <save>|<SYS-DATA>] --out <folder> [--photos]
+            [--game-patch] [--version EU|NA|both] [--game <iso>]   the files an update would put into RPCS3, in a new folder
+                                                      to copy by hand (RPCS3 is not touched; prints how to install them)
     stock-test --rpcs3 <rpcs3.exe> [--version EU|NA]  the in-game check of the game's own roster (two LAB rosters)
     draft-test --rpcs3 <rpcs3.exe> [--source <save>]  the in-game check of where the draft finds prospects
     rendering-test --rpcs3 <rpcs3.exe> [--version EU|NA]   Utah's jerseys and centre-ice logo as loud loose files (in-game test)
@@ -40,6 +43,9 @@ from . import APP_NAME, __version__, datasource, edits, layout, pipeline, saveda
 from .builder import Data
 from .roster import Roster
 from .tdb import RosterFile
+
+RPCS3_HELP = ("your rpcs3.exe (or the folder it is in)" if savedata.WINDOWS else
+              "your RPCS3: the rpcs3 program, its AppImage, RPCS3.app, or RPCS3's data folder")
 
 
 def _find(args):
@@ -136,6 +142,65 @@ def cmd_export_roster(args):
         sys.exit(2)
     print("Report:", res.report_path)
     print("New SYS-DATA:", res.exported)
+
+
+def cmd_export_files(args):
+    """Everything an update would put into RPCS3, as files in a new folder: nothing is written to RPCS3."""
+    from . import export
+    pack = datasource.load_pack(offline=True)
+    available = pipeline.steps_for(pack)
+    steps = available if args.leagues == 'all' else pipeline.default_steps(pack) if args.leagues == 'default' \
+        else [s for s in args.leagues.split(',') if s]
+    unknown = [s for s in steps if s not in available]
+    if unknown:
+        sys.exit(f"unknown or unavailable: {', '.join(unknown)}; choose from {', '.join(available)}")
+    wanted = args.source
+    rpcs3, source = None, None
+    if args.rpcs3:
+        rpcs3 = _find(args)
+    elif args.savedata:
+        try:
+            rpcs3, _ = savedata.open_saves(args.savedata)
+        except FileNotFoundError as err:
+            sys.exit(str(err))
+    if wanted and os.path.isfile(wanted):
+        source = wanted                                   # a SYS-DATA file: no RPCS3 needed
+    elif rpcs3 is None:
+        sys.exit("--export-files needs --rpcs3 <rpcs3.exe>, --savedata <folder>, or --source <a SYS-DATA file>")
+    else:
+        source = _source(args)[1]
+    targets = None
+    if args.save_for:
+        targets = list(savedata.GAMES) if args.save_for.lower() == 'both' else [savedata.title_of(args.save_for)]
+        if None in targets:
+            sys.exit("--version takes EU, NA or both")
+    games = {}
+    for path in args.game or []:
+        title = savedata.game_title_id(path)
+        if title not in savedata.GAMES:
+            sys.exit(f"{path} is not a copy of NHL Legacy Edition (give the .iso file or the folder with PS3_GAME)")
+        games[title] = path
+    if (args.skip_intro or args.no_login) and not args.game_patch:
+        sys.exit("--skip-intro and --no-login go with --game-patch")
+    if args.photos and not args.offline:
+        _download_packs()
+    try:
+        res = export.run(args.out, source, rpcs3=rpcs3, steps=steps, targets=targets, name=args.name,
+                         photos=args.photos, game_patch=args.game_patch, intro=args.skip_intro, login=args.no_login,
+                         my_edits=edits.load() if args.edits else None,
+                         team_edits=edits.load_teams() if args.edits else None, progress=print, offline=args.offline,
+                         games=games)
+    except (export.ExportError, FileNotFoundError, layout.LayoutError, datasource.Offline, RuntimeError) as err:
+        sys.exit(str(err))
+    for line in res.update.build.summary():
+        print(line)
+    if res.folder is None:
+        for p in res.update.build.problems[:40]:
+            print("  problem:", p)
+        sys.exit(2)
+    print()
+    print(res.text)
+    print("Files:", res.folder)
 
 
 def cmd_update(args):
@@ -487,7 +552,7 @@ def main(argv=None):
         p = sub.add_parser(name, help=text)
         p.set_defaults(fn=fn)
         where = p.add_mutually_exclusive_group(required=True)
-        where.add_argument('--rpcs3', help="your rpcs3.exe (or the folder it is in); the saves are found from there")
+        where.add_argument('--rpcs3', help=RPCS3_HELP + "; the saves are found from there")
         where.add_argument('--savedata',
                            help="instead of --rpcs3: a savedata folder, anything above it, or one roster save folder")
         p.add_argument('--game', action='append', metavar='ISO_OR_FOLDER',
@@ -532,11 +597,29 @@ def main(argv=None):
     p.add_argument('--offline', action='store_true')
     p.add_argument('--edits', action='store_true', help="apply your edits from the window's Roster editor")
     p.add_argument('--for-patch', action='store_true', help="make it for a game patched for 32 teams and the year 2026")
+    p = sub.add_parser('export-files', help="make the files an update would put into RPCS3 (roster, pictures, game patch) "
+                                            "in a new folder, to copy over by hand; RPCS3 is not touched")
+    p.set_defaults(fn=cmd_export_files)
+    p.add_argument('--rpcs3', help=RPCS3_HELP + " (read only)")
+    p.add_argument('--savedata', help="instead of --rpcs3: a savedata folder or one roster save folder (read only)")
+    p.add_argument('--source', help="a roster file (SYS-DATA), or with --rpcs3 / --savedata a roster save (folder or "
+                                    "name) or disc / disc:EU / disc:NA; default: the newest save")
+    p.add_argument('--out', help="the folder to make the new one in (default: next to the program)")
+    p.add_argument('--game', action='append', metavar='ISO_OR_FOLDER', help="where your NHL Legacy game is (.iso or its folder)")
+    p.add_argument('--version', '--for', dest='save_for', metavar='EU|NA|both', help="the version(s) of the game to make it for")
+    p.add_argument('--leagues', default='default', help="nhl,ratings,national,liiga,... | all | default")
+    p.add_argument('--name')
+    p.add_argument('--offline', action='store_true')
+    p.add_argument('--photos', action='store_true', help="also make the photos, logos and names (needs the game)")
+    p.add_argument('--edits', action='store_true', help="apply your edits from the window's Roster editor")
+    p.add_argument('--game-patch', action='store_true', help="also make the game patch files (32 teams, the year 2026; needs the game)")
+    p.add_argument('--skip-intro', action='store_true', help="with --game-patch: offer the 'skip the intro' entry")
+    p.add_argument('--no-login', action='store_true', help="with --game-patch: offer the 'no pop ups at start' entry")
     p = sub.add_parser('game-patch', help="patch the game for 32 teams and the year 2026, is it patched, take the patch "
                                           "out again")
     p.set_defaults(fn=cmd_game_patch)
     p.add_argument('action', choices=('install', 'status', 'remove', 'online', 'online-off'))
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe (or the folder it is in)")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--skip-intro', action='store_true', help="with install: start at the main menu, no intro")
     p.add_argument('--no-login', action='store_true',
                    help="with install: no pop ups at start (no sign-in boxes; online modes still sign in when opened)")
@@ -548,35 +631,35 @@ def main(argv=None):
     p.add_argument('action', choices=('download', 'status', 'remove'))
     p = sub.add_parser('stock-test', help="save two LAB rosters made from the game's own roster (in-game test)")
     p.set_defaults(fn=cmd_stock_test)
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--version', choices=('EU', 'NA'), help="which version's disc (default: the first RPCS3 lists)")
     p = sub.add_parser('rendering-test', help="write loud Utah jerseys and centre-ice logo as loose files (in-game test)")
     p.set_defaults(fn=cmd_rendering_test)
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--version', choices=('EU', 'NA'), help="which version's game folder (default: the first RPCS3 lists)")
     p = sub.add_parser('looks-test', help="write the new Utah, Seattle and Vegas jerseys and ice logos as loose files (in-game test)")
     p.set_defaults(fn=cmd_looks_test)
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--version', choices=('EU', 'NA'), help="which version's game folder (default: the first RPCS3 lists)")
     p = sub.add_parser('calendar-test', help="save LAB rosters with the real 2026-27 calendar (in-game test)")
     p.set_defaults(fn=cmd_calendar_test)
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--source', help="roster save to start from, or file:<a roster file such as a downloaded community "
                                     "SYS-DATA> (default: the newest roster this program did not make)")
     p = sub.add_parser('equipment-test', help="save a LAB roster with every tuck, tape colour ... on a player (in-game test)")
     p.set_defaults(fn=cmd_equipment_test)
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--source', help="roster save to start from, or file:<a roster file> (default: the newest roster this "
                                     "program did not make)")
     p = sub.add_parser('year-test', help="save a LAB roster for the year 2026 game patch, and the patch file (in-game test)")
     p.set_defaults(fn=cmd_year_test)
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--source', help="roster save to start from, or file:<a roster file such as a downloaded community "
                                     "SYS-DATA> (default: the newest roster this program did not make)")
     p = sub.add_parser('team32-test', help="save a LAB roster for the 32-team game patch, the patch file and the game's "
                                                    "database description for 32 teams (in-game test; RPCS3 closed)")
     p.set_defaults(fn=cmd_team32_test)
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--source', help="roster save to start from, or file:<a roster file such as a downloaded community "
                                     "SYS-DATA> (default: the newest roster this program did not make)")
     p.add_argument('--photos', action='store_true', help="also install the team names, NHL logos and new jerseys into "
@@ -584,21 +667,21 @@ def main(argv=None):
     p.add_argument('--version', choices=('EU', 'NA'), help="which version of the game to save for (default: the source's)")
     p = sub.add_parser('season-test', help="save LAB rosters with more and more update steps (finds what crashes Season mode)")
     p.set_defaults(fn=cmd_season_test)
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--source', help="roster save to start from, disc / disc:EU / disc:NA, or file:<a roster file such as a "
                                     "downloaded community SYS-DATA> (default: the newest roster this program did not make)")
     p = sub.add_parser('league-test', help="save a LAB roster with custom teams moved into real leagues (in-game test)")
     p.set_defaults(fn=cmd_league_test)
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--source', help="roster save to start from (default: newest)")
     p = sub.add_parser('draft-test', help="save a LAB roster with prospects in different places (in-game test)")
     p.set_defaults(fn=cmd_draft_test)
-    p.add_argument('--rpcs3', required=True, help="your rpcs3.exe")
+    p.add_argument('--rpcs3', required=True, help=RPCS3_HELP)
     p.add_argument('--source', help="roster save to start from, made with 0.8.0 or newer (default: newest)")
     p = sub.add_parser('art-test', help="install or remove the in-game test of photos and logos (see docs/ROADMAP.md)")
     p.set_defaults(fn=cmd_art_test)
     p.add_argument('action', choices=('install', 'remove'))
-    p.add_argument('--rpcs3', help="your rpcs3.exe (needed for install)")
+    p.add_argument('--rpcs3', help=RPCS3_HELP + " (needed for install)")
     p.add_argument('--source', help="roster save to start from (default: newest)")
     args = ap.parse_args(argv)
     try:

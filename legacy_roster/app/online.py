@@ -686,10 +686,12 @@ class OnlineController:
                 patchinstall.set_online_start(rpcs3, [title], True)
             self.started_at = time.time()
             args = onlinecfg.launch_args(rpcs3, title, config)
+            if args is None and not rpcs3.command():
+                raise OSError("The program does not know how to start RPCS3. In Setup, pick the RPCS3 program itself (not only its folder).")
             if args is None:
                 raise OSError("RPCS3 does not say where your copy of the game is. Start the game once from RPCS3's list.")
             flags = getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
-            savedata.launch(args, cwd=os.path.dirname(rpcs3.exe), close_fds=True, creationflags=flags)
+            savedata.launch(args, cwd=rpcs3.launch_dir(), close_fds=True, creationflags=flags)
         except (OSError, patchinstall.PatchError) as err:
             self._untick_start()
             with self.lock:
@@ -701,7 +703,7 @@ class OnlineController:
         rpcs3 = self.rpcs3()
         if rpcs3 is None:
             return
-        path = os.path.join(rpcs3.folder, 'log', 'RPCS3.log')
+        path = onlinecfg.log_path(rpcs3)
         try:
             fresh = os.path.getmtime(path) >= self.started_at       # the last session's log says nothing about this start
             log = onlinecfg.log_state(onlinecfg.read_shared(path))

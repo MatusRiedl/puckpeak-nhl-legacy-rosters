@@ -66,6 +66,19 @@ roster" is not listed and there is no "Start RPCS3". The new roster goes next to
 to the exe (`pipeline.export_root`: the program's folder, else Documents). A new folder every time, nothing is overwritten;
 `cli export-roster`. `tools/window_shot.py export|export-ready`; `tests/test_export.py`.
 
+**Export files to a folder** (0.72.0, owner): the checkbox replaces the SYS-DATA-only one (the old `pipeline.export_sysdata` and
+`cli export-roster` stay). `legacy_roster/export.py`: `ExportTarget` is a pretend RPCS3 living in the new folder `<out>`; the normal
+`pipeline.update` runs against it inside `savedata.exporting()` (a running RPCS3 does not matter) and `art.install.redirected`
+(manifests, kept copies and picture numbers go to `<out>/.export-work`, deleted at the end; the player's real game folders and
+savedata are only read). The layout is RPCS3's: `dev_hdd0/game/<TITLE>/USRDIR`, `dev_hdd0/home/<user>/savedata/<TITLE>02NN`,
+`patches/<TITLE>_patch.yml` (never `config/patch_config.yml`: the player ticks the entries in RPCS3), `HOW-TO-INSTALL.txt`. New
+roster folders take a free 01-09 number the player's real savedata does not use. `export.instructions` writes the per-system text
+(Windows, Linux, Flatpak, Mac, the player's own first) that the window shows (`UpdateController._ask_export`, `ask(rows=, notes=,
+copy=)`, `web/js/shell.js` `Question`), the file holds and `cli export-files` prints. The controller: `export_mode`, `export_file`,
+`export_from_file`, `export_patch`, `_start_export`; Photos and Game patch stay available (they need a picked disc), Restore,
+in-place update, Play online and the careers do not. `tools/window_shot.py export|export-done`; `tests/test_export_files.py`
+(nothing written outside `<out>`, a second export byte-identical). Notes docs/notes/export.md.
+
 ## What happens when the user presses "Update roster"
 
 1. **Window** (the Update tab's "Update roster": `UpdateController.start`, `app/update.py`): marks the controller

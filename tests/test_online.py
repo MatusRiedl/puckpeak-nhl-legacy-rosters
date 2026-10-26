@@ -40,6 +40,7 @@ def _rpcs3(tmp_path, name='HostPlayer'):
     (root / 'config' / 'config.yml').write_text("Net:\n  PSN status: Disconnected\n")
     (root / 'rpcs3.exe').write_bytes(b'')
     return SimpleNamespace(folder=str(root), exe=str(root / 'rpcs3.exe'), plain=False, savedata=str(root / 'savedata'),
+                           flatpak=False, command=lambda: [str(root / 'rpcs3.exe')], launch_dir=lambda: str(root),
                            game_disc=lambda title: 'game.iso' if title == EU else None,
                            game_folder=lambda title: str(root / 'dev_hdd0' / 'game' / title / 'USRDIR'))
 

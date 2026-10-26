@@ -8,7 +8,7 @@ import tempfile
 import threading
 import time
 
-from .. import __version__, datasource, gamepatch, layout, packs, patchinstall, pipeline, restore, savedata
+from .. import __version__, datasource, export, gamepatch, layout, packs, patchinstall, pipeline, restore, savedata
 from .. import edits as my_edits
 from ..art.install import ArtError, installed as art_installed, remove as remove_art
 from ..gui_state import is_current_scan
@@ -92,7 +92,10 @@ class UpdateController:
         self.export_mode = bool(self.settings.get(S.EXPORT_ONLY))
         picked = self.settings.get(S.EXPORT_FILE)
         self.export_file = picked if picked and os.path.isfile(picked) else None
+        self.export_from_file = self.export_file is not None and bool(self.settings.get(S.EXPORT_FROM_FILE, True))
+        self.export_patch = bool(self.settings.get(S.EXPORT_PATCH))     # the export holds the game patch
         self.export_problem = None
+        self._export_result = None  # the last ExportResult (its pop-up can be opened again)
         self.result = None          # the result box (dict), or None
         self.status = None          # (text, tone) while busy or while a result shows; else worked out
         self.dialog = None
@@ -126,8 +129,9 @@ class UpdateController:
     def start_up(self):
         """Find RPCS3 where it was last time (or where it runs / usually is)."""
         last = self.settings.get('rpcs3') or self.settings.get('folder')
-        self.set_rpcs3((None if temporary(last) else last) or savedata.running_rpcs3() or savedata.default_rpcs3(),
-                       quiet=True)
+        running = savedata.running_rpcs3()
+        running = running if running and os.path.exists(running) else None      # a Flatpak's /app/bin/rpcs3 is not on this PC
+        self.set_rpcs3((None if temporary(last) else last) or running or savedata.default_rpcs3(), quiet=True)
 
     def changed(self):
         self.host.changed(SLICE)
@@ -283,7 +287,7 @@ class UpdateController:
     def tick(self):
         """Every 15 seconds: the suggested name keeps the current time until the player types their own."""
         with self.lock:
-            if not self.name_edited and not self.busy and not self.in_place() and not self.export_mode:
+            if not self.name_edited and not self.busy and not self.in_place():
                 name = savedata.default_name()
                 if name != self.name:
                     self.name = name
@@ -306,15 +310,19 @@ class UpdateController:
                 self.changed()
 
     def selected_slot(self):
-        return next((s for s in self.slots if s.folder == self.selected), None)
+        return self.slot_of(self.selected)
 
     def slot_of(self, folder):
-        return next((s for s in self.slots if s.folder == folder), None)
+        found = next((s for s in self.slots if s.folder == folder), None)
+        if found is None and self.export_mode and folder:       # the game's own roster of a game the player pointed at
+            found = next((s for s in self._export_discs() if s.folder == folder), None)
+        return found
 
     def in_place(self, slot=None):
         """Is the roster picked updated in place? (The game's own roster is no save: always a new roster.)"""
         slot = slot or self.selected_slot()
-        return self.save_mode == S.IN_PLACE and slot is not None and not getattr(slot, 'disc', False)
+        return (self.save_mode == S.IN_PLACE and slot is not None and not getattr(slot, 'disc', False)
+                and not self.export_mode)            # an export never changes a roster
 
     def save_targets(self, slot=None):
         """The versions of the game (title ids) the new roster is saved for."""
@@ -345,12 +353,15 @@ class UpdateController:
             self.status = None if not self.busy else self.status
             self.changed()
 
-    def ask(self, title, lines, buttons, answers):
-        """A question in the page (Delete, Restore default...). `buttons`: (label, answer, style);
-        `answers`: answer -> what to do."""
+    def ask(self, title, lines, buttons, answers, **more):
+        """A question in the page (Delete, Restore default...). `buttons`: (label, answer, style[, keep]); a button with
+        `keep` does its work and leaves the window open; `answers`: answer -> what to do. `more`: a bigger window with `rows`
+        ([{'head', 'text'}]), `notes` (lines after them) and `copy` (the text its 'copy' button puts on the clipboard)."""
         ident = (self.dialog or {}).get('id', 0) + 1
         self.dialog = {'id': ident, 'title': title, 'lines': list(lines),
-                       'buttons': [{'label': label, 'answer': answer, 'style': style} for label, answer, style in buttons]}
+                       'buttons': [{'label': b[0], 'answer': b[1], 'style': b[2], 'keep': len(b) > 3 and bool(b[3]),
+                                    'copy': b[1] == 'copy' and 'copy' in more} for b in buttons]}
+        self.dialog.update(more)
         self._answers = answers
         self.changed()
 
@@ -359,7 +370,10 @@ class UpdateController:
             if not self.dialog or self.dialog['id'] != ident:
                 return
             todo = self._answers.get(answer)
-            self.dialog, self._answers = None, {}
+            if any(b['answer'] == answer and b['keep'] for b in self.dialog['buttons']):
+                pass
+            else:
+                self.dialog, self._answers = None, {}
             self.changed()
         if todo:
             todo()
@@ -367,13 +381,25 @@ class UpdateController:
     # --- RPCS3 and its rosters ------------------------------------------------------------------------
     def pick_rpcs3(self):
         with self.lock:
-            if self.busy or self.export_mode:
+            if self.busy:
                 return
             start = self.rpcs3.folder if self.rpcs3 else os.path.expanduser('~')
         if savedata.WINDOWS:
             path = self.host.ask_open("Where is rpcs3.exe?", ['RPCS3 (rpcs3.exe)', 'Programs (*.exe)'], start)
-        else:       # Linux, Mac: RPCS3 keeps its data in a folder of its own, which is what the program needs
-            path = self.host.ask_folder("Where is RPCS3's folder? (" + ", ".join(savedata.data_folders()) + ")", start)
+        elif savedata.MAC:      # RPCS3.app is a folder to the file dialog; RPCS3's data folder will do as well
+            path = self.host.ask_folder("Where is RPCS3.app, or RPCS3's folder? (" + ", ".join(savedata.data_folders()) + ")", start)
+        else:                   # Linux: the program (an AppImage or the rpcs3 binary) or RPCS3's folder; the Flatpak has only a folder
+            self.ask("Where is RPCS3?", X.linux_pick(savedata.data_folders()),
+                     [("The program or AppImage", 'file', 'primary'), ("RPCS3's folder", 'folder', 'plain'),
+                      ("Cancel", 'no', 'plain')],
+                     {'file': lambda: self._pick_from(self.host.ask_open("Where is RPCS3? (the rpcs3 program or its AppImage)",
+                                                                         ['RPCS3 (rpcs3*, *.AppImage)', 'All files (*)'], start)),
+                      'folder': lambda: self._pick_from(self.host.ask_folder(
+                          "Where is RPCS3's folder? (" + ", ".join(savedata.data_folders()) + ")", start))})
+            return
+        self._pick_from(path)
+
+    def _pick_from(self, path):
         if path:
             self.set_rpcs3(os.path.normpath(path))
 
@@ -509,7 +535,7 @@ class UpdateController:
     def pick_game(self, folder=False):
         """The player points at the game (RPCS3 does not list it): the program keeps the place and looks again."""
         with self.lock:
-            if not self.rpcs3 or self.busy:
+            if self.busy or (not self.rpcs3 and not self.export_mode):     # an export needs no RPCS3
                 return
         start = os.path.expanduser('~')
         if folder:
@@ -526,14 +552,21 @@ class UpdateController:
                 return
             self.settings.setdefault('games', {})[title] = os.path.normpath(path)
             S.save(self.settings)
-            where = self.rpcs3.where
-        self.set_rpcs3(where)
+            where = self.rpcs3.where if self.rpcs3 else None
+            if where is None:
+                self.changed()
+        if where is not None:
+            self.set_rpcs3(where)
 
     def select(self, folder):
         with self.lock:
             if self.busy or self.slot_of(folder) is None or self.usable.get(folder) is not None:
                 return
             self._select(folder)
+            if self.export_mode and self.export_from_file:      # a roster picked: the export starts from it, not the file
+                self.export_from_file = False
+                self.settings[S.EXPORT_FROM_FILE] = False
+                S.save(self.settings)
             self.changed()
 
     def _select(self, folder):
@@ -603,7 +636,8 @@ class UpdateController:
             if key in self.steps:
                 self.steps[key] = on
             elif key == S.PHOTOS:
-                if on and (self.export_mode or self.rpcs3 is not None and self.rpcs3.plain):
+                if on and (self.rpcs3 is not None and self.rpcs3.plain and not self.export_mode
+                           or self.export_mode and not self.export_games()):
                     return
                 self.photos = on
                 if on:
@@ -688,10 +722,16 @@ class UpdateController:
     def set_patch_switch(self, key, on):
         """"Skip the intro" / "No pop ups at start": kept for the next Patch, and put into a patched game at once."""
         with self.lock:
-            if self.busy or key not in (S.SKIP_INTRO, S.NO_LOGIN):
+            if self.busy or key not in (S.SKIP_INTRO, S.NO_LOGIN, S.EXPORT_PATCH):
                 return
             on = bool(on)
-            patched = self._patched()
+            if key == S.EXPORT_PATCH:       # the export holds the game patch: nothing in RPCS3 changes
+                self.export_patch = on
+                self.settings[S.EXPORT_PATCH] = on
+                S.save(self.settings)
+                self.changed()
+                return
+            patched = [] if self.export_mode else self._patched()      # an export never touches RPCS3's patch
             if patched and savedata.running_rpcs3():
                 self.running = True
                 self.show_result(False, "Close RPCS3 first", ["The game patch can only be changed while RPCS3 is closed."])
@@ -801,7 +841,7 @@ class UpdateController:
 
     def set_name(self, text):
         with self.lock:
-            if self.busy or self.export_mode:
+            if self.busy:
                 return
             self.name = str(text)
             self.name_edited = True
@@ -826,7 +866,7 @@ class UpdateController:
     def start(self, everything=False, waited=False):
         with self.lock:
             if self.export_mode:
-                self._start_export()
+                self._start_export(waited)
                 return
             slot = self.selected_slot()
             fit, self._fit = slot is not None and self._fit == slot.folder, None    # "Update it now": in place
@@ -1006,6 +1046,10 @@ class UpdateController:
         elif action == 'export_folder':
             if self._export_folder:
                 self.host.open_path(self._export_folder)
+        elif action == 'export_how':
+            with self.lock:
+                if self._export_result is not None and self.dialog is None:
+                    self._ask_export(self._export_result)
         elif action == 'start_rpcs3':
             self.start_rpcs3()
         elif action == 'update_page':
@@ -1048,7 +1092,7 @@ class UpdateController:
                                      "half-written roster is left behind."], [("OK", 'ok', 'primary')], {})
             return False
 
-    # --- "Export only SYS-DATA roster" (no RPCS3 on this PC) ----------------------------------------
+    # --- "Export files to a folder" (export.py): the update's files in a new folder, RPCS3 untouched ------------
     def set_export_only(self, on):
         with self.lock:
             if self.busy:
@@ -1058,13 +1102,49 @@ class UpdateController:
             S.save(self.settings)
             self.result = None
             self.status = None
-            if not self.export_mode:
-                self.name_edited = False
-                self.name = savedata.default_name()
+            self.name_edited = False
+            self.name = savedata.default_name()
             where = self.rpcs3.where if self.rpcs3 else self.settings.get('rpcs3')
+            if self.export_mode and self.selected_slot() is None and self.export_file is not None:
+                self.export_from_file = True
             self.changed()
-        if not on:
-            self.set_rpcs3(where, quiet=True)
+        if where:
+            self.set_rpcs3(where, quiet=True)       # the lists follow the mode (the game's own roster of a game pointed at)
+
+    def export_games(self):
+        """{title id: the game} an export can make pictures, the game patch and the game's own roster from: the ones
+        RPCS3 lists, else the ones the player pointed at (settings 'games')."""
+        found, picked = {}, self.settings.get('games') or {}
+        for title in savedata.GAMES:
+            path = self.rpcs3.game_disc(title) if self.rpcs3 is not None and not self.rpcs3.plain else None
+            path = path or (picked.get(title) if picked.get(title) and os.path.exists(picked[title]) else None)
+            if path:
+                found[title] = path
+        return found
+
+    def _export_discs(self):
+        """The game's own roster of each game the player pointed at, when there is no RPCS3 to list it (an export)."""
+        if self.rpcs3 is not None and not self.rpcs3.plain:
+            return []
+        return [savedata.DiscSlot(t, p) for t, p in self.export_games().items()]
+
+    def _export_source(self):
+        """What the export starts from: a roster file (SYS-DATA) or a roster of RPCS3 (a savedata.Slot), else None."""
+        if self.export_from_file and self.export_file:
+            return self.export_file
+        slot = self.selected_slot()
+        if slot is not None and self.usable.get(slot.folder) is None:
+            return slot
+        return self.export_file
+
+    def _export_targets(self, source):
+        """The versions of the game the export is made for (title ids): the source's own, or as "Save for" says."""
+        own = savedata.title_of('EU') if isinstance(source, str) else source.title_id
+        if self.save_pick == S.BOTH:
+            return [own] + [t for t in savedata.GAMES if t != own]
+        if self.save_pick in ('EU', 'NA'):
+            return [savedata.title_of(self.save_pick)]
+        return [own]
 
     def pick_export_file(self):
         with self.lock:
@@ -1091,37 +1171,93 @@ class UpdateController:
                 self.export_file, self.export_problem = None, problem
             else:
                 self.export_file, self.export_problem = path, None
+                self.export_from_file = True
                 self.settings[S.EXPORT_FILE] = path
+                self.settings[S.EXPORT_FROM_FILE] = True
                 S.save(self.settings)
             self.changed()
 
-    def _start_export(self):
+    def _start_export(self, waited=False):
         steps = [s for s in self.step_keys if self.steps[s]]
-        if self.export_file is None or self.busy or not steps:
+        source = self._export_source()
+        if source is None or self.busy or self.scanning or not steps:
             return
         self.save_settings()
+        games = self.export_games()
+        photos = self.photos and bool(games)
+        if photos and not waited and (self._fetching or self.fetch == 'failed'):
+            self.waiting = False                    # the pictures first; a failed download is tried once more
+            self.busy, self.at = True, self.fetch_at
+            self.status = (X.PHOTOS_WAITING.format(pct=int(self.fetch_at * 100)), 'body')
+            self.changed()
+            self.download_pictures()
+            return
         self._begin("Working... (the last result is shown until the new one is ready)")
-        self.photos_running = False
+        self.photos_running = photos
+        self.pictures_short = photos and not all(packs.have(n) for n in packs.NAMES)
         mine = (my_edits.load(), my_edits.load_teams()) if self.use_edits else (None, None)
-        file = self.export_file
+        name = self.name.strip() if self.name_edited and self.name.strip() else savedata.default_name()
+        rpcs3, targets, patch = self.rpcs3, self._export_targets(source), self.export_patch
+        intro, login = self.skip_intro, self.no_login
+        label = source if isinstance(source, str) else f"{source.name} ({source.folder})"
 
         def work():
-            return pipeline.export_sysdata(file, steps, None, self.say, my_edits=mine[0] or None,
-                                           team_edits=mine[1] or None), False
+            return export.run(None, source, rpcs3=rpcs3, steps=steps, targets=targets, name=name, photos=photos,
+                              game_patch=patch, intro=intro, login=login, my_edits=mine[0] or None,
+                              team_edits=mine[1] or None, progress=self.say, games=games)
 
         def context():
-            return [f"export of {file}{'' if os.path.exists(file) else '  (missing)'}", f"steps: {', '.join(steps)}"]
+            return [f"export from {label}{'' if not isinstance(source, str) or os.path.exists(source) else '  (missing)'}",
+                    f"steps: {', '.join(steps)}", f"for: {', '.join(targets)}; photos: {photos}; game patch: {patch}"]
 
         self._context = context
-        jobs.run(work, done=lambda r: self._done(*r), failed=self._failed, context=context,
-                 expected=(layout.LayoutError, datasource.Offline, FileNotFoundError, OSError))
+        jobs.run(work, done=self._export_done, failed=self._failed, context=context,
+                 expected=(layout.LayoutError, datasource.Offline, FileNotFoundError, OSError, ArtError, StockError,
+                           export.ExportError, patchinstall.PatchError))
+
+    def _export_done(self, res):
+        self._finish()
+        update = res.update
+        items = update.build.lines()
+        if self.pictures_short:
+            items.append(("Pictures", X.PHOTOS_SHORT))
+        self.say("", "What changed:", *(f"   {title}: {text}" for title, text in items))
+        with self.lock:
+            self.last_report = update.report_path
+            if res.folder is None:
+                problems = update.build.problems
+                if problems:
+                    jobs.log_block(self._context_lines() + ["the safety checks failed:"] + [f"  - {p}" for p in problems[:40]])
+                self._fail("The new roster failed the safety checks, so nothing was exported",
+                           problems[:3] + ["Nothing was written."])
+                said = ["   - " + p for p in problems[:15]]
+            else:
+                bad = list(res.after)
+                self._export_result, self._export_folder = res, res.folder
+                self.at = 1.0
+                self.status = ("Done: the files are ready.", 'bad' if bad else 'good')
+                self.show_result(True, "Your files are ready", [f"They are in: {res.folder}", "Nothing in RPCS3 was changed."],
+                                 [("Open the folder", 'export_folder'), ("How to install", 'export_how'),
+                                  ("List of changes", 'report')],
+                                 items=items or [("Result", "Nothing needed changing.")], bad=bad)
+                self._ask_export(res)
+                said = [f"Done. The files are in {res.folder}"] + bad
+        self.say(*said)
+
+    def _ask_export(self, res):
+        """The pop-up "Your files are ready": one row per folder, what to tick, how to load, how to undo."""
+        self.ask(export.TITLE, [f"The files are in: {res.folder}"] + list(res.intro),
+                 [("Open folder", 'open', 'primary', True), ("Copy text", 'copy', 'plain', True), ("Close", 'close', 'plain')],
+                 {'open': lambda: self.host.open_path(res.folder), 'copy': lambda: None},
+                 rows=res.rows, notes=res.notes, copy=res.text, wide=True)
 
     # --- what the tab shows -------------------------------------------------------------------------
     def snapshot(self):
         with self.lock:
             slot = self.selected_slot()
             export = self.export_mode
-            ready = (self.export_file is not None and not self.busy) if export else \
+            source = self._export_source() if export else None
+            ready = (source is not None and not self.busy and not self.scanning) if export else \
                 (slot is not None and not self.busy and not self.scanning)
             plain = self.rpcs3 is not None and self.rpcs3.plain
             any_step = any(self.steps.values()) or (bool(self.marks) and not export)
@@ -1134,14 +1270,13 @@ class UpdateController:
                 'busy': self.busy, 'scanning': self.scanning,
                 'rpcs3': self._rpcs3_view(export),
                 'patch': self._patch_view(),
-                'export': {'on': export, 'file': self.export_file,
-                           'text': self.export_problem or (f"Roster file: {self.export_file}" if self.export_file else X.EXPORT_PICK),
-                           'tone': 'bad' if self.export_problem else 'good' if self.export_file else 'muted'},
-                'fresh': [] if export else [{'folder': s.folder, 'label': f"New from {s.region} disc", 'region': s.region}
-                                            for s in self.slots if getattr(s, 'disc', False)],
+                'export': self._export_view(export, source),
+                'fresh': [{'folder': s.folder, 'label': f"New from {s.region} disc", 'region': s.region}
+                          for s in self._fresh(export)],
                 'empty': None if self.slots else ("Looking for your rosters..." if self.scanning else
+                                                  "No RPCS3 rosters are listed. Pick RPCS3 in step 1, or use a roster file." if export else
                                                   "Pick RPCS3 first. Your rosters will be listed here."),
-                'rosters': [] if export else [self._roster_view(s, hidden) for s in self.slots],
+                'rosters': [self._roster_view(s, hidden) for s in self.slots],
                 'room': self._room_view(room, export),
                 'selected': self.selected,
                 'steps': self._steps_view(export, plain),
@@ -1157,6 +1292,30 @@ class UpdateController:
                 'check_updates': self.settings.get('check_updates', True) is not False,
                 'downloads': self._downloads_view(),
             }
+
+    def _fresh(self, export):
+        """The game's own roster of each game known (a disc slot): RPCS3's list, and in an export the games pointed at."""
+        found = [s for s in self.slots if getattr(s, 'disc', False)]
+        if export:
+            found += [s for s in self._export_discs() if all(s.folder != f.folder for f in found)]
+        return found
+
+    def _export_view(self, export, source):
+        """Setup's roster card and the Update tab's top bar in an export: where the new roster starts from."""
+        if not export:
+            return {'on': False, 'file': self.export_file, 'text': '', 'tone': 'muted', 'from_file': False, 'game': None}
+        if self.export_problem:
+            text, tone = self.export_problem, 'bad'
+        elif source is None:
+            text, tone = X.EXPORT_PICK, 'muted'
+        elif isinstance(source, str):
+            text, tone = f"Roster file: {source}", 'good'
+        else:
+            text, tone = f"{source.name} ({source.region})", 'good'
+        games = self.export_games()
+        return {'on': True, 'file': self.export_file, 'text': text, 'tone': tone,
+                'from_file': isinstance(source, str), 'patch': self.export_patch,
+                'game': None if games else X.EXPORT_GAME, 'why': X.EXPORT_WHY}
 
     def _downloads_view(self):
         """The Setup tab's Downloads card: the pictures (downloaded by themselves) and the player data."""
@@ -1176,11 +1335,11 @@ class UpdateController:
                  'tone': 'good' if made else 'muted', 'bar': None}]
 
     def _rpcs3_view(self, export):
-        if export:
-            note, tone = X.EXPORT_RPCS3, 'muted'
-        elif self.rpcs3 is None:
+        if self.rpcs3 is None:
             if self.scanning:
                 note, tone = "Looking for your rosters...", 'muted'
+            elif export:
+                note, tone = X.EXPORT_RPCS3, 'muted'
             elif self.problem:
                 note, tone = self.problem, 'bad'
             else:
@@ -1189,13 +1348,18 @@ class UpdateController:
             note, tone = "Looking for your rosters...", 'muted'
         else:
             note, tone = X.rpcs3_note(self.rpcs3, self.slots), 'info'
-        needs_game = bool(self.rpcs3 and not self.rpcs3.plain and not self.rpcs3.disc_slots()) and not export
+        if export:
+            needs_game = not self.export_games()
+        else:
+            needs_game = bool(self.rpcs3 and not self.rpcs3.plain and not self.rpcs3.disc_slots())
         return {'path': self.rpcs3.where if self.rpcs3 else None, 'note': {'text': note, 'tone': tone} if note else None,
                 'needs_game': needs_game, 'find_label': "Find rpcs3.exe" if savedata.WINDOWS else "Find RPCS3",
-                'enabled': not self.busy and not export}
+                'enabled': not self.busy}
 
     def _patch_view(self):
         """Step 2: is the game patched, the two small switches, Patch / Unpatch."""
+        if self.export_mode:
+            return self._patch_export_view()
         why = self.patchable()
         patched = [t for t, st in self.patch_state.items() if st.get('patched') or st.get('stale')] \
             if why != X.PATCH_NEEDS_RPCS3 else []           # stale: patched before update 1.01 was known
@@ -1233,6 +1397,21 @@ class UpdateController:
                            {'key': S.NO_LOGIN, 'label': "No pop ups at start", 'tip': X.NO_LOGIN_TIP,
                             'on': self.no_login, 'enabled': switch}],
                 'buttons': buttons, 'patched': bool(patched), 'regions': self._patch_regions(patched, old)}
+
+    def _patch_export_view(self):
+        """The Game patch tab in an export: no Patch / Unpatch (they change RPCS3); a box puts the patch into the export."""
+        on = self.export_patch
+        switch = not self.busy
+        return {'title': X.PATCH_TITLE, 'sub': X.PATCH_SUB,
+                'state': {'text': X.EXPORT_PATCH_ON if on else X.EXPORT_PATCH_OFF, 'tone': 'good' if on else 'muted'},
+                'note': X.EXPORT_PATCH_NOTE,
+                'info': {'title': X.PATCH_INFO_TITLE,
+                         'sections': [{'head': head, 'items': items} for head, items in X.PATCH_INFO]},
+                'checks': [{'key': S.EXPORT_PATCH, 'label': "Put the game patch in the export", 'on': on, 'enabled': switch},
+                           {'key': S.SKIP_INTRO, 'label': "Skip the intro", 'on': self.skip_intro, 'enabled': switch},
+                           {'key': S.NO_LOGIN, 'label': "No pop ups at start", 'tip': X.NO_LOGIN_TIP,
+                            'on': self.no_login, 'enabled': switch}],
+                'buttons': [], 'patched': on, 'regions': []}
 
     def _patch_regions(self, patched, old):
         """The Game patch tab: one card per version of the game, patched or not, with its rosters."""
@@ -1284,7 +1463,8 @@ class UpdateController:
                         {'text': "made here", 'kind': 'made'} if s.tool_made and problem is None else None,
                 'problem': X.short_reason(problem) if problem else X.HIDDEN_IN_GAME if s.folder in hidden else None,
                 'misfit': self.misfit(s),
-                'actions': not disc, 'usable': problem is None, 'selected': s.folder == self.selected,
+                'actions': not disc and not self.export_mode, 'usable': problem is None,
+                'selected': s.folder == self.selected and not (self.export_mode and self.export_from_file),
                 'delete_enabled': not self.busy and not self.scanning}
 
     def _steps_view(self, export, plain):
@@ -1307,22 +1487,23 @@ class UpdateController:
 
     def _photos_row(self, export, plain, restorable):
         """First in the list and highlighted: its status says only that the pictures are downloaded automatically."""
-        offered = not export and not plain
+        offered = bool(self.export_games()) if export else not plain      # an export needs the game, not RPCS3
         on = self.photos and offered
         running = on and self.fetch == 'running'
-        sub = (X.PHOTOS_EXPORT if export else X.PHOTOS_NEEDS_RPCS3 if plain else
+        sub = (X.PHOTOS_EXPORT if export and not offered else X.PHOTOS_NEEDS_RPCS3 if plain and not export else
                X.PHOTOS_OFF if not self.photos else
                X.PHOTOS_RUNNING.format(pct=int(self.fetch_at * 100)) if running else
                X.PHOTOS_READY if self.fetch == 'ready' else
                X.PHOTOS_RETRY if self.fetch == 'failed' else X.photos_will(self.fetch_size))
         return {'key': S.PHOTOS, 'title': X.PHOTOS_TITLE, 'sub': sub, 'warn': None, 'hint': X.PHOTOS_HINT,
-                'on': on, 'enabled': not self.busy and offered, 'restore': offered, 'restore_enabled': restorable,
+                'on': on, 'enabled': not self.busy and offered, 'restore': offered and not export,
+                'restore_enabled': restorable,
                 'restoring': S.PHOTOS in self.marks, 'featured': True,
                 'bar': round(self.fetch_at, 3) if running else None}
 
     def _save_view(self, slot, export, in_place, ready, any_step, full=()):
         if export:
-            button = "Working..." if self.busy else "Make new roster"
+            button = "Working..." if self.busy else "Export files"
         elif self.busy:
             button = "Updating..."
         elif self.marks:
@@ -1330,11 +1511,17 @@ class UpdateController:
         else:
             button = "Update roster" if in_place else "Make new roster"
         two = slot is not None and len(self.versions) >= 2 and not in_place and not export
+        if export:          # the version is picked here: there may be no RPCS3 to tell which games exist
+            source = self._export_source()
+            own = savedata.region(savedata.title_of('EU') if isinstance(source, str) or source is None else source.title_id)
+            save_for = {'value': self.save_pick or own, 'enabled': not self.busy, 'options': ['EU', 'NA', S.BOTH]}
+        else:
+            save_for = {'value': self.save_pick or slot.region, 'enabled': not self.busy,
+                        'options': ['EU', 'NA', S.BOTH]} if two else None
         return {'mode': (S.IN_PLACE if in_place else S.AS_NEW if slot is not None else self.save_mode),
                 'mode_shown': not export, 'mode_enabled': not self.busy,
-                'name': X.NO_NAME if export else self.name, 'name_enabled': not self.busy and not export,
-                'save_for': {'value': self.save_pick or slot.region, 'enabled': not self.busy,
-                             'options': ['EU', 'NA', S.BOTH]} if two else None,
+                'name': self.name, 'name_enabled': not self.busy,
+                'save_for': save_for,
                 'button': {'text': button, 'enabled': ready and any_step and not full},
                 'note': X.EXPORT_SAVE_NOTE if export else X.SAVE_NOTE}
 
@@ -1344,8 +1531,9 @@ class UpdateController:
         elif full:
             text, tone = f"{X.ROOM_FULL} ({' and '.join(savedata.region(t) for t in full)})", 'bad'
         elif export:
-            text, tone = ("Ready." if ready and any_step else
-                          "Pick the roster file (step 3)." if self.export_file is None else
+            text, tone = ("Looking for your rosters..." if self.scanning else
+                          "Ready." if ready and any_step else
+                          "Pick a roster (Setup) or a roster file first." if not ready and not self.busy else
                           "Switch on at least one thing to update."), 'muted'
         else:
             text, tone = ("Looking for your rosters..." if self.scanning else

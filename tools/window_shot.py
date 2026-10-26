@@ -14,7 +14,8 @@ states (the tab they show in brackets):
     details    done, with the details drawer open
     failed     a made-up failure
     delete     the question before a roster save goes to the Recycle Bin (its Delete button pressed)
-    export     the window with "Export only SYS-DATA roster" ticked, after making the roster (export-ready: before)
+    export     Setup with "Export files to a folder" ticked and a roster file picked (also export-ready)
+    export-done  the files made, the "Your files are ready" window open
     roster     the Roster tab on the base roster, Edmonton (or --team <slot>) and its first player picked (also: editor)
     equipment  the Roster tab's "Equipment" window for the first Edmonton player (pictures need --disc)
     jerseys    the Jerseys & ice tab for Edmonton or --team <slot> (pictures need --disc) (also: uniforms)
@@ -79,7 +80,7 @@ sys.path.insert(0, ROOT)
 BASE = os.environ.get('LEGACY_ROSTER_BASE') or os.path.join(ROOT, 'work', 'backup', 'BLES021530202')
 WEB = os.path.join(ROOT, 'legacy_roster', 'web')
 STATES = ('none', 'setup', 'ready', 'patch', 'updating', 'done', 'details', 'failed', 'delete', 'roster', 'editor', 'jerseys',
-          'uniforms', 'equipment', 'export', 'export-ready', 'patched', 'full', 'lines', 'strategy', 'strategies', 'face',
+          'uniforms', 'equipment', 'export', 'export-ready', 'export-done', 'patched', 'full', 'lines', 'strategy', 'strategies', 'face',
           'calendar', 'office', 'contract', 'downloading', 'misfit', 'prospects', 'prospects-pro', 'prospects-look',
           'prospects-make', 'prospects-class', 'prospects-import', 'prospects-career', 'online', 'online-lobby',
           'online-ready', 'online-ingame', 'online-failed', 'online-mismatch', 'online-list')
@@ -241,16 +242,17 @@ def drive(args, c, work):
             ed.contract_open(first['key'])
             deal = office.contract_snapshot()['draft']
             office.contract_change('cap', deal['cap'] + 1_000_000)
-    elif state in ('export', 'export-ready'):     # "Export only SYS-DATA roster": the file is written into the temp folder
+    elif state in ('export', 'export-ready', 'export-done'):     # "Export files to a folder": the files go into the temp folder
         os.chdir(work)
         upd.set_export_only(True)
         upd.use_export_file(os.path.join(BASE, 'SYS-DATA'))
-        if state == 'export-ready':
-            tab = 'setup'
-        if state == 'export':
+        tab = 'setup'
+        if state == 'export-done':                  # the made files and the "Your files are ready" window
+            tab = 'update'
             upd.start()
             wait(lambda: upd.busy, 10)
             wait(lambda: not upd.busy)
+            wait(lambda: upd.dialog is not None, 10)
     elif state == 'patched':        # the EU game patched with an older patch, a roster made for it
         tab = 'patch'
         upd.select(os.path.basename(BASE))
@@ -598,7 +600,7 @@ def main():
         savedata.running_rpcs3 = lambda: None         # a running RPCS3 on this PC must not be picked up
         savedata.default_rpcs3 = lambda: None         # nor one in its usual place
         real_update = pipeline.update
-        pipeline.update = lambda *a, **k: real_update(*a, offline=True, **k)
+        pipeline.update = lambda *a, **k: real_update(*a, **{**k, 'offline': True})
         if args.live:
             live(args, work)
             return

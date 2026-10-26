@@ -993,7 +993,7 @@ def test_step_2_says_what_is_missing_without_rpcs3_and_while_it_runs(app, monkey
     upd.hide_result()
     upd.set_export_only(True)
     card = upd.snapshot()['patch']
-    assert card['state']['text'] == X.PATCH_NEEDS_RPCS3 and card['buttons'] == []
+    assert card['state']['text'] == X.EXPORT_PATCH_OFF and card['buttons'] == []   # export mode: a tick box, no buttons
     # the "?" says what the patch does, also before RPCS3 is picked
     assert card['info']['title'] == X.PATCH_INFO_TITLE
     assert [s['head'] for s in card['info']['sections']] == [head for head, _ in X.PATCH_INFO]
@@ -1075,10 +1075,13 @@ def test_the_exe_neither_uses_nor_remembers_an_rpcs3_in_the_temp_folder(app, tmp
     monkeypatch.setattr(S, 'save', lambda values: saved.append(dict(values)))
     tried = []
     monkeypatch.setattr(upd, 'set_rpcs3', lambda path, quiet=False: tried.append(path))
-    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: r'D:\PS3\RPCS3\rpcs3.exe')
+    running = tmp_path / 'running' / 'rpcs3.exe'
+    running.parent.mkdir()
+    running.write_bytes(b'')                            # start_up only follows a running RPCS3 whose file is on this PC
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: str(running))
     upd.settings['rpcs3'] = exe
     upd.start_up()
-    assert tried == [r'D:\PS3\RPCS3\rpcs3.exe']         # the temp one is passed over: the running RPCS3 instead
+    assert tried == [str(running)]         # the temp one is passed over: the running RPCS3 instead
     del upd.set_rpcs3                                   # (not monkeypatch.undo: the fixture's folders would go too)
     monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
     upd.settings.pop('rpcs3', None)

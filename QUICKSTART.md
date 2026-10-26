@@ -34,8 +34,8 @@ from [Puck Peak](https://www.puckpeak.com).
    *More info > Run anyway*, on a Mac right-click it and choose *Open*.
 2. **Close RPCS3** if you want photos and logos.
 3. **Setup tab, "Where is RPCS3?":** pick the file `rpcs3.exe` in your RPCS3 folder (on a Mac or
-   Linux the program finds RPCS3 by itself). No RPCS3 on this computer? Tick **Export only SYS-DATA
-   roster** and pick the roster file (README, "Without RPCS3").
+   Linux the program finds RPCS3 by itself). No RPCS3 on this computer? Tick **Export files to a
+   folder** and pick the roster file (README, "Without RPCS3").
 4. **Setup tab, "Which roster do you work on?":** pick the roster to start from. *The game's own
    roster* is at the end of the list if you have none yet.
 5. **Update tab:** leave everything switched on, or switch off what you don't want. Under **Save**,
