@@ -373,18 +373,18 @@ def make_online(c, state):
     if state != 'online':
         on.roster = {'name': 'Puck Peak Online 2026-10-25', 'folder': 'BLES021530299', 'crc': 'a1b2c3d4'}
     me = {'name': 'GuestPlayer', 'role': 'host', 'roster_ok': True, 'patch_ok': True, 'ready': False, 'progress': 'in_game',
-          'patch': '0.26', 'version': '01.00'}
+          'patch': '0.26', 'version': 'EU 01.00'}
     friend = {'name': 'Friend_77', 'role': 'guest', 'roster_ok': True, 'patch_ok': True, 'ready': False, 'progress': 'signed_in',
-              'patch': '0.26', 'version': '01.00'}
+              'patch': '0.26', 'version': 'EU 01.00'}
     mine = {'crc': 'a1b2c3d4', 'size': 1048576}
     if state == 'online-list':
         on.public = True
         on.open_lobbies = [
-            {'code': 'KDMQRS', 'host': 'Friend_77', 'roster_name': 'Community 2026-27 (updated)', 'patch': '0.26', 'version': '01.00',
+            {'code': 'KDMQRS', 'host': 'Friend_77', 'roster_name': 'Community 2026-27 (updated)', 'patch': '0.26', 'version': 'EU 01.00',
              'roster_size': 1048576, 'age_seconds': 40, 'members': 1, 'max': 2},
-            {'code': 'TWXYZA', 'host': 'PuckHunter', 'roster_name': 'Puck Peak Online', 'patch': '0.25', 'version': '01.00',
+            {'code': 'TWXYZA', 'host': 'PuckHunter', 'roster_name': 'Puck Peak Online', 'patch': '0.25', 'version': 'EU 01.00',
              'roster_size': 1048576, 'age_seconds': 600, 'members': 1, 'max': 2},
-            {'code': 'BCDFGH', 'host': 'EUplayer', 'roster_name': 'My roster', 'patch': '0.26', 'version': '01.01',
+            {'code': 'BCDFGH', 'host': 'EUplayer', 'roster_name': 'My roster', 'patch': '0.26', 'version': 'NA 01.01',
              'roster_size': 1048576, 'age_seconds': 3000, 'members': 1, 'max': 2}]
     elif state == 'online-lobby':
         on.brought = 'Community 2026-27 (updated)'
@@ -398,7 +398,7 @@ def make_online(c, state):
         on.code = 'KDMQRS'
     elif state == 'online-ready':
         me['ready'] = friend['ready'] = True
-        friend['rpcs3'] = '20393'
+        friend['rpcs3'] = '20402'
         on.lobby, on.code = {'code': 'KDMQRS', 'state': 'starting', 'reason': None, 'members': [me, friend], 'roster': mine}, 'KDMQRS'
     elif state in ('online-ingame', 'online-failed'):
         me.update(role='guest', progress='browsing', ready=True)

@@ -22,6 +22,7 @@ Questions, news and help: **[gg.puckpeak.com](https://gg.puckpeak.com)**
 - 🌍 **The whole hockey world.** National teams plus Liiga, Extraliga, SHL, DEL, National League, AHL and the CHL, with real rosters.
 - 📸 **Real faces, real logos, real names.** Today's photos and club logos in the game's menus; Utah, Seattle and Vegas as they should be.
 - 👕 **New jerseys and ice.** The new franchises get their own jerseys, helmets and centre-ice logo, and you can paint your own for any team of any league.
+- 🎮 **Multiplayer (beta).** Make a lobby with your roster, share a six-letter code or pick an open game, press **Ready**: RPCS3 starts on both PCs and goes straight to Select Teams. Europe and US, game 1.00 and update 1.01.
 - 🗓 **The real 2026-27 calendar.** Played in Season mode, and shown month by month in the program, with the results of your own Season.
 - 🏒 **32 teams in Season, Be a GM and Be a Pro.** An optional game patch adds Seattle and Vegas, their AHL farm clubs, the year 2026 and 84 games; one button takes it out again.
 - 🎓 **Draft & Pro.** Draft classes for a new Be a GM or Season, your own player for Be a Pro, and the name, ratings and XP of a Be a Pro career you already play.
@@ -31,6 +32,7 @@ Questions, news and help: **[gg.puckpeak.com](https://gg.puckpeak.com)**
 - 🔄 **Stays fresh.** Checks for new versions itself and updates in one click.
 
 <div align="center">
+<img src="docs/shot_online.png" width="48%" alt="The Multiplayer tab: a lobby with both players Ready"> <img src="docs/shot_online_list.png" width="48%" alt="The Multiplayer tab: open lobbies">
 <img src="docs/shot_editor.png" width="48%" alt="The Roster tab"> <img src="docs/shot_equipment.png" width="48%" alt="Equipment">
 <img src="docs/shot_uniforms.png" width="48%" alt="The Jerseys & ice tab"> <img src="docs/shot_calendar.png" width="48%" alt="The Calendar tab">
 <img src="docs/shot_office.png" width="48%" alt="The Front office tab"> <img src="docs/shot_prospects.png" width="48%" alt="The Draft & Pro tab">
@@ -38,7 +40,7 @@ Questions, news and help: **[gg.puckpeak.com](https://gg.puckpeak.com)**
 
 ## 🚀 Get started
 
-1. Download `NHLLegacyRosterUpdater.exe` (about 26 MB; Windows; Mac and Linux builds are on the release page too).
+1. Download `NHLLegacyRosterUpdater.exe` (about 26 MB; Windows; Mac and Linux builds, both still beta, are on the release page too).
 2. In **Setup**, show it where `rpcs3.exe` is and pick a roster. In **Update**, switch on what you want and press **Update roster**.
 3. Start the game. That is all.
 
