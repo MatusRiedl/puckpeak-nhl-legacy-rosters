@@ -4,7 +4,7 @@
     photos      players' photos, club logos, crests, the player's own goalie masks (pack `photos`)
     looks       this season's jerseys and centre ice (pack `looks`)
     arenas      the NHL arenas' newer pictures (pack `arenas`)
-    bright_ice  brighter faceoff circles and ice lines (pack `ice`)
+    bright_ice  centre circles on solid white ice (pack `ice`)
     team_masks  the goalie masks of the teams (pack `masks`)
 
 The player's own pictures (Roster editor) go in whatever is switched on. Every part writes its files with a source tag

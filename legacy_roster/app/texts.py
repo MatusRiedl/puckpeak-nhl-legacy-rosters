@@ -55,9 +55,9 @@ PICTURE_ROWS = {
     'names': ("Team names", "Team names and short codes in Select Teams and on the scoreboard, and the main menu texts. "
                             "RPCS3 must be closed.", 0),
     'looks': ("This season's jerseys and centre ice", "New jerseys, pants, socks and centre-ice logos for the teams.", 55 * 1000 * 1000),
-    'arenas': ("NHL arenas", "Newer boards and banners in the 32 NHL arenas.", 13 * 1000 * 1000),
-    'bright_ice': ("Bright ice", "Brighter faceoff circles and a white centre circle.",
-                   8 * 1000 * 1000),
+    'arenas': ("NHL arenas", "New boards and banners in the NHL arenas.", 13 * 1000 * 1000),
+    'bright_ice': ("Bright ice", "Sharper centre-ice circles with the arenas' current names, on solid white ice.",
+                   6 * 1000 * 1000),
     'team_masks': ("Team goalie masks", "The goalie masks of the teams.", 3 * 1000 * 1000),
 }
 PICTURE_SIZES = {pack: PICTURE_ROWS[key][2] for pack, key in (('photos', 'photos'), ('looks', 'looks'), ('arenas', 'arenas'),

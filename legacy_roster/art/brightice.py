@@ -1,9 +1,12 @@
-"""Bright ice (0.76.0, the "Bright ice" switch): brighter faceoff circles and a white-backed centre circle.
+"""Bright ice (0.76.0, the "Bright ice" switch): the centre circle with a solid white backing.
 
-Both are pictures that go into the player's own disc file, which keeps its size and layout (art/rpsgl.py `replace`):
+A picture that goes into the player's own disc file, which keeps its size and layout (art/rpsgl.py `replace`):
 
-    rendering/icesurface/ice_hotspot_0_<n>_cm.rpsgl   the faceoff circles (512 x 512 DXT5; the NHL rink's)
     rendering/icesurface/centerlogo_<art>_cm.rpsgl    the centre circle (1024 x 1024 DXT5), white behind the logo
+
+The `ice_hotspot_0_<n>_cm` files are NOT faceoff circles: they are the sponsor logos painted on the ice. The community's
+versions swap them for other brands, so the pack leaves them out
+(agent's choice 2026-10-27, owner told; `private/build_extras.py` `SPONSOR_LOGOS`); the code still installs any the pack holds.
 
 Not taken: the community's `ice_hotspot_1_*` (another height than the game's, 512 x 512 for 512 x 256) and `ice_lines`
 (2048 x 4096 for 1024 x 2048): a picture of another size cannot go into the game's file without a new header.

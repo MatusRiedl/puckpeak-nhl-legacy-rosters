@@ -195,7 +195,7 @@ with it, so you download only what you want:
 | Team names | Real team names and short codes, the main menu texts | none |
 | Photos and logos: This season's jerseys and centre ice | New jerseys, pants, socks and centre-ice logos | about 55 MB |
 | Photos and logos: NHL arenas | Newer boards and banners in the 32 NHL arenas | about 13 MB |
-| Photos and logos: Bright ice | Brighter faceoff circles and a white centre circle | about 8 MB |
+| Photos and logos: Bright ice | Sharper centre-ice circles with the arenas' current names, on solid white ice | about 6 MB |
 | Photos and logos: Team goalie masks | The goalie masks of the teams | about 3 MB |
 
 Each row has its own **Restore** that puts back only its own files. Photos and logos give the players
