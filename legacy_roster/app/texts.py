@@ -56,7 +56,7 @@ PICTURE_ROWS = {
                             "RPCS3 must be closed.", 0),
     'looks': ("This season's jerseys and centre ice", "New jerseys, pants, socks and centre-ice logos for the teams.", 55 * 1000 * 1000),
     'arenas': ("NHL arenas", "New boards and banners in the NHL arenas.", 13 * 1000 * 1000),
-    'bright_ice': ("Bright ice", "Sharper centre-ice circles with the arenas' current names, on solid white ice.",
+    'bright_ice': ("Bright ice", "Sharper centre-ice circles with the arenas' current names, on solid white ice. Instead of this season's jerseys and centre ice: one or the other.",
                    6 * 1000 * 1000),
     'team_masks': ("Team goalie masks", "The goalie masks of the teams.", 3 * 1000 * 1000),
 }

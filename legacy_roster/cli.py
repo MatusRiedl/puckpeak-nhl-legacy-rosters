@@ -453,7 +453,10 @@ def _art_parts(args):
                                (parts.BRIGHT_ICE, args.bright_ice), (parts.TEAM_MASKS, args.team_masks)) if flag}
     if not extra:
         return None
-    return frozenset(extra | (parts.LEGACY if args.photos else set()))
+    chosen = frozenset(extra | (parts.LEGACY if args.photos else set()))
+    if {parts.LOOKS, parts.BRIGHT_ICE} <= chosen:
+        raise SystemExit("Bright ice and this season's jerseys and centre ice are one or the other: leave out --bright-ice or --looks / --photos.")
+    return chosen
 
 
 def _download_packs(art_parts=None):

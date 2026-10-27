@@ -119,6 +119,8 @@ class UpdateController:
                        S.ARENAS: bool(remembered.get(S.ARENAS, False)),
                        S.BRIGHT_ICE: bool(remembered.get(S.BRIGHT_ICE, False)),
                        S.TEAM_MASKS: bool(remembered.get(S.TEAM_MASKS, False))}
+        if self.art_on[S.LOOKS]:
+            self.art_on[S.BRIGHT_ICE] = False       # never both (set_step)
         if S.PHOTOS_DEFAULT not in self.settings:       # 0.65: the switch starts off for everyone, once; ticking it again is kept
             self.photos = False
             self.settings[S.PHOTOS_DEFAULT] = True
@@ -669,7 +671,11 @@ class UpdateController:
                         self.art_on[k] = on
                     if on:
                         self.marks.pop(k, None)
-                if on:
+                if on:                  # this season's centre ice and Bright ice are two takes on one picture: only one at a time
+                    if key == S.BRIGHT_ICE:
+                        self.art_on[S.LOOKS] = False
+                    elif key in (S.LOOKS, S.PICTURES):
+                        self.art_on[S.BRIGHT_ICE] = False
                     self.download_pictures()
                 elif not self.packs_wanted():
                     self._fetch_stop.set()      # what is already on this PC stays, for the next time it is on
@@ -1553,8 +1559,9 @@ class UpdateController:
         else:
             sub = X.photos_will(sum(self.pack_sizes.get(n) or X.PICTURE_SIZES.get(n, 0) for n in wanted))
         count = sum(1 for kid in kids if kid['on'])
-        if offered and on and count < len(kids):
-            sub = f"{count} of {len(kids)} parts on. " + sub
+        every = len(kids) - 1               # this season's centre ice and Bright ice never go together
+        if offered and on and count < every:
+            sub = f"{count} of {every} parts on. " + sub
         return {'key': S.PICTURES, 'title': X.PHOTOS_TITLE, 'sub': sub, 'warn': None, 'hint': X.PHOTOS_HINT, 'featured': True,
                 'on': on, 'enabled': not self.busy and offered, 'restore': offered and not export,
                 'restore_enabled': restorable, 'restoring': any(k in self.marks for k in S.GROUP),

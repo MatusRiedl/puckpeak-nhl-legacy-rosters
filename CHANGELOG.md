@@ -14,8 +14,9 @@ What changed in each version, for players. Developers: details in [AGENTS.md](AG
   on, Photos and logos and the jerseys stay on.
 - **NHL arenas.** Newer boards and banners in the 32 NHL arenas. Made on your PC from your own game's files; the download
   holds only the differences.
-- **Bright ice.** Sharper centre-ice circles with the arenas' current names, on solid white ice. Where "This season's jerseys and centre ice" is on,
-  its centre ice for that team is kept.
+- **Bright ice.** Sharper centre-ice circles with the arenas' current names, on solid white ice. It is the other way to get a new centre ice:
+  "This season's jerseys and centre ice" and Bright ice never run together (turning one on turns the other off), and the
+  group switch turns on this season's.
 - **Team goalie masks.** The goalie masks of the teams (Utah, Seattle and Vegas keep the game's own masks for now). A
   goalie's own mask picture from the Roster editor always wins.
 - **Team names alone are quick.** An update with only Team names on downloads nothing and takes seconds. RPCS3 must be

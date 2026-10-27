@@ -1117,11 +1117,19 @@ def test_the_photos_row_is_first_highlighted_and_off_until_the_player_ticks_it(b
     assert not any(r.get('featured') for r in upd._steps_view(False, False)[1:])
     upd.set_step('pictures', True)                                      # the group switch: every part inside goes on
     row = upd._steps_view(False, False)[0]
-    assert row['on'] and all(c['on'] for c in row['children']) and row['sub'].startswith("Downloaded automatically (about")
+    assert row['on'] and {c['key'] for c in row['children'] if c['on']} == {'photos', 'looks', 'arenas', 'team_masks'}
+    assert row['sub'].startswith("Downloaded automatically (about")     # Bright ice is the one the group leaves off
     assert upd._steps_view(False, False)[1]['on']                       # and the names are not part of it
     upd.set_step('looks', False)                                        # one part off again: the group says how many
     row = upd._steps_view(False, False)[0]
-    assert row['on'] and row['sub'].startswith("4 of 5 parts on. ")
+    assert row['on'] and row['sub'].startswith("3 of 4 parts on. ")
+    upd.set_step('bright_ice', True)                                    # Bright ice instead of this season's centre ice...
+    assert upd.art_on['bright_ice'] and not upd.art_on['looks']
+    upd.set_step('looks', True)                                         # ...and the other way round: never both
+    assert upd.art_on['looks'] and not upd.art_on['bright_ice']
+    upd.set_step('bright_ice', True)
+    upd.set_step('pictures', True)                                      # the group switch picks this season's, as by default
+    assert upd.art_on['looks'] and not upd.art_on['bright_ice']
     upd.set_step('pictures', False)                                     # off: all parts off, the names stay
     assert not any(c['on'] for c in upd._steps_view(False, False)[0]['children']) and upd.art_on['names']
     upd.set_step('pictures', True)
