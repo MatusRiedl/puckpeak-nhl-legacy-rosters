@@ -86,9 +86,11 @@ keep the bundled pack's values (the script says so).
   program and kept in `%LOCALAPPDATA%\NHLLegacyRosterUpdater\art\pictures\`, so each is downloaded
   once.
 
-**The look pack** (`private/packs/looks.zip`, about 55 MB): this season's jerseys and centre-ice logos for 214 teams
-(517 jerseys, 179 centre-ice logos) and a Select Jerseys picture of each kit (`m/<slot>_<role>.webp`). It is made in
-`private/` (private/NOTES.md says how), with contact sheets of the kits to look at before a release.
+**The look pack** (`private/packs/looks.zip`, about 80 MB): this season's jerseys and centre-ice logos for 214 teams
+(517 jerseys, 179 centre-ice logos), a Select Jerseys picture of each kit (`m/<slot>_<role>.webp`) and since
+2026-10-27 the number sheet of each home and away kit (`f/<slot>_<role>.webp`, 512 x 512 lossless; docs/notes/
+jersey-numbers.md). It is made in `private/` (private/NOTES.md says how), with contact sheets of the kits to look at
+before a release; the build lists the kits it left without their own number sheet (none in the 2026-10-27 build).
 - **Players' PCs.** Installed with "Photos, logos and team names" (`pipeline.install_looks`); a new pack makes every look
   install again once (`looks.look_digest` covers it). A club whose league step was left out keeps its own look (the List
   of changes says so). Without the pack the Jerseys window says "This season's jerseys come with Photos, logos and team

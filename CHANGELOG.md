@@ -19,8 +19,8 @@ What changed in each version, for players. Developers: details in [AGENTS.md](AG
    logos, This season's jerseys and centre ice, NHL arenas, Bright ice and Team goalie masks, each with its own Restore.
 5. **Newer arenas, centre ice and masks.** Newer boards and banners in the 32 NHL arenas, sharper centre-ice circles
    (Bright ice) and the goalie masks of the teams.
-6. **This season's jerseys with the right names and numbers.** Names have their own colour, numbers keep their two
-   outlines, small numbers on light jerseys are the right way round.
+6. **This season's jerseys with this season's names and numbers.** Each jersey wears its own lettering: the same
+   letters, digits, colours and outlines, also on the sleeves and helmets, and no stray lines around the number.
 7. **Real equipment.** Sock tuck, pant length, stick tape and goalie neck guard follow the real players, and the Equipment
    window uses the game's own words.
 8. **Real arenas and colours.** All 32 NHL arenas and team colours, and the AHL clubs in their current arenas, with their
@@ -33,7 +33,7 @@ What changed in each version, for players. Developers: details in [AGENTS.md](AG
 - **Pictures are split into switches, so you download only what you want.** "Photos, logos and team names" is now two
   rows in step 4 of the Update tab. **Team names** needs no download and is on to start with. **Photos and logos** is one
   switch for everything heavy: press its arrow to choose the parts (**Player photos and team logos**, about 105 MB;
-  **This season's jerseys and centre ice**, about 55 MB; **NHL arenas**, **Bright ice** and **Team goalie masks**, small
+  **This season's jerseys and centre ice**, about 80 MB; **NHL arenas**, **Bright ice** and **Team goalie masks**, small
   downloads), or just switch the row on and every part comes with it. Each part is downloaded only when it is on, and has
   its own **Restore** that puts back only its own files (the row's Restore does all of them). If you had the old switch
   on, Photos and logos and the jerseys stay on.
@@ -46,6 +46,14 @@ What changed in each version, for players. Developers: details in [AGENTS.md](AG
   numbers (orange names on Edmonton's blue jersey), and numbers lost their outline when it was thin or shared the
   shirt's colour. Now the names have their own colour, the numbers keep their two outlines and the small numbers on light
   jerseys are the right way round. Needs the updated jersey download; jerseys already installed are redrawn once.
+- **This season's lettering on every jersey of this season.** The names and numbers were the game's own letters
+  recoloured, with an outline grown outwards: a line showed under the back number and above it (McDavid), every
+  number had one colour (Pittsburgh's sleeve numbers were gold instead of black) and Utah's home jersey was the one made
+  from the team's colours. Now each home and away jersey of this season wears its own names and numbers (letters, digits,
+  colours and outlines; sleeves and helmets too), marks such as the apostrophe in O'Reilly come from your own game, and
+  Utah, Seattle and Vegas wear this season's jerseys on every version. Jerseys made from colours keep their outlines
+  inside the letters, so no lines appear there either. The jersey download grows to about 80 MB; installed jerseys are
+  redrawn once.
 - **Team goalie masks.** The goalie masks of the teams (Utah, Seattle and Vegas keep the game's own masks for now). A
   goalie's own mask picture from the Roster editor always wins.
 - **Team names alone are quick.** An update with only Team names on downloads nothing and takes seconds. RPCS3 must be

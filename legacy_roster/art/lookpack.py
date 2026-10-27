@@ -11,6 +11,9 @@ puts these pictures onto the player's own disc files (`looks.pack_team`, `looks.
         j/<slot>_<role>.webp   a jersey's colour map, 1024 x 1024, in the team's PS3 cut (`style`)
         m/<slot>_<role>.webp   the pack's own menu picture of that kit (the shirt alone on a clear ground, cut to the shirt,
                                200 px tall; since 2026-10-18, a pack without it gets the recoloured chassis picture)
+        f/<slot>_<role>.webp   the kit's own number sheet (names, digits, C / A, sleeve digits), 512 x 512 with
+                               transparency, in the game's glyph layout (since 2026-10-27; a pack without it gets the
+                               chassis' sheet recoloured)
         i/<slot>.webp          the centre-ice logo, 1024 x 1024 with transparency
 
 "name" is the club the slot holds after an update (the data pack's full name; for the NHL the code, for the national
@@ -64,6 +67,9 @@ class LookPack:
 
     def menu_member(self, slot, role):
         return f"m/{slot}_{role}.webp"
+
+    def font_member(self, slot, role):
+        return f"f/{slot}_{role}.webp"
 
     def ice_member(self, slot):
         return f"i/{slot}.webp"

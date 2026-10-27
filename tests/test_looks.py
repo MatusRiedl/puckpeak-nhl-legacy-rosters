@@ -262,12 +262,31 @@ def test_a_number_sheet_gets_its_own_colours_for_names_digits_rings_and_small_di
         assert out.getpixel((80, 20))[:3] == (212, 212, 212)                    # the letter wears the names' colour
         assert out.getpixel((80, 200))[:3] == (220, 60, 28)                     # the digit its fill
         assert out.getpixel((32, 200))[:3] == (28, 36, 92)                      # the ring round it
-        assert out.getpixel((29, 200))[:3] == (236, 236, 236) and out.getpixel((29, 200))[3] == 255   # the second ring
+        assert out.getpixel((30, 200)) == (236, 236, 236, 255)                  # the second ring: the digit's outer edge
         assert out.getpixel((80, 420))[:3] == (220, 60, 28)                     # the small digit's fill, dark and light alike
         assert out.getpixel((38, 420))[:3] == (28, 36, 92)                      # and its ring
         assert out.getpixel((2, 2))[3] == 0
+        # nothing outside the chassis' glyphs: a ring grown outwards showed as a line under and over the number
+        assert out.getchannel('A').tobytes() == sheet.getchannel('A').tobytes()
     plain = looks.recolour_numbers(sheet, True, (220, 60, 28), (28, 36, 92), None, (212, 212, 212))
-    assert plain.getpixel((29, 200))[3] == 0                                    # no second ring: the shape stays as it is
+    assert plain.getpixel((30, 200))[:3] == (28, 36, 92)                        # no second ring: the ring stays as it is
+
+
+def test_a_packs_number_sheet_gets_the_marks_it_lacks_from_the_chassis():
+    """O'Reilly's apostrophe: an empty cell of the pack's sheet takes the chassis' glyph in the letters' colour; a filled
+    cell and a nameplate sheet stay as they are."""
+    chassis = Image.new('RGBA', (512, 512), (0, 0, 0, 0))
+    for box in ((4, 5, 26, 40), (387, 5, 395, 18), (380, 70, 400, 74)):        # A, the apostrophe, the hyphen (row 2)
+        chassis.paste((240, 240, 240, 255), box)
+    sheet = Image.new('RGBA', (512, 512), (0, 0, 0, 0))
+    sheet.paste((10, 60, 200, 255), (6, 6, 25, 41))                            # the pack's A, blue; no marks
+    out = looks.with_marks(sheet, chassis)
+    assert out.getpixel((390, 10)) == (10, 60, 200, 255) and out.getpixel((390, 72)) == (10, 60, 200, 255)
+    assert out.getpixel((15, 20)) == (10, 60, 200, 255) and out.getpixel((5, 5))[3] == 0   # the pack's own A as it was
+    assert out.getpixel((390, 30))[3] == 0                                      # nothing beyond the chassis' glyph
+    plate = Image.new('RGBA', (512, 512), (0, 0, 0, 0))
+    plate.paste((200, 20, 20, 255), (0, 0, 512, 96))                           # a nameplate behind the letters
+    assert looks.with_marks(plate, chassis).tobytes() == plate.tobytes()
 
 
 def test_pack_looks_cover_every_league_and_leave_out_a_slot_holding_another_club(base_dir, tmp_path, make_look_pack):
@@ -375,6 +394,65 @@ def test_pack_files_in_both_cuts_keep_the_discs_layout_and_install_once(disc, ba
     assert looks.install_looks(found, title, made, lambda msg: None, look_pack=pack) == 0          # installed already
     install.remove(lambda msg: None)
     assert install.installed() == 0
+
+
+def _number_sheet():
+    """A stand-in for a pack kit's own number sheet: a white letter, a white digit with a blue ring, a black sleeve digit,
+    no marks (apostrophe, period ...)."""
+    sheet = Image.new('RGBA', (512, 512), (0, 0, 0, 0))
+    sheet.paste((240, 240, 240, 255), (6, 6, 25, 41))
+    sheet.paste((20, 60, 200, 255), (8, 52, 155, 361))
+    sheet.paste((240, 240, 240, 255), (16, 60, 147, 353))
+    sheet.paste((10, 10, 10, 255), (7, 379, 40, 432))
+    return sheet
+
+
+def test_a_pack_kit_wears_its_own_number_sheet_in_both_cuts(disc, base_dir, tmp_path, make_look_pack):
+    """The kit's own names, digits, rings and sleeve digits (Pittsburgh's black sleeve digits, Utah's white digits with a
+    blue ring), the marks it lacks from the chassis, nothing between the glyph rows (no line under the number) and an
+    even relief (no stitched edges of the chassis' digits)."""
+    from legacy_roster.roster import Roster
+    R = Roster(os.path.join(base_dir, 'SYS-DATA'))
+    sheet = _number_sheet()
+    pack = make_look_pack(tmp_path, {27: ('nhl', 'TOR', 1, {'dark': (0, 40, 120)}, None),
+                                     135: ('national', 'CAN', 0, {'light': (240, 240, 240)}, None)},
+                          fonts={(27, 'dark'): sheet, (135, 'light'): sheet})
+    maker = looks.Maker(disc, pack)
+    made = [m for m in looks.looks_from(R, {}, {}, {}, look_pack=pack) if m.art in (27, R.T.get(135, 'artid'))]
+    assert sorted(m.style for m in made) == [0, 1]
+    for look in made:
+        k = look.pack[0]
+        assert k.font.startswith('f/')
+        files = maker.files(look)
+        name = f"{look.style}_{look.art}_{k.variant}"
+        jersey = rpsgl.Rpsgl(files[looks.JERSEY.format(s=look.style, a=look.art, v=k.variant)])
+        font = jersey.image(f"font_{name}_cm")
+        for xy, colour in (((80, 200), (240, 240, 240)), ((10, 200), (20, 60, 200)), ((20, 400), (10, 10, 10)),
+                           ((15, 20), (240, 240, 240))):
+            px = font.getpixel(xy)
+            assert px[3] == 255 and max(abs(a - b) for a, b in zip(px, colour)) < 12, (look.style, xy, px)
+        alpha = font.getchannel('A')
+        assert alpha.crop((0, 362, 512, 378)).getextrema()[1] < 16          # clear between the number and the sleeve digits
+        assert alpha.crop((380, 0, 400, 46)).getextrema()[1] > 128           # the chassis' apostrophe: the sheet had none
+        relief = jersey.image(f"font_{name}_nm")
+        assert all(hi - lo <= 6 for lo, hi in relief.getextrema())
+    assert looks.Maker(disc, pack).files(made[0]) == maker.files(made[0])     # rule 4: deterministic
+
+
+def test_utah_seattle_and_vegas_wear_the_packs_kit_on_every_version_made_from_the_colours(base_dir, tmp_path,
+                                                                                          make_look_pack):
+    """Play Now dressed Utah in variant 0, which was made from the colours while the pack's kit sat on variants 3 / 4."""
+    from legacy_roster.roster import Roster
+    R = Roster(os.path.join(base_dir, 'SYS-DATA'))
+    pack = make_look_pack(tmp_path, {22: ('nhl', 'UTA', 1, {'dark': (0, 0, 0), 'light': (240, 240, 240)}, None)})
+    kits = looks.pack_team(R, 22, pack).kits
+    assert sorted((v, k.variant, k.light) for v, k in kits.items()) == [(0, 0, False), (1, 1, True), (3, 3, False), (4, 4, True)]
+    assert kits[0].member == kits[3].member and kits[1].member == kits[4].member
+    versions, _files, packed = looks._choose(22, looks.team_versions(R, 22), {}, kits)
+    assert versions == [] and sorted(k.variant for k in packed) == [0, 1, 3, 4]
+    # the player's own choice still wins
+    versions, _files, packed = looks._choose(22, looks.team_versions(R, 22), {'0': 'colours'}, kits)
+    assert versions == [(0, False)] and sorted(k.variant for k in packed) == [1, 3, 4]
 
 
 # --- the Select Jerseys picture of a pack kit: the pack's own menu picture on the game's figure -------------------------

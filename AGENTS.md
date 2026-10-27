@@ -193,6 +193,18 @@ wording (`progress.py`).
 
 ## Current state
 
+**Jersey lettering (2026-10-27, after 0.76.0; plan docs/plans/i-got-access-to-structured-bunny.md, notes
+docs/notes/jersey-numbers.md):** the owner saw lines above / under McDavid's number, Utah's home jersey in light-blue
+digits and Pittsburgh's sleeve numbers gold. The look pack now carries each home / away kit's own number sheet
+(`f/<slot>_<role>.webp`, index `font`, `private/build_looks.py` `font_sheet` / `without_plate`); `looks.put_sheet` writes
+it as `font_cm` / `_sm` / `_nm` in both cuts, `with_marks` fills marks the sheet lacks (apostrophe, period, hyphen) from
+the player's own disc; Utah / Seattle / Vegas versions `DEFAULT_VERSIONS` made from colours wear the pack's kit
+(`pack_team`); the fallback `recolour_numbers` carves its rings inside the glyphs. `LOOKS_DRAWING` '#8'. Lab 2026-10-27:
+sleeve = small row 1, helmet = small row 2 (sheets go in as they are). Lab, the program's own files (`pack_team` ->
+`pack_files`) from the rebuilt pack (214 teams, 82 MB): Utah's Home (variant 0) white digits with a light-blue ring and
+white name, Pittsburgh gold back / black sleeve digits with a white ring and the gold C, Edmonton's blue digits with
+no line above or under and the hyphen of NUGENT-HOPKINS (`with_marks`). Not played through the exe yet (the owner).
+
 **Version 0.76.0 (2026-10-27, built locally, not committed; plan docs/plans/i-got-access-to-structured-bunny.md, notes docs/notes/community-extras.md):**
 the owner's community "26-27 Extras" folder (`Community data/`, git-ignored) and the split of the one picture switch. (1) **Six
 picture switches** (`art/parts.py`: `NAMES`, `PHOTOS`, `LOOKS`, `ARENAS`, `BRIGHT_ICE`, `TEAM_MASKS`; settings keys in

@@ -78,9 +78,10 @@ def make_look_pack():
     return _make_look_pack
 
 
-def _make_look_pack(tmp_path, teams):
+def _make_look_pack(tmp_path, teams, fonts=None):
     """A small look pack like private/build_looks.py writes: `teams` {slot: (league, name, style, {role: colour},
-    ice colour or None)}; every jersey a flat colour, the ice a filled square."""
+    ice colour or None)}; every jersey a flat colour, the ice a filled square. `fonts` {(slot, role): picture}: the kits
+    that have a number sheet of their own."""
     import io
     import json
     import zipfile
@@ -93,6 +94,10 @@ def _make_look_pack(tmp_path, teams):
             Image.new('RGB', (64, 64), colour).save(buf, 'WEBP', lossless=True)
             files[f'j/{slot}_{role}.webp'] = buf.getvalue()
             entry['kits'][role] = {'numbers': [[250, 250, 250], [10, 10, 10]]}
+            if (slot, role) in (fonts or {}):
+                buf = io.BytesIO()
+                fonts[slot, role].save(buf, 'WEBP', lossless=True)
+                files[f'f/{slot}_{role}.webp'] = buf.getvalue()
         if ice is not None:
             pic = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0))
             pic.paste(ice + (255,), (300, 300, 700, 700))

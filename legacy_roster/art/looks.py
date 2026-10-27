@@ -734,11 +734,12 @@ Look = namedtuple('Look', 'art kit logos arena ice_colour versions files centre 
 # 'game' (the game's own stays), 'pack:<member>#<check>' (the pack's, from the look pack) or the path of the player's own
 # picture; pack: (PackKit, ...) the pack's kits; style: the cut of the team's jerseys (1, or 0 for a team of the classic cut:
 # only its pack kits are made then)
-PackKit = namedtuple('PackKit', 'variant light member numbers crc menu scheme', defaults=(None, None))
+PackKit = namedtuple('PackKit', 'variant light member numbers crc menu scheme font', defaults=(None, None, None))
 # a version that gets the pack's kit: the look pack's picture `member` (its check sum `crc`), numbers (fill, outline) or None,
 # menu: the pack's own menu picture of the kit as '<member>#<check sum>' (None: the menu picture is the chassis' recoloured),
 # scheme: (ring, outer, name) of its number sheet (the digits' two rings, outer or None, and the colour of the names), or None
-# (a pack from before: the names wear the digits' colour)
+# (a pack from before: the names wear the digits' colour); font: the pack's own number sheet as '<member>#<check sum>'
+# (None: the sheet is recoloured from the colours above)
 PACK = 'pack'                      # the choice "This season's" (edits.json 'uniforms' versions and 'ice' use)
 
 
@@ -905,27 +906,30 @@ def _font_key(font):
 
 
 LETTER_ROWS = ((0.0, 0.105, 1.0), (0.105, 0.20, 0.82))     # the names' letters on a number sheet: top, bottom, right edge
-SMALL_FROM = 0.727                                         # the small digits start here; the big digits and C / A above
+SMALL_FROM = 0.716                 # the small digits start below here (the clear rows 366-367 of 512); the big digits and C / A above
 OUTER_RING = 0.004                                         # the digits' outer ring: this part of the sheet's width
+NAME_ROWS = ((0.0, 0.0, 1.0, 0.09), (0.0, 0.094, 0.82, 0.20))   # the chassis' two rows of letters: left, top, right, bottom
+EMPTY_CELL = 24                    # a cell of a pack's sheet whose alpha stays under this holds no glyph
 
 
 def recolour_numbers(font, light, fill, ring, outer, name):
     """The chassis' number sheet `font` (dark: white digits with a black outline, light: red digits with a black outline; the
     letters on top, the small digits below white with a red outline in both) in a kit's colours (`fill`, `ring`, `outer`, `name`):
-    the letters in the names' colour, the big digits and C / A in `fill` with the ring around them and a second ring outside
-    that, the small digits the same without the second ring."""
+    the letters in the names' colour, the big digits and C / A in `fill` with the ring around them and a second ring carved
+    into their outer edge, the small digits the same without the second ring. Nothing is drawn outside the chassis' glyphs
+    (the alpha stays the chassis'): a ring grown outwards reached into the next row of glyphs, which the game showed as a
+    line under and over the number (2026-10-27)."""
     from PIL import Image, ImageChops, ImageFilter
     w, h = font.size
     big = recolour(font, MASTERS, (fill, ring, ring) if light else (ring, ring, fill))
     cut = round(h * SMALL_FROM)
-    if outer is not None and outer != ring:                # the second ring grows out of the digits' shape
+    if outer is not None and outer != ring:                # the second ring: the digits' outermost pixels
         k = max(1, round(w * OUTER_RING))
         top = big.crop((0, 0, w, cut))
         alpha = top.getchannel('A')
-        edge = ImageChops.subtract(alpha.filter(ImageFilter.MaxFilter(2 * k + 1)), alpha)
-        layer = Image.new('RGBA', top.size, tuple(outer) + (0,))
-        layer.putalpha(edge)
-        layer.alpha_composite(top)
+        edge = ImageChops.subtract(alpha, alpha.filter(ImageFilter.MinFilter(2 * k + 1)))
+        layer = Image.composite(Image.new('RGBA', top.size, tuple(outer) + (255,)), top, edge)
+        layer.putalpha(alpha)
         big.paste(layer, (0, 0))
     small = recolour(font.crop((0, cut, w, h)), MASTERS, (ring, ring, fill))
     big.paste(small, (0, cut))
@@ -934,6 +938,70 @@ def recolour_numbers(font, light, fill, ring, outer, name):
         box = (0, round(h * top), round(w * right), round(h * bottom))
         big.paste(letters.crop(box), box[:2])
     return big
+
+
+def fitted_sheet(sheet, size):
+    """A pack's number sheet at the raster's size, resized with its colours weighted by alpha (no dark fringes)."""
+    from PIL import Image
+    sheet = sheet.convert('RGBA')
+    return sheet if sheet.size == size else sheet.convert('RGBa').resize(size, Image.LANCZOS).convert('RGBA')
+
+
+def _runs(alpha, box):
+    """The column runs [(left, right)] of `alpha` (L) inside `box` where some pixel is over half opaque."""
+    l, t, r, b = box
+    runs, start = [], None
+    for x in range(l, r + 1):
+        on = x < r and alpha.crop((x, t, x + 1, b)).getextrema()[1] > 128
+        if on and start is None:
+            start = x
+        elif not on and start is not None:
+            runs.append((start, x - 1))
+            start = None
+    return runs
+
+
+def with_marks(sheet, chassis):
+    """The pack's number sheet `sheet` with the marks it leaves out taken from the chassis' sheet `chassis` (same size): some
+    sheets have no brackets, apostrophe, period or hyphen in the letter rows, so O'Reilly and St. Louis would lose theirs.
+    Each chassis glyph whose cell is empty on `sheet` is painted in the colour of the sheet's letters; a cell the sheet
+    fills (also a nameplate sheet's) stays as it is."""
+    from PIL import Image, ImageStat
+    out, mine, theirs = sheet.copy(), sheet.getchannel('A'), chassis.getchannel('A')
+    w, h = sheet.size
+    rows = [(round(w * left), round(h * top), round(w * right), round(h * bottom)) for left, top, right, bottom in NAME_ROWS]
+    letters = Image.new('L', sheet.size, 0)
+    for box in rows:
+        letters.paste(mine.crop(box).point(lambda v: 255 if v > 200 else 0), box[:2])
+    colour = tuple(round(v) for v in ImageStat.Stat(sheet.convert('RGB'), mask=letters).median) \
+        if letters.getbbox() else (255, 255, 255)
+    for box in rows:
+        for x0, x1 in _runs(theirs, box):
+            cell = (max(box[0], x0 - 2), box[1], min(box[2], x1 + 3), box[3])
+            if mine.crop(cell).getextrema()[1] >= EMPTY_CELL:
+                continue
+            mark = Image.new('RGBA', (cell[2] - cell[0], cell[3] - cell[1]), colour + (0,))
+            mark.putalpha(theirs.crop(cell))
+            out.paste(mark, cell[:2])
+    return out
+
+
+def put_sheet(f, mine, sheet, chassis, base):
+    """The pack's number sheet `sheet` as the rasters font_<mine>_cm / _sm / _nm of the jersey file `f` (an Rpsgl): the
+    picture with the marks it lacks (with_marks), a shine map from its shape and an even relief (no stitched edges of the
+    chassis' digits under the new ones), with the values of the chassis' sheet (`chassis`, an Rpsgl holding font_<base>_*)."""
+    from PIL import Image, ImageStat
+    cm = chassis.image(f"font_{base}_cm")
+    sheet = with_marks(fitted_sheet(sheet, cm.size), cm)
+    alpha = cm.getchannel('A')
+    inside, outside = alpha.point(lambda v: 255 if v > 200 else 0), alpha.point(lambda v: 255 if v < 16 else 0)
+    shine = chassis.image(f"font_{base}_sm").convert('L').resize(cm.size)
+    lit, dull = (round(ImageStat.Stat(shine, mask=m).median[0]) for m in (inside, outside))
+    relief = tuple(round(v) for v in ImageStat.Stat(chassis.image(f"font_{base}_nm").resize(cm.size), mask=outside).median)
+    f.replace(f"font_{mine}_cm", sheet)
+    f.replace(f"font_{mine}_sm", Image.composite(Image.new('RGBA', cm.size, (lit,) * 3 + (255,)),
+                                                 Image.new('RGBA', cm.size, (dull,) * 3 + (255,)), sheet.getchannel('A')))
+    f.replace(f"font_{mine}_nm", Image.new('RGBA', cm.size, relief))
 
 
 def median_picture(pictures):
@@ -1116,15 +1184,17 @@ class Maker:
         else:
             palette = palette._replace(font=number_roles(*kit.numbers, light) if kit.numbers
                                        else (palette.yoke, palette.yoke, palette.trim))
-        # the menu picture is the pack's own (pack_preview), in both cuts
+        # the menu picture is the pack's own (pack_preview), in both cuts; the number sheet too where the pack has one
+        sheet = self.look_pack.picture(kit.font.rpartition('#')[0]) if kit.font else None
         return self.cut_files(look, kit.variant, light, mine, palette, kit.numbers,
-                              lambda raw: self.pack_preview(raw, kit, light, palette, mine))
+                              lambda raw: self.pack_preview(raw, kit, light, palette, mine), sheet)
 
-    def cut_files(self, look, variant, light, mine, palette, numbers, preview):
+    def cut_files(self, look, variant, light, mine, palette, numbers, preview, sheet=None):
         """{path: bytes} of one version with the colour map `mine` (1024 x 1024 RGB) in the team's cut: style 1 on the
         chassis' relief and number sheet, the classic cut in the version's own file with a clean relief and its own number
-        sheet (recoloured to `numbers` (fill, outline) when given). Pants and socks have one layout in both cuts: the
-        chassis' in `palette`; `preview(raw)` makes the menu picture from the disc's."""
+        sheet (recoloured to `numbers` (fill, outline) when given). A pack kit's own number sheet `sheet` replaces either
+        (both cuts lay their glyphs out alike). Pants and socks have one layout in both cuts: the chassis' in `palette`;
+        `preview(raw)` makes the menu picture from the disc's."""
         art, style = look.art, look.style
         inner = JERSEY.format(s=style, a=art, v=variant)
         raw = self.disc.render(inner)
@@ -1142,12 +1212,14 @@ class Maker:
                 for part in ('0_nm', 'sm'):
                     if f"jersey_{name}_{part}" in f.rasters:
                         f.copy(f"jersey_{name}_{part}", src, f"jersey_{base}_{part}")
-            if numbers and f"font_{name}_cm" in f.rasters:
+            if sheet is not None and f"font_{name}_cm" in f.rasters:
+                put_sheet(f, name, sheet, self.chassis.jersey(light), f"{STYLE}_{CHASSIS_ART}_{CHASSIS[light]}")
+            elif numbers and f"font_{name}_cm" in f.rasters:
                 name_colour = palette.font.name if isinstance(palette.font, Numbers) else None
                 f.replace(f"font_{name}_cm", recolour_sheet(f.image(f"font_{name}_cm"), *numbers, name=name_colour))
             out = {inner: f.build()}
         else:
-            out = {inner: jersey_file(raw, art, variant, self.chassis, light, palette, None, colour_map=mine)}
+            out = {inner: jersey_file(raw, art, variant, self.chassis, light, palette, None, colour_map=mine, sheet=sheet)}
         for path_t, make in ((PANT, pant_file), (SOCK, sock_file)):
             inner = path_t.format(s=style, a=art, v=variant)
             raw = self.disc.render(inner)
@@ -1338,9 +1410,10 @@ class Maker:
         return out
 
 
-def jersey_file(raw, art, variant, chassis, light, palette, logo, colour_map=None):
+def jersey_file(raw, art, variant, chassis, light, palette, logo, colour_map=None, sheet=None):
     """The team's own jersey file (`raw`: the disc's bytes) with the chassis' look in the team's colours (or the player's own
-    colour map `colour_map`, 1024 x 1024, on the chassis' relief and number sheet)."""
+    colour map `colour_map`, 1024 x 1024, on the chassis' relief and number sheet; a pack kit's own number sheet `sheet`
+    when it has one)."""
     f = rpsgl.Rpsgl(raw)
     src, v = chassis.jersey(light), CHASSIS[light]
     base, mine = f"{STYLE}_{CHASSIS_ART}_{v}", f"{STYLE}_{art}_{variant}"
@@ -1349,9 +1422,12 @@ def jersey_file(raw, art, variant, chassis, light, palette, logo, colour_map=Non
     # the shine map carries the old crest too (a glossy coyote head under the new logo): flattened like the relief
     f.replace(f"jersey_{mine}_sm", flatten(src.image(f"jersey_{base}_sm"), NORMAL_FLAT))
     f.replace(f"jersey_{mine}_0_nm", flatten(src.image(f"jersey_{base}_0_nm"), NORMAL_FLAT))
-    sheet = src.image(f"font_{base}_cm")
-    f.replace(f"font_{mine}_cm", recolour_numbers(sheet, light, *palette.font) if isinstance(palette.font, Numbers)
-              else recolour(sheet, MASTERS, palette.font))
+    if sheet is not None:
+        put_sheet(f, mine, sheet, src, base)
+        return f.build()
+    font = src.image(f"font_{base}_cm")
+    f.replace(f"font_{mine}_cm", recolour_numbers(font, light, *palette.font) if isinstance(palette.font, Numbers)
+              else recolour(font, MASTERS, palette.font))
     f.copy(f"font_{mine}_nm", src, f"font_{base}_nm")
     f.copy(f"font_{mine}_sm", src, f"font_{base}_sm")
     return f.build()
@@ -1376,7 +1452,9 @@ def sock_file(raw, art, variant, chassis, light, palette, style=STYLE):
 
 
 # --- choosing and installing the looks -------------------------------------------------------------------------------
-LOOKS_DRAWING = '#7'               # a change in how the pictures are drawn redraws every installed look once
+LOOKS_DRAWING = '#8'               # a change in how the pictures are drawn redraws every installed look once
+# '#8' (2026-10-27): the pack's own number sheets (put_sheet), rings carved inside the glyphs (recolour_numbers), Utah's /
+# Seattle's / Vegas's other versions in the pack's kit
 # '#4' (2026-10-18): the pack's own menu pictures for the pack kits; '#5': the DXT5 blocks and alpha-weighted mips of
 # art/dds.py (dds.mipmaps, Rpsgl.replace(coverage=)), docs/notes/centre-ice-quality.md; '#6': the centre ice flattened
 # onto the ice's white, opaque or clear (dds.flatten; lab round 32)
@@ -1549,9 +1627,18 @@ def pack_team(R, slot, look_pack):
             numbers = tuple(tuple(c) for c in entry['numbers']) if entry.get('numbers') else None
             scheme = (tuple(entry['ring']), tuple(entry['outer']) if entry.get('outer') else None,
                       tuple(entry['name'])) if numbers and entry.get('ring') and entry.get('name') else None
-            menu = look_pack.menu_member(slot, role)
+            menu, font = look_pack.menu_member(slot, role), look_pack.font_member(slot, role)
             kits[variant] = PackKit(variant, light, member, numbers, look_pack.crc(member),
-                                    f"{menu}#{look_pack.crc(menu)}" if look_pack.has(menu) else None, scheme)
+                                    f"{menu}#{look_pack.crc(menu)}" if look_pack.has(menu) else None, scheme,
+                                    f"{font}#{look_pack.crc(font)}" if look_pack.has(font) else None)
+    # Utah's, Seattle's and Vegas's other home and away versions would be made from the colours (default_use): they wear the
+    # pack's kit of the same lightness, so the game shows this season's whichever of them it picks (Play Now took Utah's
+    # variant 0, 2026-10-27)
+    listed = {(v, light) for v, light, _d in roster_versions(R, art, style)}
+    by_light = {k.light: k for _v, k in sorted(kits.items(), reverse=True)}
+    for variant, light in DEFAULT_VERSIONS.get(slot, ()) if style == STYLE else ():
+        if variant not in kits and light in by_light and (variant, light) in listed:
+            kits[variant] = by_light[light]._replace(variant=variant)
     member = look_pack.ice_member(slot)
     centre = f"pack:{member}#{look_pack.crc(member)}" if team.get('ice') and look_pack.has(member) else None
     why = None if kits or centre else "the roster lists none of its jerseys"
@@ -1799,7 +1886,8 @@ def _look_digest(look):
                    [[v, light, _file_hash(path)] for v, light, path in look.files],
                    look.centre if look.centre in ('make', 'game') or look.centre.startswith('pack:')
                    else _file_hash(look.centre), LOOKS_DRAWING,
-                   [[k.variant, k.light, k.member, [list(c) for c in k.numbers or ()], k.crc, k.menu, repr(k.scheme)] for k in look.pack],
+                   [[k.variant, k.light, k.member, [list(c) for c in k.numbers or ()], k.crc, k.menu, repr(k.scheme), k.font]
+                    for k in look.pack],
                    look.style)
 
 
