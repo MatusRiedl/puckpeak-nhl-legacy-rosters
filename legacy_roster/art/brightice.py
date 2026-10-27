@@ -1,71 +1,117 @@
-"""Bright ice (0.76.0, the "Bright ice" switch): the centre circle with a solid white backing.
+"""New centre ice (the "Bright ice" switch; since 2026-10-27 the owner's newer set of centre-ice logos, before it the
+community's centre circles on white).
 
-A picture that goes into the player's own disc file, which keeps its size and layout (art/rpsgl.py `replace`):
+The centre circle of the NHL teams 0-29, with the arenas' current names, goes into the player's own disc file, which
+keeps its size and layout:
 
-    rendering/icesurface/centerlogo_<art>_cm.rpsgl    the centre circle (1024 x 1024 DXT5), white behind the logo
+    rendering/icesurface/centerlogo_<art>_cm.rpsgl    the centre circle (1024 x 1024 DXT5, 11 mipmaps)
+    rendering/icesurface/icesurface_22_bm.rpsgl       Utah's rink picture, with Arizona's coyote taken out (the game shows
+                                                      it under the centre circle); left to `looks` when it drew one
 
-The `ice_hotspot_0_<n>_cm` files are NOT faceoff circles: they are the sponsor logos painted on the ice. The community's
-versions swap them for other brands, so the pack leaves them out
-(agent's choice 2026-10-27, owner told; `private/build_extras.py` `SPONSOR_LOGOS`); the code still installs any the pack holds.
+The pack holds each centre's encoded raster as it is (no second round of compression), laid over the raster of the
+disc's file; a disc file whose raster has another size, format or mipmaps is left as it is, with a line. Nothing of the
+game is shipped. The pack (`ice`): index.json {"format": 1, "built": ..., "centres": {"<art id>": {"raster":
+"centerlogo_<art>_cm", "width", "height", "mips", "format", "size", "id": digest, "file": "c/<art>.bin"}}}.
 
-Not taken: the community's `ice_hotspot_1_*` (another height than the game's, 512 x 512 for 512 x 256) and `ice_lines`
-(2048 x 4096 for 1024 x 2048): a picture of another size cannot go into the game's file without a new header.
-
-The centre circle of a team whose look this season's jerseys and centre ice (`looks`) installs is left to that part:
-the player's choices and the look pack win. The pack (`ice`): index.json {"format": 1, "built": ..., "hotspots":
-{"<file name>": "h/<name>.webp"}, "centres": {"<art id>": "c/<art id>.webp"}} (lossless pictures). NOT played in the game yet.
+Which centre a team gets: the player's own (Jerseys & ice; `keep`), else this set, else this season's (`looks`: Seattle,
+Vegas and the clubs), else the game's. pipeline.install_looks leaves the art ids of this set to it. NOT played in the game
+yet.
 """
 from . import parts, rpsgl
 
-HOTSPOT = 'rendering/icesurface/{n}.rpsgl'
 CENTRE = 'rendering/icesurface/centerlogo_{a}_cm.rpsgl'
-DRAWING = '#1'
+RINK = 'rendering/icesurface/icesurface_{a}_bm.rpsgl'
+RINK_ARTS = (22,)           # Utah: the disc's rink picture still shows Arizona's coyote at centre ice
+DRAWING = '#2'
+FIELDS = ('width', 'height', 'mips', 'format', 'size')
 
 
-def _file(disc, inner, raster, picture):
-    raw = disc.render(inner)
+def covered(pack):
+    """The art ids (int) the pack has a centre for (a pack of the old kind, pictures by name, has none: this season's
+    centre ice then stays)."""
+    if pack is None:
+        return set()
+    return {int(a) for a, entry in (pack.index.get('centres') or {}).items() if isinstance(entry, dict)}
+
+
+def centre_file(disc, art, entry, blob):
+    """The disc's centre-ice file of `art` with the pack's raster in it (bytes, packed as the disc's). RpsglError when the
+    disc has none or another kind of it."""
+    raw = disc.render(CENTRE.format(a=art))
     if raw is None:
-        raise rpsgl.RpsglError(f"the disc has no {inner}")
+        raise rpsgl.RpsglError(f"the disc has no centre-ice file for {art}")
     f = rpsgl.Rpsgl(raw)
-    f.replace(raster, picture)
+    r = f.rasters.get(entry['raster'])
+    if r is None or any(r[k] != entry[k] for k in FIELDS) or len(blob) != r['size']:
+        raise rpsgl.RpsglError("this copy of the game has another kind of centre-ice file")
+    f.data[r['at']:r['at'] + r['size']] = blob
     return f.build()
 
 
-def install_bright(rpcs3, title_id, pack, say=print, also=()):
-    """Write the faceoff circles and centre circles of `pack` as loose files (RPCS3 closed). Returns how many files were
-    written."""
+def rink_file(disc, art):
+    """The disc's rink picture of `art` with the old logo at centre ice taken out (bytes), None when the disc has none."""
+    from . import looks
+    raw = disc.render(RINK.format(a=art))
+    return looks.ice_picture_file(raw, art, None) if raw is not None else None
+
+
+def _drawn_by_looks(writer, rel):
+    return any(str((writer.manifest['games'][d].get(rel) or {}).get('source', '')).startswith(parts.TAGS[parts.LOOKS])
+               for d in writer.game_dirs)
+
+
+def install_bright(rpcs3, title_id, pack, say=print, also=(), keep=(), skipped=None):
+    """Write the centres of `pack` as loose files into the game folder(s) (RPCS3 closed), with kept copies of anything
+    replaced; a centre the pack no longer holds goes back as the game had it. `keep`: art ids whose centre the player
+    chose in Jerseys & ice (left to `looks`). `skipped` (a list) gets (art id, why). Returns how many files were written."""
     from . import install
     from .lab import Disc
     install.check(rpcs3, title_id)
     targets = [title_id] + [t for t in also if t != title_id]
     writer = install._Writer([rpcs3.game_folder(t) for t in targets])
     disc = Disc(rpcs3.game_disc(title_id))
+    keep = {int(a) for a in keep}
     written, wanted = 0, set()
-    index = pack.index
-    work = [(HOTSPOT.format(n=n), n, member) for n, member in sorted(index.get('hotspots', {}).items())]
-    work += [(CENTRE.format(a=a), f"centerlogo_{a}_cm", member)
-             for a, member in sorted(index.get('centres', {}).items(), key=lambda kv: int(kv[0]))]
     try:
-        for inner, raster, member in work:
-            rel = tuple(inner.split('/'))
-            if any(str(e.get('source', '')).startswith('looks:') for files in writer.manifest['games'].values()
-                   for k, e in files.items() if k == inner):
-                continue                    # this season's centre ice is installed here: it wins
-            source = f"{parts.ICE_TAG}{DRAWING}:{raster}:{index.get('built', '')}"
-            wanted.add(inner)
-            if writer.current(rel, source):
+        for art, entry in sorted((pack.index.get('centres') or {}).items(), key=lambda kv: int(kv[0])):
+            if int(art) in keep:
+                continue
+            rel = CENTRE.format(a=art)
+            wanted.add(rel)
+            try:
+                source = f"{parts.ICE_TAG}{DRAWING}:{art}:{entry['id']}"
+                if writer.current(tuple(rel.split('/')), source):
+                    continue
+                data = centre_file(disc, art, entry, pack.read(entry['file']))
+            except (rpsgl.RpsglError, KeyError, ValueError, TypeError) as err:     # TypeError: a pack of the old kind
+                say(f"New centre ice: centre ice {art} left as it is ({err})")
+                wanted.discard(rel)
+                if skipped is not None:
+                    skipped.append((art, str(err)))
+                continue
+            writer.write(tuple(rel.split('/')), data, source)
+            written += 1
+        for art in RINK_ARTS:
+            rel = RINK.format(a=art)
+            if CENTRE.format(a=art) not in wanted or _drawn_by_looks(writer, rel):
+                continue
+            wanted.add(rel)
+            source = f"{parts.ICE_TAG}{DRAWING}:rink:{art}"
+            if writer.current(tuple(rel.split('/')), source):
                 continue
             try:
-                data = _file(disc, inner, raster, pack.picture(member))
-            except (rpsgl.RpsglError, KeyError, ValueError) as err:
-                say(f"Bright ice: {raster} left as it is ({err})")
-                wanted.discard(inner)
+                data = rink_file(disc, art)
+            except (rpsgl.RpsglError, KeyError, ValueError, OSError) as err:
+                data = None
+                say(f"New centre ice: rink picture {art} left as it is ({err})")
+            if data is None:
+                wanted.discard(rel)
                 continue
-            writer.write(rel, data, source)
+            writer.write(tuple(rel.split('/')), data, source)
             written += 1
         for key in writer.stale(parts.ICE_TAG, wanted):
             writer.drop(tuple(key.split('/')))
     finally:
         writer.save()
-    say(f"Bright ice: {written} files made" if written else "Bright ice: everything is installed already")
+    say(f"New centre ice: {written} files made" if written else "New centre ice: everything is installed already")
     return written

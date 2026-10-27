@@ -709,6 +709,30 @@ def remove_parts(parts, say=print):
     return n
 
 
+def remove_retired(say=print):
+    """Put back the files of parts the program no longer has (art/parts.py RETIRED_TAGS: the new scoreboard of the test
+    versions 0.78.0 / 0.80.0), in every game folder the list knows. Says nothing when there are none; leaves them while
+    RPCS3 runs (the callers have checked). Returns how many files were handled."""
+    from . import parts as P
+    m = load_manifest()
+    chosen = {d: {k: e for k, e in files.items() if str(e.get('source') or '').startswith(P.RETIRED_TAGS)}
+              for d, files in m['games'].items()}
+    chosen = {d: files for d, files in chosen.items() if files}
+    if not chosen or savedata.running_rpcs3():
+        return 0
+    sub = dict(m)
+    sub['games'] = {d: dict(files) for d, files in chosen.items()}
+    n, left = _put_back(sub)
+    for d, files in chosen.items():
+        if d not in left:
+            for key in files:
+                m['games'][d].pop(key, None)
+    m['games'] = {d: files for d, files in m['games'].items() if files}
+    _forget_handled(m, ART_STORE)
+    say(f"The test scoreboard was taken out: {n} of the game's own files put back." + _left_line(left))
+    return n
+
+
 def remove_store(store):
     """Put every file of `store` back as it was (kept copies return, our files go) and forget the store's list. RPCS3
     must be closed (the caller checks). Returns how many files were handled."""

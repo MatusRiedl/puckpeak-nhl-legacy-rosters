@@ -8,7 +8,8 @@ PHOTOS = 'photos'           # the "Photos and logos" switch in settings['steps']
 NAMES, LOOKS, ARENAS, BRIGHT_ICE, TEAM_MASKS = 'names', 'looks', 'arenas', 'bright_ice', 'team_masks'    # 0.76.0: switches of their own
 PICTURE_KEYS = (PHOTOS, NAMES, LOOKS, ARENAS, BRIGHT_ICE, TEAM_MASKS)     # the rows of art/parts.py (same words)
 PICTURES = 'pictures'    # the Update tab's group row "Photos and logos": switches GROUP together, never stored
-GROUP = (PHOTOS, LOOKS, ARENAS, BRIGHT_ICE, TEAM_MASKS)     # what the group holds; team names are a row of their own
+GROUP = (PHOTOS, LOOKS, ARENAS, TEAM_MASKS)     # what the group holds; team names are a row of their own
+TOGETHER = {LOOKS: (LOOKS, BRIGHT_ICE)}     # 0.80.0 (owner): the new centre ice comes with this season's, no row of its own
 EDITS = 'edits'             # the "My edits" switch
 GAME_PATCH = 'game_patch'   # "32 teams and the year 2026 (game patch)"
 SKIP_INTRO, NO_LOGIN = 'skip_intro', 'no_login'     # its two small switches (on / off at first)
@@ -21,6 +22,11 @@ EXPORT_FROM_FILE = 'export_from_file'   # the export starts from the roster file
 SAVE_MODE = 'save_mode'     # IN_PLACE or AS_NEW
 IN_PLACE, AS_NEW = 'update', 'new'
 BOTH = "EU + NA"
+
+
+def row_parts(keys):
+    """The picture parts the rows `keys` switch (TOGETHER): "This season's jerseys and centre ice" also the new centre ice."""
+    return tuple(p for k in keys for p in TOGETHER.get(k, (k,)))
 
 
 def load():

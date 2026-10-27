@@ -3,7 +3,69 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## 0.76.0 (2026-10-27)
+## 0.80.0 (2026-10-27)
+
+**Highlights** (this version also carries everything from the test versions 0.60.0 to 0.78.0 below; none of them was
+released on its own):
+
+1. **New centre ice for the NHL.** "This season's jerseys and centre ice" now brings centre-ice logos with the arenas'
+   current names for 30 NHL teams (Utah's mammoth too); the clubs keep this season's. A centre ice you chose in Jerseys &
+   ice still wins. Seattle and Vegas still play their home games on Nashville's centre ice, as before: the game has no
+   full arena of their own.
+2. **Play online with a friend.** A new tab: make a lobby with a six-letter code (or list it publicly), your friend joins,
+   you both press Ready and RPCS3 starts on both PCs and takes you straight to Select Teams. The lobby host's roster is sent
+   to the friend, so you both play with the same players. Europe and US games can play each other; a mixed pair is warned
+   that the match may lose step.
+3. **Download only the pictures you want.** The picture switch is split into Team names (no download, quick), Photos and
+   logos, This season's jerseys and centre ice, NHL arenas and Team goalie masks, each with its own Restore.
+4. **Newer arenas and goalie masks.** Newer boards and banners in the 32 NHL arenas, and the goalie masks of the teams.
+5. **This season's jerseys with this season's names and numbers**, also on the sleeves and helmets, with no stray lines
+   around the number.
+6. **Real equipment, arenas and colours.** Sock tuck, pant length, stick tape and goalie neck guard follow the real
+   players; all 32 NHL arenas and team colours are the real ones, and the AHL clubs play in their current arenas.
+7. **Export files to a folder** (Windows, Linux, Flatpak, Mac) and **Linux support** for starting RPCS3.
+8. **Lines and roster fixes.** Picking a player in Lines changes only the spot you picked; a damaged roster save is listed
+   as "Cannot be used" instead of breaking the list; online no longer loads forever at a resolution scale other than 100 %.
+
+### All changes in 0.80.0
+
+- **The new scoreboard is gone.** It did not look right in the game, so it is out of the program. If you tried it in a test
+  version, your next update puts the game's own scoreboard back by itself while one of the picture switches is on (Team
+  names is on at first), with RPCS3 closed. Restore default does it too.
+- **The new centre ice comes with "This season's jerseys and centre ice"** and has no switch of its own any more: the 30
+  NHL teams it has get it and the clubs keep this season's. There is nothing to choose between.
+- **A picture part that could not be downloaded says so.** Its row reads "Not available for download yet" instead of
+  "Downloaded automatically", the update's result names the parts it had to leave out, and the List of changes has a row
+  for each. Before, such a part could be switched on, the update ran and nothing changed in the game, without a word.
+- Command line: `--photos`, `--looks` and `packs download` bring the new centre ice too; `--bright-ice` alone gives only the
+  new centre ice.
+
+## 0.78.0 (2026-10-27, test version)
+
+**Highlights:**
+
+1. **New centre ice.** The "Bright ice" part is now **New centre ice**: centre-ice logos with the arenas' current names for
+   30 NHL teams (Utah's too), laid into your own game's files on your PC. Seattle, Vegas and the clubs keep this season's
+   centre ice. It now works together with "This season's jerseys and centre ice": each team gets one centre ice, the one
+   you chose in Jerseys & ice, else the new one, else this season's.
+2. **New scoreboard** (off to start with; taken out again in 0.80.0). A broadcast look for the scoreboard and the game's
+   on-screen boxes: dark navy boxes with white text and a red power-play bar. It has its own row in step 4 of the Update
+   tab. While it is on, pick the corner logo: **SN**, **Puck Peak**, **no logo** or **a picture of your own**.
+
+### All changes
+
+- **New centre ice** replaces the old Bright ice circles on white ice. The download is about 6 MB. Utah's rink no longer
+  shows Arizona's coyote under the new centre circle. A team whose centre ice you chose in Jerseys & ice keeps your
+  choice. Bright ice and "This season's jerseys and centre ice" no longer turn each other off.
+- **New scoreboard.** Changes the score bug, the drop-down message bar, the replay bug, the player card, the warning bar,
+  the line change bar and the team pill. The clock and the messages are white on navy. The power-play text and the score
+  of the team on the power play are white on the red bar. The game's spinning logo in the corner (score bug, replay,
+  match intro, shootout, skills) is replaced by the logo you pick. The team logo on the player card is no longer covered.
+  The small team logos show while the scoreboard is in its long form; at times the game switches to a short form without them.
+  It is made on your PC from your own game's files, and its Restore puts the game's own scoreboard back.
+  On the command line: `--overlay`, `--overlay-logo sn|puckpeak|none|<picture>`, `photos remove --part overlay`.
+
+## 0.76.0 (2026-10-27, test version)
 
 **Highlights** (this version also carries everything from the test versions 0.60.0 to 0.75.0 below):
 

@@ -4,12 +4,15 @@
     photos      players' photos, club logos, crests, the player's own goalie masks (pack `photos`)
     looks       this season's jerseys and centre ice (pack `looks`)
     arenas      the NHL arenas' newer pictures (pack `arenas`)
-    bright_ice  centre circles on solid white ice (pack `ice`)
+    bright_ice  the new centre ice of 30 NHL teams (pack `ice`; since 0.80.0 the window switches it with `looks`)
     team_masks  the goalie masks of the teams (pack `masks`)
 
 The player's own pictures (Roster editor) go in whatever is switched on. Every part writes its files with a source tag
 of its own in the installed-files list (art/install.py `_Writer`), so one part's clean-up never touches another's files
 and Restore can undo one part.
+
+Retired: the new scoreboard (`overlay:`, test versions 0.78.0 / 0.80.0; the owner took it out on 2026-10-27, parked in
+private/scoreboard). Its files are put back wherever they are found (install.remove_retired).
 """
 NAMES, PHOTOS, LOOKS, ARENAS, BRIGHT_ICE, TEAM_MASKS = 'names', 'photos', 'looks', 'arenas', 'bright_ice', 'team_masks'
 ALL = (NAMES, PHOTOS, LOOKS, ARENAS, BRIGHT_ICE, TEAM_MASKS)
@@ -17,10 +20,11 @@ LEGACY = frozenset({NAMES, PHOTOS, LOOKS})      # what the one switch "Photos, l
 PACK_OF = {PHOTOS: 'photos', LOOKS: 'looks', ARENAS: 'arenas', BRIGHT_ICE: 'ice', TEAM_MASKS: 'masks'}
 
 # the tag a part's files carry in the installed-files list (`source` starts with it); photos and logos carry their link
-ARENA_TAG, ICE_TAG, TEAM_MASK_TAG = 'arenas:', 'ice:', 'teammask:'
+ARENA_TAG, ICE_TAG, TEAM_MASK_TAG, OVERLAY_TAG = 'arenas:', 'ice:', 'teammask:', 'overlay:'
 TAGS = {NAMES: ('names:', 'menus:'), LOOKS: ('looks:',), ARENAS: (ARENA_TAG,), BRIGHT_ICE: (ICE_TAG,),
         TEAM_MASKS: (TEAM_MASK_TAG,)}
-OTHER_TAGS = tuple(tag for tags in TAGS.values() for tag in tags) + ('crests:', 'mask:')
+RETIRED_TAGS = (OVERLAY_TAG,)   # parts taken out again: their files go back to the game's own (install.remove_retired)
+OTHER_TAGS = tuple(tag for tags in TAGS.values() for tag in tags) + ('crests:', 'mask:') + RETIRED_TAGS
 
 
 def packs_for(parts):

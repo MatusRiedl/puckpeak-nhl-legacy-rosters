@@ -111,7 +111,7 @@ EXPERIMENTAL = {'shl', 'del', 'nl', 'norway', 'ahl', 'chl', 'stock', 'positions'
                 'own art ids', 'jerseys every league', 'gear colours', 'farm clubs in the AHL',
                 'custom team kits', 'shared ice', 'picture numbers', 'own pictures on save',
                 'draft classes', 'new player records', 'no press start', 'real lines', 'club art 900',
-                'real captains', 'real equipment'}
+                'real captains', 'real equipment', 'new centre ice'}
 ALL_STEPS = CORE_STEPS      # what build() and update() run when no steps are given
 
 
@@ -965,20 +965,28 @@ class Pictures:
         skipped = [('photo', url, why) for url, why in sorted(bad.items())]
         look_teams = 0
         own = bool(portraits_ or logos or bad)
+        try:
+            install.remove_retired(say)     # files of a part taken out again (the test versions' scoreboard)
+        except OSError as err:
+            say(f"The test scoreboard's files could not be put back now ({err}); the next update tries again.")
         if not (self.parts - {P.PHOTOS}) and self.own_only and not own:
             return None, 0, False       # none of the player's own pictures is in this roster
         try:
             if self.photos:
                 install.give_back((set(self.moved) | self.claims.contested()) - set(portraits_), say)
+            new_ice, own_ice = self.new_centres(result)
             if P.LOOKS in self.parts:
-                look_teams = install_looks(result, self.rpcs3, self.title_id, self.targets, say)
+                look_teams = install_looks(result, self.rpcs3, self.title_id, self.targets, say,
+                                           new_ice=new_ice - own_ice)
             if self.photos:
                 install_crests(result, self.rpcs3, self.title_id, self.targets, say)
                 install_masks(result, self.rpcs3, self.title_id, self.targets, say)
-            for part, work in ((P.ARENAS, install_arenas), (P.BRIGHT_ICE, install_bright_ice),
-                               (P.TEAM_MASKS, install_team_masks)):
-                if part in self.parts:
-                    work(result, self.rpcs3, self.title_id, self.targets, say)
+            if P.ARENAS in self.parts:
+                install_arenas(result, self.rpcs3, self.title_id, self.targets, say)
+            if P.BRIGHT_ICE in self.parts:
+                install_bright_ice(result, self.rpcs3, self.title_id, self.targets, say, keep=own_ice)
+            if P.TEAM_MASKS in self.parts:
+                install_team_masks(result, self.rpcs3, self.title_id, self.targets, say)
             art = (0, 0, 0)
             if self.photos or own or self.names_on:
                 art = install.install(self.rpcs3, self.title_id, portraits_, logos, say, names=names,
@@ -992,12 +1000,35 @@ class Pictures:
             note_skipped(result, skipped)
         return art, look_teams, bool(skipped)
 
+    def new_centres(self, result):
+        """(the art ids the new centre ice has, the art ids among them whose centre the player chose in Jerseys & ice),
+        both empty while its switch is off or its pack is not here. Which centre a team gets: the player's own choice,
+        else the new centre ice, else this season's, else the game's."""
+        from .art import brightice
+        from .art import parts as P
+        from .art.extrapack import ExtraPack
+        if P.BRIGHT_ICE not in self.parts:
+            return set(), set()
+        pack = ExtraPack.open('ice')
+        if pack is None:
+            return set(), set()
+        try:
+            covered = brightice.covered(pack)
+        finally:
+            pack.close()
+        own = set()
+        if P.LOOKS in self.parts:           # the player's centre ice goes in with this season's jerseys
+            own = {int(s) for s, e in (getattr(result.builder, 'looks_edits', None) or {}).items()
+                   if ((e or {}).get('ice') or {}).get('use')}
+        return covered, own & covered
 
-def install_looks(result, rpcs3, title, targets, say):
+
+def install_looks(result, rpcs3, title, targets, say, new_ice=()):
     """The new jerseys, pants, socks, menu pictures and centre-ice logos (art/looks.py): Utah, Seattle and Vegas, the
     teams the player gave a look, and this season's jerseys and centre ice for every team the program's look pack has
     (art/lookpack.py), made from the player's own disc, with the photos and logos. A logo that cannot be had leaves the
-    jerseys out, the rest goes on; a team the pack cannot dress gets a row in the list of changes.
+    jerseys out, the rest goes on; a team the pack cannot dress gets a row in the list of changes. `new_ice`: art ids
+    whose centre ice the new centre ice (install_bright_ice) gives; their looks leave the centre to it.
     Returns how many teams get this season's jerseys or centre ice."""
     from .art import looks
     from .art.lookpack import LookPack
@@ -1021,6 +1052,7 @@ def install_looks(result, rpcs3, title, targets, say):
         result.log.append(['', "This season's jerseys not installed", R.team_name(slot), why, '', SECTION_PICTURES])
     for slot, why in no_ice:
         result.log.append(['', "Centre ice not installed", R.team_name(slot), why, '', SECTION_PICTURES])
+    made = [m._replace(centre=looks.OTHER) if m.art in new_ice else m for m in made]
     if made:
         looks.install_looks(rpcs3, title, made, say, also=[t for t in targets if t != title], look_pack=look_pack)
     return sum(1 for m in made if m.pack or str(m.centre).startswith('pack:'))
@@ -1057,19 +1089,22 @@ def install_masks(result, rpcs3, title, targets, say):
         say(f"Goalie masks: left out ({err})")
 
 
-def _extra(name, what, say):
-    """The small pack `name` (art/extrapack.py) or None, with a line for the player when it is not on this PC yet."""
+def _extra(name, what, say, result):
+    """The small pack `name` (art/extrapack.py) or None, with a line for the player when it is not on this PC yet (also
+    in the list of changes: an update that changed nothing of it says so)."""
     from .art.extrapack import ExtraPack
     pack = ExtraPack.open(name)
     if pack is None:
         say(f"{what}: the download is not here yet, so nothing was changed. Try again in a moment.")
+        result.log.append(['', f"{what} not installed", '', "its download is not on this PC (offline, or not available "
+                           "yet); the next update tries again", '', SECTION_PICTURES])
     return pack
 
 
 def install_arenas(result, rpcs3, title, targets, say):
     """The NHL arenas' newer pictures (art/arenas.py, the "Arenas" switch)."""
     from .art import arenas
-    pack = _extra('arenas', "Arenas", say)
+    pack = _extra('arenas', "Arenas", say, result)
     if pack is None:
         return
     skipped = []
@@ -1083,25 +1118,30 @@ def install_arenas(result, rpcs3, title, targets, say):
         result.log.append(['', "Arena not installed", f"arena {art}", why, '', SECTION_PICTURES])
 
 
-def install_bright_ice(result, rpcs3, title, targets, say):
-    """Brighter faceoff circles and centre circles (art/brightice.py, the "Bright ice" switch)."""
+def install_bright_ice(result, rpcs3, title, targets, say, keep=()):
+    """The new centre ice (art/brightice.py, the "New centre ice" switch, key `bright_ice`); `keep`: art ids whose
+    centre the player chose in Jerseys & ice (left to install_looks)."""
     from .art import brightice
-    pack = _extra('ice', "Bright ice", say)
+    pack = _extra('ice', "New centre ice", say, result)
     if pack is None:
         return
+    skipped = []
     try:
-        brightice.install_bright(rpcs3, title, pack, say, also=[t for t in targets if t != title])
+        brightice.install_bright(rpcs3, title, pack, say, also=[t for t in targets if t != title], keep=keep,
+                                 skipped=skipped)
     except Exception as err:
-        say(f"Bright ice: left out ({err})")
+        say(f"New centre ice: left out ({err})")
     finally:
         pack.close()
+    for art, why in skipped:
+        result.log.append(['', "Centre ice not installed", f"arena {art}", why, '', SECTION_PICTURES])
 
 
 def install_team_masks(result, rpcs3, title, targets, say):
     """The goalie masks of the teams (art/masks.py, the "Team goalie masks" switch); a mask picture of the player's own
     is left to it."""
     from .art import masks
-    pack = _extra('masks', "Team masks", say)
+    pack = _extra('masks', "Team masks", say, result)
     if pack is None:
         return
     own = {int(n) for n in getattr(result.builder, 'mask_looks', {})}

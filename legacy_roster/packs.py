@@ -191,8 +191,12 @@ def _remove(path):
 
 
 def prune():
-    """Remove the packs and pieces no longer in use (an old pack an earlier run still had open, a stopped download)."""
-    keep = {e.get('local') for e in _state().values() if isinstance(e, dict)} | {STATE}
+    """Remove the packs and pieces no longer in use (an old pack an earlier run still had open, a stopped download, a pack
+    the program no longer has: the test versions' scoreboard)."""
+    state = _state()
+    if any(name not in NAMES for name in state):
+        _save_state({name: entry for name, entry in state.items() if name in NAMES})
+    keep = {e.get('local') for name, e in state.items() if name in NAMES and isinstance(e, dict)} | {STATE}
     for name in os.listdir(folder()):
         if name not in keep:
             _remove(os.path.join(folder(), name))

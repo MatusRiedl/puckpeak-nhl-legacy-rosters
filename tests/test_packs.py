@@ -102,6 +102,20 @@ def test_a_new_pack_gets_a_new_name_and_the_old_one_goes(site):
     assert files(packs.folder()) == sorted([os.path.basename(new), packs.STATE])
 
 
+def test_a_pack_the_program_no_longer_has_is_cleared_away_and_never_fetched(site):
+    publish(site, {'photos': b'P' * 5000, 'overlay': b'O' * 300})      # the server still lists the test versions' scoreboard
+    assert packs.sync() == (['photos'], None) and 'overlay' not in packs.status()
+    old = os.path.join(packs.folder(), 'overlay-f285aae725b5.zip')
+    with open(old, 'wb') as f:
+        f.write(b'O' * 300)
+    state = json.load(open(os.path.join(packs.folder(), packs.STATE), encoding='utf-8'))
+    state['overlay'] = {'local': os.path.basename(old), 'size': 300, 'built': '2026-10-27'}
+    packs._save_state(state)
+    packs.prune()
+    assert files(packs.folder()) == sorted([os.path.basename(packs.path('photos')), packs.STATE])
+    assert set(packs._state()) == {'photos'}
+
+
 def test_a_stopped_download_leaves_nothing(site):
     publish(site, {'photos': b'P' * 600_000})
     with pytest.raises(packs.Cancelled):

@@ -190,7 +190,7 @@ def cmd_export_files(args):
                          photos=args.photos, game_patch=args.game_patch, intro=args.skip_intro, login=args.no_login,
                          my_edits=edits.load() if args.edits else None,
                          team_edits=edits.load_teams() if args.edits else None, progress=print, offline=args.offline,
-                         games=games)
+                         games=games, art_parts=_photo_parts() if args.photos else None)
     except (export.ExportError, FileNotFoundError, layout.LayoutError, datasource.Offline, RuntimeError) as err:
         sys.exit(str(err))
     for line in res.update.build.summary():
@@ -445,26 +445,31 @@ def cmd_photos(args):
         sys.exit(str(err))
 
 
+def _photo_parts(chosen=None):
+    """`chosen` (default --photos: team names, photos and logos, this season's jerseys) with the new centre ice when this
+    season's jerseys and centre ice are in it (0.80.0, as in the window)."""
+    from .art import parts
+    chosen = set(parts.LEGACY if chosen is None else chosen)
+    return frozenset(chosen | ({parts.BRIGHT_ICE} if parts.LOOKS in chosen else set()))
+
+
 def _art_parts(args):
-    """The picture parts the options ask for (art/parts.py), or None: --photos alone is what it always was (team names,
-    photos and logos, this season's jerseys). The other switches add to it: --arenas alone is only the arenas."""
+    """The picture parts the options ask for (art/parts.py), or None: --photos alone is team names, photos and logos and
+    this season's jerseys and centre ice. The other switches add to it: --arenas alone is only the arenas."""
     from .art import parts
     extra = {p for p, flag in ((parts.NAMES, args.names), (parts.LOOKS, args.looks), (parts.ARENAS, args.arenas),
                                (parts.BRIGHT_ICE, args.bright_ice), (parts.TEAM_MASKS, args.team_masks)) if flag}
-    if not extra:
+    if not extra and not args.photos:
         return None
-    chosen = frozenset(extra | (parts.LEGACY if args.photos else set()))
-    if {parts.LOOKS, parts.BRIGHT_ICE} <= chosen:
-        raise SystemExit("Bright ice and this season's jerseys and centre ice are one or the other: leave out --bright-ice or --looks / --photos.")
-    return chosen
+    return _photo_parts(extra | (parts.LEGACY if args.photos else set()))
 
 
 def _download_packs(art_parts=None):
     """The pictures for --photos (packs.py): what is missing or changed, with a line per tenth. `art_parts`: only the
-    packs these parts need (default: the photos' and the jerseys')."""
+    packs these parts need (default: --photos's)."""
     from . import packs
     from .art import parts
-    wanted = parts.packs_for(art_parts if art_parts is not None else parts.LEGACY)
+    wanted = parts.packs_for(art_parts if art_parts is not None else _photo_parts())
     listed = packs.manifest()
     names = packs.missing(listed, wanted) if listed is not None else []
     if names:
@@ -597,11 +602,11 @@ def main(argv=None):
             p.add_argument('--offline', action='store_true', help="use the data shipped with the program only")
             p.add_argument('--photos', action='store_true',
                            help="also install current photos and logos into RPCS3's game folder (new; RPCS3 must "
-                                "be closed; 'photos remove' takes them away); with team names and this season's jerseys")
+                                "be closed; 'photos remove' takes them away); with team names and this season's jerseys and centre ice")
             p.add_argument('--names', action='store_true', help="team names, short codes and menu texts in the game (RPCS3 closed)")
-            p.add_argument('--looks', action='store_true', help="this season's jerseys and centre ice (downloads the look pack)")
+            p.add_argument('--looks', action='store_true', help="this season's jerseys and centre ice, with the new centre ice for 30 NHL teams (downloads the look and ice packs)")
             p.add_argument('--arenas', action='store_true', help="the NHL arenas' newer pictures (downloads the arena pack)")
-            p.add_argument('--bright-ice', action='store_true', help="brighter faceoff circles and centre circle (downloads the ice pack)")
+            p.add_argument('--bright-ice', action='store_true', help="only the new centre ice with the arenas' current names for 30 NHL teams (downloads the ice pack; --looks has it too)")
             p.add_argument('--team-masks', action='store_true', help="the goalie masks of the teams (downloads the mask pack)")
             p.add_argument('--edits', action='store_true',
                            help="apply your own edits from the window's Roster editor after the update")

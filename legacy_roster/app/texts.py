@@ -48,20 +48,31 @@ PHOTOS_NEEDS_RPCS3 = f"Needs RPCS3: pick {PROGRAM} in step 1."
 PHOTOS_EXPORT = "Pick your copy of the game in Setup first: the pictures are made from it."
 PHOTOS_WAITING = "Waiting for the download... {pct} %"
 PHOTOS_SHORT = "Some pictures could not be downloaded; the next update tries again."
+PACK_TITLES = {'photos': "player photos and team logos", 'looks': "this season's jerseys", 'ice': "the new centre ice",
+               'arenas': "NHL arenas", 'masks': "team goalie masks"}   # packs.NAMES
+PICTURE_NOT_SERVED = "Not available for download yet: nothing to install. The program looks again at its next start."
+
+
+def pictures_short(names):
+    """The result's line for the packs (packs.NAMES) an update had to go without."""
+    return ("Not downloaded, so not installed: " + ", ".join(PACK_TITLES.get(n, n) for n in names)
+            + ". The next update tries again.")
+
+
 # 0.76.0: the picture rows after "Photos and logos" (settings key -> title, what it does, about how many bytes it downloads)
 PICTURE_ROWS = {
     'photos': ("Player photos and team logos", "The pictures of the players and the logos of the teams.",
                PHOTOS_SIZE),
     'names': ("Team names", "Team names and short codes in Select Teams and on the scoreboard, and the main menu texts. "
                             "RPCS3 must be closed.", 0),
-    'looks': ("This season's jerseys and centre ice", "New jerseys, pants, socks and centre-ice logos for the teams.", 55 * 1000 * 1000),
+    'looks': ("This season's jerseys and centre ice", "New jerseys, pants and socks for the teams, and new centre-ice "
+                                                      "logos: 30 NHL teams with the arenas' current names.", 55 * 1000 * 1000),
     'arenas': ("NHL arenas", "New boards and banners in the NHL arenas.", 13 * 1000 * 1000),
-    'bright_ice': ("Bright ice", "Sharper centre-ice circles with the arenas' current names, on solid white ice. Instead of this season's jerseys and centre ice: one or the other.",
-                   6 * 1000 * 1000),
     'team_masks': ("Team goalie masks", "The goalie masks of the teams.", 3 * 1000 * 1000),
 }
 PICTURE_SIZES = {pack: PICTURE_ROWS[key][2] for pack, key in (('photos', 'photos'), ('looks', 'looks'), ('arenas', 'arenas'),
-                                                                      ('ice', 'bright_ice'), ('masks', 'team_masks'))}     # about how big, before the server says
+                                                                      ('masks', 'team_masks'))}
+PICTURE_SIZES['ice'] = 6 * 1000 * 1000      # the new centre ice, downloaded with this season's (0.80.0); about how big, before the server says
 PICTURE_NAMES_OFF = "Off: the game keeps its own team names."
 PICTURE_NO_DOWNLOAD = "Nothing to download."
 SAVED_DESPITE = ("The roster is saved: you can load it in the game. The details of what went wrong are in {log}; "
@@ -229,5 +240,7 @@ def rpcs3_note(rpcs3, slots):
 
 def photos_will(size=None):
     """The Photos row before its pictures are on this PC: 'Downloaded automatically (about 160 MB)'."""
-    mb = max(10, round((size or PHOTOS_SIZE) / 1e7) * 10)
-    return f"Downloaded automatically (about {mb} MB)"
+    size = size or PHOTOS_SIZE
+    if size < 1e7:
+        return "Downloaded automatically (under 10 MB)"
+    return f"Downloaded automatically (about {round(size / 1e7) * 10} MB)"

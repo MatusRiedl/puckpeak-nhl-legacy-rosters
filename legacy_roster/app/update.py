@@ -117,10 +117,8 @@ class UpdateController:
         self.art_on = {S.NAMES: bool(remembered.get(S.NAMES, True)),
                        S.LOOKS: bool(remembered.get(S.LOOKS, self.photos)),
                        S.ARENAS: bool(remembered.get(S.ARENAS, False)),
-                       S.BRIGHT_ICE: bool(remembered.get(S.BRIGHT_ICE, False)),
                        S.TEAM_MASKS: bool(remembered.get(S.TEAM_MASKS, False))}
-        if self.art_on[S.LOOKS]:
-            self.art_on[S.BRIGHT_ICE] = False       # never both (set_step)
+        self.art_on[S.BRIGHT_ICE] = self.art_on[S.LOOKS]    # 0.80.0: the new centre ice comes with this season's (S.TOGETHER)
         if S.PHOTOS_DEFAULT not in self.settings:       # 0.65: the switch starts off for everyone, once; ticking it again is kept
             self.photos = False
             self.settings[S.PHOTOS_DEFAULT] = True
@@ -134,7 +132,7 @@ class UpdateController:
         self._fetch_stop = threading.Event()
         self._fetching = False
         self.waiting = None         # Update pressed during the download: start(everything) once it is done
-        self.pictures_short = False # the running update lacks a pack (offline): the result says so
+        self.pictures_short = []    # the packs the running update lacks (offline, not on the server): the result names them
 
     # --- start --------------------------------------------------------------------------------------
     def start_up(self):
@@ -205,6 +203,11 @@ class UpdateController:
     def packs_wanted(self):
         """The packs the switched-on parts need (packs.NAMES): the names switch needs none."""
         return P.packs_for(self.parts_on())
+
+    def not_served(self, names):
+        """Did the server's list (read at the last download) lack one of the packs `names`? Not yet published: the
+        row says so instead of "Downloaded automatically"."""
+        return bool(self.pack_sizes) and any(n not in self.pack_sizes for n in names)
 
     def download_pictures(self):
         """While a switch that needs a pack is on: download what is missing or changed, in the background (at start,
@@ -664,18 +667,14 @@ class UpdateController:
                 if on and (self.rpcs3 is not None and self.rpcs3.plain and not self.export_mode
                            or self.export_mode and not self.export_games()):
                     return
-                for k in (S.GROUP if key == S.PICTURES else (key,)):     # the group row switches all its parts together
+                for k in S.row_parts(S.GROUP if key == S.PICTURES else (key,)):    # the group row switches all its parts together
                     if k == S.PHOTOS:
                         self.photos = on
                     else:
                         self.art_on[k] = on
                     if on:
                         self.marks.pop(k, None)
-                if on:                  # this season's centre ice and Bright ice are two takes on one picture: only one at a time
-                    if key == S.BRIGHT_ICE:
-                        self.art_on[S.LOOKS] = False
-                    elif key in (S.LOOKS, S.PICTURES):
-                        self.art_on[S.BRIGHT_ICE] = False
+                if on:
                     self.download_pictures()
                 elif not self.packs_wanted():
                     self._fetch_stop.set()      # what is already on this PC stays, for the next time it is on
@@ -841,26 +840,29 @@ class UpdateController:
                 return
             if key == S.PICTURES:           # the group row: Restore for every part in it (again: undo)
                 if any(k in self.marks for k in S.GROUP):
-                    for k in S.GROUP:
+                    for k in S.row_parts(S.GROUP):
                         self.marks.pop(k, None)
                 else:
-                    for k in S.GROUP:
+                    for k in S.row_parts(S.GROUP):
                         self.marks[k] = restore.picture_part(k)
                     self.photos = False
-                    for k in S.GROUP[1:]:
+                    for k in S.row_parts(S.GROUP[1:]):
                         self.art_on[k] = False
                     self.save_settings()
             elif key in self.marks:
-                del self.marks[key]
-            elif key in self.steps or key in S.PICTURE_KEYS:
-                self.marks[key] = (restore.CALENDAR if key == pipeline.SCHEDULE else
-                                   restore.picture_part(key) if key in S.PICTURE_KEYS else restore.ROSTERS)
-                if key == S.PHOTOS:
-                    self.photos = False
-                elif key in self.art_on:
-                    self.art_on[key] = False
-                else:
-                    self.steps[key] = False
+                for k in S.row_parts((key,)):
+                    self.marks.pop(k, None)
+            elif key in S.PICTURE_KEYS:
+                for k in S.row_parts((key,)):
+                    self.marks[k] = restore.picture_part(k)
+                    if k == S.PHOTOS:
+                        self.photos = False
+                    else:
+                        self.art_on[k] = False
+                self.save_settings()
+            elif key in self.steps:
+                self.marks[key] = restore.CALENDAR if key == pipeline.SCHEDULE else restore.ROSTERS
+                self.steps[key] = False
                 self.save_settings()
             self.changed()
 
@@ -949,7 +951,7 @@ class UpdateController:
                 return
             self._begin("Updating... (the last result is shown until the new one is ready)")
             self.photos_running = art is not None
-            self.pictures_short = art is not None and not all(packs.have(n) for n in self.packs_wanted())
+            self.pictures_short = [n for n in self.packs_wanted() if not packs.have(n)] if art is not None else []
             mine = (my_edits.load(), my_edits.load_teams()) if self.use_edits and not everything else (None, None)
             rpcs3, targets = self.rpcs3, [slot.title_id] if fit else self.save_targets(slot)
 
@@ -1001,7 +1003,7 @@ class UpdateController:
         self._finish()
         items = result.build.lines() + [("Restored", text) for text in result.restored]
         if self.pictures_short:
-            items.append(("Pictures", X.PHOTOS_SHORT))
+            items.append(("Pictures", X.pictures_short(self.pictures_short)))
         self.say("", "What changed:", *(f"   {title}: {text}" for title, text in items))
         with self.lock:
             self.last_report = result.report_path
@@ -1244,7 +1246,7 @@ class UpdateController:
             return
         self._begin("Working... (the last result is shown until the new one is ready)")
         self.photos_running = photos
-        self.pictures_short = photos and not all(packs.have(n) for n in self.packs_wanted())
+        self.pictures_short = [n for n in self.packs_wanted() if not packs.have(n)] if photos else []
         mine = (my_edits.load(), my_edits.load_teams()) if self.use_edits else (None, None)
         name = self.name.strip() if self.name_edited and self.name.strip() else savedata.default_name()
         rpcs3, targets, patch = self.rpcs3, self._export_targets(source), self.export_patch
@@ -1270,7 +1272,7 @@ class UpdateController:
         update = res.update
         items = update.build.lines()
         if self.pictures_short:
-            items.append(("Pictures", X.PHOTOS_SHORT))
+            items.append(("Pictures", X.pictures_short(self.pictures_short)))
         self.say("", "What changed:", *(f"   {title}: {text}" for title, text in items))
         with self.lock:
             self.last_report = update.report_path
@@ -1542,7 +1544,7 @@ class UpdateController:
         kids = [self._picture_row(k, export, plain, restorable) for k in S.GROUP]
         for kid in kids:
             kid['child'] = True
-        wanted = P.packs_for({k for k in S.GROUP if (self.photos if k == S.PHOTOS else self.art_on[k])})
+        wanted = P.packs_for({k for k in S.row_parts(S.GROUP) if (self.photos if k == S.PHOTOS else self.art_on[k])})
         on = any(kid['on'] for kid in kids)
         here = all(packs.have(n) for n in wanted)
         running = on and self.fetch == 'running' and not here
@@ -1554,12 +1556,14 @@ class UpdateController:
             sub = X.PHOTOS_RUNNING.format(pct=int(self.fetch_at * 100))
         elif here:
             sub = X.PHOTOS_READY
+        elif self.not_served(wanted):
+            sub = X.PICTURE_NOT_SERVED
         elif self.fetch == 'failed':
             sub = X.PHOTOS_RETRY
         else:
             sub = X.photos_will(sum(self.pack_sizes.get(n) or X.PICTURE_SIZES.get(n, 0) for n in wanted))
         count = sum(1 for kid in kids if kid['on'])
-        every = len(kids) - 1               # this season's centre ice and Bright ice never go together
+        every = len(kids)
         if offered and on and count < every:
             sub = f"{count} of {every} parts on. " + sub
         return {'key': S.PICTURES, 'title': X.PHOTOS_TITLE, 'sub': sub, 'warn': None, 'hint': X.PHOTOS_HINT, 'featured': True,
@@ -1571,23 +1575,26 @@ class UpdateController:
         """One of the picture switches (art/parts.py): its status says only whether its download is here."""
         offered = bool(self.export_games()) if export else not plain      # an export needs the game, not RPCS3
         flag = self.photos if key == S.PHOTOS else self.art_on[key]
-        title, hint, guess = X.PICTURE_ROWS[key]
-        pack = P.PACK_OF.get(key)
+        title, hint = X.PICTURE_ROWS[key][:2]
+        names = P.packs_for(S.row_parts((key,)))        # its downloads (this season's: also the new centre ice's)
         on = flag and offered
-        running = on and pack is not None and self.fetch == 'running' and not packs.have(pack)
-        size = self.pack_sizes.get(pack) or guess
+        here = all(packs.have(n) for n in names)
+        running = on and bool(names) and self.fetch == 'running' and not here
+        size = sum(self.pack_sizes.get(n) or X.PICTURE_SIZES.get(n, 0) for n in names)
         if export and not offered:
             sub = X.PHOTOS_EXPORT
         elif plain and not export:
             sub = X.PHOTOS_NEEDS_RPCS3
         elif not flag:
             sub = X.PICTURE_NAMES_OFF if key == S.NAMES else X.PHOTOS_OFF
-        elif pack is None:
+        elif not names:
             sub = X.PICTURE_NO_DOWNLOAD
         elif running:
             sub = X.PHOTOS_RUNNING.format(pct=int(self.fetch_at * 100))
-        elif packs.have(pack):
+        elif here:
             sub = X.PHOTOS_READY
+        elif self.not_served(names):
+            sub = X.PICTURE_NOT_SERVED
         elif self.fetch == 'failed':
             sub = X.PHOTOS_RETRY
         else:

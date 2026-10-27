@@ -103,13 +103,21 @@ before a release; the build lists the kits it left without their own number shee
 ```
 python tools/publish_packs.py <ssh-host>:<folder> --dry-run      # what would be sent
 python tools/publish_packs.py <ssh-host>:<folder>                # every pack in private/packs, the data pack, then manifest.json
-python tools/publish_packs.py <ssh-host>:<folder> --only arenas,ice,masks   # just these (the manifest keeps the others)
+python tools/publish_packs.py <ssh-host>:<folder> --only ice,looks     # just these (the manifest keeps the others)
 ```
 
 **The small packs** (0.76.0: `arenas`, `ice`, `masks`): made from the community's 26-27 Extras folder by
-`private/build_extras.py "<folder>"` (`.venv\Scripts\python -I`, `LEGACY_ROSTER_DISC` = the EU disc, read only). Run it again when
-the folder changes; it prints what it took and what it left out. Arenas carry the sha1 of the disc's file: an NA or other game version
-whose file differs is skipped in the player's List of changes, so compare the NA files first. Findings: docs/notes/community-extras.md.
+`private/build_extras.py "<folder>" --ice "<new centre ice folder>"` (`.venv\Scripts\python -I`, `LEGACY_ROSTER_DISC` = the EU
+disc, read only). Since 0.78.0 `ice` is the owner's newer centre-ice set (`--ice`: the folder holding
+`icesurface/centerlogo_<art>_cm.rpsgl`, art 0-29), each centre's encoded raster as it is; since 0.80.0 it has no row of its
+own in the window: "This season's jerseys and centre ice" downloads and installs it too (`settings.TOGETHER`). Run it again when a folder changes;
+it prints what it took and what it left out. Arenas carry the sha1 of the disc's file: an NA or other game version whose
+file differs is skipped in the player's List of changes, so compare the NA files first. Findings:
+docs/notes/community-extras.md.
+
+**The scoreboard pack** (`overlay`, test versions 0.78.0 / 0.80.0) is out of the program (owner, 2026-10-27): its code,
+builder and packs are parked in `private/scoreboard/` (README.txt there). Its builder writes there, never into
+`private/packs`, so `publish_packs.py` does not send it. The server's manifest still lists `overlay`; nothing reads it.
 
 - It refuses when `tools/clean_check.py --server` finds a word in the data pack or the packs' `index.json` / file names,
   or when the data pack is not the format the program reads.

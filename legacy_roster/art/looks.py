@@ -641,11 +641,18 @@ def has_ice_picture(art):
     return art < 30
 
 
+OTHER = 'other'     # a look's centre when the new centre ice (art/brightice.py) has the team's centre: no centre file here
+
+
 def _ice_picture_wanted(look):
-    """Is the rink picture redrawn with the team's logo? With a new centre-ice logo of an NHL team, except the pack's on a
-    team whose rink picture already shows its own logo (only Utah's shows Arizona's)."""
-    return look.centre != 'game' and has_ice_picture(look.art) and (not look.centre.startswith('pack:')
-                                                                     or look.art in NEW_TEAMS)
+    """Is the rink picture redrawn with the team's logo? With a new centre-ice logo of an NHL team, except the pack's (or
+    the new centre ice's, `OTHER`) on a team whose rink picture already shows its own logo (only Utah's shows Arizona's)."""
+    return look.centre != 'game' and has_ice_picture(look.art) and (
+        not (look.centre.startswith('pack:') or look.centre == OTHER) or look.art in NEW_TEAMS)
+
+
+def _makes_centre(look):
+    return look.centre not in ('game', OTHER)
 
 
 # where the centre-ice logo sits in the rink picture (512 x 512): its middle, and the half width of what to paint over
@@ -1321,10 +1328,10 @@ class Maker:
                 out += [t.format(s=STYLE, a=look.art, v=variant) for t in (PANT, SOCK, PREVIEW)]
         for kit in look.pack:
             out += self.pack_paths(look, kit)
-        if look.centre != 'game':
+        if _makes_centre(look):
             out += [p for p in (CENTRE.format(a=look.art),) if self._has(p)]   # the national teams' arenas have none
-            if _ice_picture_wanted(look):
-                out.append(ICE_PICTURE.format(a=look.art))
+        if _ice_picture_wanted(look):
+            out.append(ICE_PICTURE.format(a=look.art))
         out += [p for p in clubart.extra_paths(look.art) if self._has(p)]
         return out
 
@@ -1388,11 +1395,11 @@ class Maker:
                 out[inner] = preview_file(self.preview_of_chassis(light), self.mask(), palette, crest_of(mine), raw)
         for kit in look.pack:
             out.update(self.pack_files(look, kit))
-        if look.centre != 'game' and _ice_picture_wanted(look):
+        if _ice_picture_wanted(look):
             raw = self.disc.render(ICE_PICTURE.format(a=art))
             if raw is not None:
                 out[ICE_PICTURE.format(a=art)] = ice_picture_file(raw, art, look.logos[1])
-        if look.centre != 'game':
+        if _makes_centre(look):
             inner = CENTRE.format(a=art)
             raw = self.disc.render(inner)
             if raw is not None:
@@ -1858,10 +1865,10 @@ def look_paths(look, maker=None):
         paths.append(JERSEY.format(s=look.style, a=look.art, v=kit.variant))
         if look.style == STYLE:
             paths += [t.format(s=STYLE, a=look.art, v=kit.variant) for t in (PANT, SOCK, PREVIEW)]
-    if look.centre != 'game':
+    if _makes_centre(look):
         paths.append(CENTRE.format(a=look.art))
-        if _ice_picture_wanted(look):
-            paths.append(ICE_PICTURE.format(a=look.art))
+    if _ice_picture_wanted(look):
+        paths.append(ICE_PICTURE.format(a=look.art))
     return paths + clubart.extra_paths(look.art)
 
 
@@ -1884,7 +1891,7 @@ def _look_digest(look):
     return _digest(look.art, [list(map(list, p[:4])) + [_font_key(p.font)] for p in look.kit], logos, look.arena,
                    list(look.ice_colour), [list(v) for v in look.versions],
                    [[v, light, _file_hash(path)] for v, light, path in look.files],
-                   look.centre if look.centre in ('make', 'game') or look.centre.startswith('pack:')
+                   look.centre if look.centre in ('make', 'game', OTHER) or look.centre.startswith('pack:')
                    else _file_hash(look.centre), LOOKS_DRAWING,
                    [[k.variant, k.light, k.member, [list(c) for c in k.numbers or ()], k.crc, k.menu, repr(k.scheme), k.font]
                     for k in look.pack],
