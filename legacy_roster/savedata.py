@@ -205,14 +205,25 @@ def clean_environment():
     "incorrectly installed". RPCS3 gets the environment the player's own PC has."""
     env = dict(os.environ)
     env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
+    for var in OUR_VARIABLES:
+        env.pop(var, None)
     base = getattr(sys, '_MEIPASS', None)
     if base:
-        keep = lambda part: not os.path.normcase(part).startswith(os.path.normcase(base))   # noqa: E731
-        for var in ('PATH', 'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH'):
-            if env.get(var):
-                env[var] = os.pathsep.join(p for p in env[var].split(os.pathsep) if keep(p))
+        # On Linux the program's runtime hooks also point QT_PLUGIN_PATH, XDG_DATA_DIRS, TCL_LIBRARY ... into it, and RPCS3
+        # (a Qt program too) or the file manager would load our copies: every variable naming our folder loses those parts
+        inside = lambda part: os.path.normcase(part).startswith(os.path.normcase(base))   # noqa: E731
+        for var, value in list(env.items()):
+            if os.path.normcase(base) in os.path.normcase(value):
+                parts = [p for p in value.split(os.pathsep) if p and not inside(p)]
+                if parts:
+                    env[var] = os.pathsep.join(parts)
+                else:
+                    env.pop(var)
         env.pop('LD_LIBRARY_PATH_ORIG', None)
     return env
+
+
+OUR_VARIABLES = set()       # variables this program set for itself (window/main.linux_engine): not passed on
 
 
 def launch(args, **kw):
@@ -611,7 +622,7 @@ def open_path(path):
     if WINDOWS:
         os.startfile(path)
     else:
-        subprocess.Popen(['open' if MAC else 'xdg-open', path])
+        launch(['open' if MAC else 'xdg-open', path])
 
 
 class DeleteError(RuntimeError):
@@ -827,7 +838,7 @@ def _recycle(path):
             raise DeleteError(f"The roster could not be moved to the Trash ({err.strerror or err}).") from err
     else:
         gio = shutil.which('gio')
-        if gio is None or subprocess.run([gio, 'trash', path], capture_output=True).returncode:
+        if gio is None or subprocess.run([gio, 'trash', path], capture_output=True, env=clean_environment()).returncode:
             raise DeleteError("This computer has no Trash the program can use (the command gio), so the roster was "
                               "not removed. Delete its folder in your file manager instead.")
 

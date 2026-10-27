@@ -137,3 +137,22 @@ def test_the_play_online_tab_is_wired_to_python():
         with open(os.path.join(WEB, name), encoding='utf-8') as f:
             text = f.read()
         assert ("call('online_setup')" in text) if name == 'js/online.js' else ("{ id: 'online', label: 'MULTIPLAYER', gold: true }" in text)
+
+
+
+def test_on_linux_the_window_brings_its_own_qt_settings_and_rpcs3_gets_none_of_them(monkeypatch):
+    """Linux: Qt WebEngine without its sandbox; each variable the program sets is recorded, so
+    savedata.clean_environment keeps it from RPCS3 (a Qt program too). A player's own setting is left alone."""
+    import sys
+    import types
+    from legacy_roster import savedata
+    from legacy_roster.window import main
+    monkeypatch.setattr(sys, 'platform', 'linux')
+    monkeypatch.setitem(sys.modules, 'PySide6', types.ModuleType('PySide6'))
+    monkeypatch.setattr(savedata, 'OUR_VARIABLES', set())
+    monkeypatch.delenv('QTWEBENGINE_DISABLE_SANDBOX', raising=False)
+    monkeypatch.setenv('QT_API', 'pyside6')                          # the player's own
+    assert main.linux_engine() == 'qt'
+    assert os.environ['QTWEBENGINE_DISABLE_SANDBOX'] == '1' and savedata.OUR_VARIABLES == {'QTWEBENGINE_DISABLE_SANDBOX'}
+    env = savedata.clean_environment()
+    assert 'QTWEBENGINE_DISABLE_SANDBOX' not in env and env['QT_API'] == 'pyside6'

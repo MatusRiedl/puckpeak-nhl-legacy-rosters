@@ -501,6 +501,21 @@ def test_rpcs3_is_started_without_the_exes_own_unpacked_folder_in_the_path(monke
     assert env['PATH'] == r'C:\Windows' and env['PYINSTALLER_RESET_ENVIRONMENT'] == '1'
 
 
+def test_rpcs3_on_linux_gets_none_of_the_programs_own_qt_and_library_settings(monkeypatch, tmp_path):
+    """The Linux program's runtime hooks point Qt, GTK and Tk into its folder; RPCS3 (a Qt program) must not load them."""
+    import sys
+    unpacked = str(tmp_path / '_internal')
+    monkeypatch.setattr(sys, '_MEIPASS', unpacked, raising=False)
+    monkeypatch.setenv('QT_PLUGIN_PATH', os.path.join(unpacked, 'PySide6', 'Qt', 'plugins'))
+    monkeypatch.setenv('XDG_DATA_DIRS', os.pathsep.join([os.path.join(unpacked, 'share'), '/usr/share']))
+    monkeypatch.setenv('QTWEBENGINE_DISABLE_SANDBOX', '1')
+    monkeypatch.setenv('HOME', '/home/player')
+    monkeypatch.setattr(savedata, 'OUR_VARIABLES', {'QTWEBENGINE_DISABLE_SANDBOX'})
+    env = savedata.clean_environment()
+    assert 'QT_PLUGIN_PATH' not in env and 'QTWEBENGINE_DISABLE_SANDBOX' not in env
+    assert env['XDG_DATA_DIRS'] == '/usr/share' and env['HOME'] == '/home/player'
+
+
 def test_launch_clears_the_dll_folder_while_the_child_starts(monkeypatch, tmp_path):
     """The exe's launcher sets the DLL search folder to _MEI...; a child inherits it, so it is cleared for the start."""
     import sys

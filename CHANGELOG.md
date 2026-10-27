@@ -3,6 +3,25 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.80.1 (2026-10-27, Linux; a new name)
+
+**The program is now called Puck Peak Legacy Updater** (`PuckPeakLegacyUpdater.exe` on Windows). Your copy updates
+itself as before; your settings, edits and backups stay where they are.
+
+**The Linux program now opens the same window as on Windows**, with every tab: Setup, Game patch, Update, the Roster
+editor's tabs, Calendar, Front office, Draft & Pro, Play online and Export. Until 0.80.0 it opened the old window from
+0.10 (two tabs, no game patch, no export) on most Linux PCs, because the web engine the window needs was missing.
+
+- **Nothing to install:** the window brings its own web engine. Download `PuckPeakLegacyUpdater-0.80.1-linux.tar.gz`,
+  unpack it and start `PuckPeakLegacyUpdater` in the folder (README-LINUX.txt in it says the same).
+- **Find RPCS3:** pick your RPCS3 AppImage, the `rpcs3` program, or RPCS3's folder (`~/.config/rpcs3`; the Flatpak's
+  `~/.var/app/net.rpcs3.RPCS3/config/rpcs3`). Games and saves kept in another folder (EmuDeck) are found from there.
+- Runs on 64-bit Linux from 2022 or newer (Ubuntu 22.04, Debian 12, Fedora, Arch, SteamOS 3 in Desktop Mode).
+- RPCS3, the file manager and links started from the program no longer inherit its own libraries.
+- **No Mac program and no separate command-line program any more.** On a Mac, use "Export files to a folder" with the
+  Windows program (CrossOver) or a Windows / Linux PC. The command line is inside the Linux program
+  (`./PuckPeakLegacyUpdater --help`) and runs from source on any system (`python -m legacy_roster --help`).
+
 ## 0.80.0 (2026-10-27)
 
 **Highlights** (this version also carries everything from the test versions 0.60.0 to 0.78.0 below; none of them was

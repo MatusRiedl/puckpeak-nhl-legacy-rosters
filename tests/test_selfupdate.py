@@ -53,6 +53,18 @@ def test_digest_from_the_asset_or_the_sums_file():
     assert U.from_json(plain, lambda url: "nonsense").digest is None
 
 
+def test_the_new_exe_name_first_and_the_old_one_still_works():
+    """0.80.1 renamed the exe; its release carries both names (old copies look for theirs), later ones may not."""
+    old, new = 'aa' * 32, 'bb' * 32
+    both = release_json(digest=new)
+    both['assets'].append({'name': U.OLD_EXE_ASSET, 'browser_download_url': 'http://x/old', 'size': 3,
+                           'digest': 'sha256:' + old})
+    assert U.from_json(both).exe_url == 'http://x/exe' and U.from_json(both).digest == new
+    only_old = release_json(digest=old)
+    only_old['assets'][0]['name'] = U.OLD_EXE_ASSET
+    assert U.from_json(only_old).can_install()
+
+
 def test_due_at_every_start_and_not_when_switched_off():
     assert U.due({}) and U.due({'check_updates': True})
     assert U.due({'update_checked': 10 ** 12})          # a look a moment ago (0.50.2 and older waited 12 hours)

@@ -13,10 +13,11 @@ import urllib.request
 
 from .. import __version__, datasource, savedata
 
-REPO = "MatusRiedl/puckpeak-nhl-legacy-rosters"
+REPO = "MatusRiedl/puckpeak-nhl-legacy-updater"
 # a test (or a fork) can point the check at its own JSON, a release made like GitHub's
 RELEASE_URL = os.environ.get('LEGACY_ROSTER_RELEASE_URL') or f"https://api.github.com/repos/{REPO}/releases/latest"
-EXE_ASSET = 'NHLLegacyRosterUpdater.exe'
+EXE_ASSET = 'PuckPeakLegacyUpdater.exe'
+OLD_EXE_ASSET = 'NHLLegacyRosterUpdater.exe'     # the name until 0.80.0; 0.80.1's release carries the exe under both
 SUMS_ASSET = 'SHA256SUMS.txt'
 CHUNK = 256 * 1024
 
@@ -61,11 +62,12 @@ def from_json(data, fetch_text=None):
     if version is None:
         return None
     assets = {a.get('name'): a for a in data.get('assets') or [] if isinstance(a, dict)}
-    exe = assets.get(EXE_ASSET)
+    name = EXE_ASSET if EXE_ASSET in assets else OLD_EXE_ASSET
+    exe = assets.get(name)
     digest = _digest_of(exe)
     if exe and not digest and SUMS_ASSET in assets and fetch_text:
         try:
-            digest = _digest_from_sums(fetch_text(assets[SUMS_ASSET].get('browser_download_url')), EXE_ASSET)
+            digest = _digest_from_sums(fetch_text(assets[SUMS_ASSET].get('browser_download_url')), name)
         except Exception:
             digest = None
     return Release(version, data['tag_name'], (data.get('body') or '').strip(), data.get('html_url') or f"https://github.com/{REPO}/releases",

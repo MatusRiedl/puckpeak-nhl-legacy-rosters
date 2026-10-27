@@ -85,7 +85,13 @@ class WebHost:
         savedata.open_path(path)
 
     def open_url(self, url):
-        webbrowser.open(url)
+        if savedata.WINDOWS or savedata.MAC:
+            webbrowser.open(url)
+            return
+        try:                        # Linux: the browser must not inherit the program's own libraries (savedata.launch)
+            savedata.open_path(url)
+        except OSError:
+            webbrowser.open(url)
 
     def quit(self):
         """Close the window for good (after an update started the new program)."""

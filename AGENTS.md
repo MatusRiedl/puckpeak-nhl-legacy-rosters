@@ -1,6 +1,6 @@
 # Start here (for AI agents and new developers)
 
-**NHL Legacy Roster Updater** keeps the rosters of *NHL Legacy Edition* (PS3, played on the
+**Puck Peak Legacy Updater** (called NHL Legacy Roster Updater before 0.80.1) keeps the rosters of *NHL Legacy Edition* (PS3, played on the
 RPCS3 emulator) up to date. Players start a Windows exe, pick `rpcs3.exe`, choose a roster and
 what to update, and get that roster updated (a backup first) or a **new** roster save named with the date
 and time. It is built for the NHL Legacy community. Explain changes to the project owner in plain words, without jargon, and
@@ -61,8 +61,8 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
 5. **Never write test output into the owner's real RPCS3 folder.** Use the tests, `--dry-run`, a
    copy of the savedata folder, or `tools/window_shot.py` (it makes a fake RPCS3).
 6. **No git commit or push, and nothing published, without the owner's explicit go-ahead.**
-   The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters (0.6.0
-   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, 0.50.4 to 0.51.2 on 2026-10-24, 0.52.0 on 2026-10-25, each with the owner's go-ahead). Every further commit,
+   The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-updater (0.6.0
+   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, 0.50.4 to 0.51.2 on 2026-10-24, 0.52.0 on 2026-10-25, 0.80.0 on 2026-10-27, each with the owner's go-ahead). Every further commit,
    push or release needs the go-ahead again. Before pushing, check that no base roster (`work/`),
    picture pack (`private/packs/`, a zip in `legacy_roster/data/`), anything from `private/`, personal path or user name
    goes in, and that `python tools/clean_check.py` finds nothing.
@@ -125,7 +125,7 @@ python -m legacy_roster update --rpcs3 <rpcs3.exe> [--game-patch]   # follows RP
 python -m legacy_roster game-patch status|remove --rpcs3 <rpcs3.exe>   # is RPCS3 patched / unpatch it
 python -m legacy_roster game-patch online|online-off --rpcs3 <rpcs3.exe>   # only the online entry (the community patch's words, `gamepatch.ONLINE_ENTRY`; docs/notes/multiplayer.md)
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1   # build dist\*.exe (close a running copy first)
-bash packaging/build.sh                                        # the same on a Mac or a Linux PC (its own system only)
+bash packaging/linux/build_in_docker.sh <src.tgz> <out>        # the Linux program, built + checked in Docker boxes (MAINTAINING.md "The Linux program")
 ```
 
 ## Environment
@@ -194,7 +194,17 @@ wording (`progress.py`).
 
 ## Current state
 
-**Version 0.80.0 (2026-10-27, the release candidate: carries every test version since 0.52.0; not committed; plan
+**Version 0.80.1 (2026-10-27, not committed; plan PLAN.md top "LINUX PROGRAM"):** a tester's Linux program opened the
+classic window (0.80.0's from GitHub needed the system's WebKitGTK). Now: the program is named **PuckPeakLegacyUpdater**
+(owner; `selfupdate.EXE_ASSET`, the release also carries `NHLLegacyRosterUpdater.exe` for older copies' update check;
+the data folder `NHLLegacyRosterUpdater` stays), only the Windows exe and the Linux program ship (no Mac, no cli exe;
+owner), the Linux program uses Qt WebEngine from PySide6 (`window/main.linux_engine`) as a PyInstaller folder,
+built and checked in Docker boxes on the owner's server (`packaging/linux/`, `linux_check.sh`: the new window must
+open on Ubuntu 24.04, Fedora, Arch), `savedata.clean_environment` keeps the program's libraries away from RPCS3 /
+xdg-open / gio. GitHub's workflow only tests (Linux, Windows).
+
+**Version 0.80.0 (2026-10-27, released with the owner's go-ahead: commit 1f0c212, tag `v0.80.0`, GitHub release with the exe
+and `SHA256SUMS.txt`; carries every test version since 0.52.0 (0.60.0-0.78.0 were never released on their own); plan
 docs/plans/while-the-other-sessions-pure-goblet.md, notes docs/notes/overlay.md 10b, community-extras.md "New centre ice"):**
 the owner's asks after 0.78.0. **The new scoreboard is out** (owner, 2026-10-27, after lab round 54's pictures: the SN badge
 a white box on navy, the score bug's team logos off centre, a see-through gap under the power-play bar, an odd player card;

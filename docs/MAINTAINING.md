@@ -179,15 +179,16 @@ when the pack's layout changes in a way older exes cannot read, raise `PACK_FORM
 2. Data pack refreshed if due (above).
 3. `python -m pytest -q` green with the base roster present (no unexpected skips).
 4. `powershell -ExecutionPolicy Bypass -File packaging\build.ps1` (it refuses a zip in `legacy_roster\data` and any
-   `tools\clean_check.py` hit). The window exe is about 26 MB.
-5. **Smoke test** the two exes (the window program and the cli):
-   - `dist\NHLLegacyRosterUpdater-cli.exe list --rpcs3 <rpcs3.exe>`: lists the rosters, community
-     rosters "ok";
-   - `dist\NHLLegacyRosterUpdater-cli.exe list --rpcs3 C:\Windows`: "That is not RPCS3…", exit code 1;
-   - start `dist\NHLLegacyRosterUpdater.exe`: the window appears within a few seconds with the
+   `tools\clean_check.py` hit). The window exe is about 26 MB; `dist\NHLLegacyRosterUpdater.exe` is the same file
+   under the old name (0.80.0 and older look for that name when they update themselves).
+   The Linux program: "The Linux program" below.
+5. **Smoke test** the exe (the command line from source, `python -m legacy_roster`):
+   - `python -m legacy_roster list --rpcs3 <rpcs3.exe>`: lists the rosters, community rosters "ok";
+   - `python -m legacy_roster list --rpcs3 C:\Windows`: "That is not RPCS3…", exit code 1;
+   - start `dist\PuckPeakLegacyUpdater.exe`: the window appears within a few seconds with the
      Puck Peak logo, font and icon, and finds RPCS3 when it is running or was used before;
    - with a fresh `LOCALAPPDATA` (a temporary folder): the Photos row downloads by itself ("Downloading
-     automatically... %", then "Ready"); `NHLLegacyRosterUpdater-cli.exe packs status` lists both packs; a second start
+     automatically... %", then "Ready"); `python -m legacy_roster packs status` lists the packs; a second start
      without network still has them;
    - run one update into a **copy** of a savedata folder (`update --savedata <copy>`), or with
      `--dry-run`; with an EU roster in the copy, `--for both` must add an EU and an NA folder;
@@ -200,16 +201,37 @@ when the pack's layout changes in a way older exes cannot read, raise `PACK_FORM
    CHANGELOG.md (the release text is made from it) and keep the README's "What it updates" table
    in step.
 8. Publish (only with the owner's go-ahead): commit, tag `vX.Y.Z`, push, then a GitHub Release
-   with `NHLLegacyRosterUpdater.exe` and `SHA256SUMS.txt` (made by `build.ps1` in `dist\`). The data pack and the
+   with `PuckPeakLegacyUpdater.exe`, `NHLLegacyRosterUpdater.exe` (the same file, for copies of 0.80.0 and older),
+   `PuckPeakLegacyUpdater-<version>-linux.tar.gz` and `SHA256SUMS.txt` (made by `build.ps1` in `dist\`; add the
+   tar.gz's line to it). The data pack and the
    picture packs go to the file server (`tools/publish_packs.py`), not into the release. **The exe's own update check
-   (`app/selfupdate.py`) needs the exact asset names `NHLLegacyRosterUpdater.exe` and `SHA256SUMS.txt`
-   (or GitHub's own `digest` of the exe), and a tag like `v0.11.0` (a draft or prerelease is ignored).
+   (`app/selfupdate.py`) needs the exact asset names `PuckPeakLegacyUpdater.exe` (0.80.1 and newer) or
+   `NHLLegacyRosterUpdater.exe` (older copies) and `SHA256SUMS.txt` (or GitHub's own `digest` of the exe), and a tag like `v0.11.0` (a draft or prerelease is ignored).
    Programs before 0.32.0 still download the data pack from `releases/latest/download/datapack.json.gz` and refuse
    format 2: leave that asset out.** There is no `gh` on the
    owner's PC: the release is made through GitHub's REST API with git's stored login (`git
    credential fill`; 0.6-0.8 did it that way). Pushing the tag also starts
-   `.github/workflows/build.yml`, which tests on three systems and attaches the Mac zip and the
-   Linux tar.gz to the release (it waits for the release to exist).
+   `.github/workflows/build.yml`, which only runs the tests on Linux and Windows (it attaches nothing since 0.80.1).
+
+## The Linux program
+
+Built and checked in Docker boxes on any Linux machine with Docker (the owner's server; every image and container is
+named `legacy-linux-*`, at most 2 cores and 2 GB each, no ports, no folders of the machine):
+
+1. Pack the files git publishes: `git ls-files` (plus new files under `packaging/`) into a `.tgz`, and copy it and
+   `packaging/linux/build_in_docker.sh` to the machine.
+2. `bash build_in_docker.sh <source.tgz> <out>`: builds in `packaging/linux/Dockerfile` (Ubuntu 22.04, Python 3.12,
+   `packaging/build.sh`: PyInstaller one folder, the window's web engine Qt WebEngine from PySide6 inside, a check that
+   every library the program links to is inside or part of every Linux), then runs `packaging/linux_check.sh` in plain
+   Ubuntu 24.04, Fedora and Arch boxes (`packaging/linux/check/`). Each must say PASS: the new window opened on a
+   pretend screen, drew its page (`LEGACY_ROSTER_SMOKE`, `window/main.smoke`) and the screen is not blank, and `--help` runs. `<out>` gets
+   `PuckPeakLegacyUpdater-<version>-linux.tar.gz` and `window-<system>.png`; look at the pictures.
+3. Copy the tar.gz back, add its line to `SHA256SUMS.txt`, attach both to the release (step 8 above).
+
+Why not GitHub: 0.80.0's Linux program came from there, needed the system's WebKitGTK, and opened the classic window
+on players' PCs; nothing checked it. Why Qt and not GTK: a bundled WebKitGTK cannot start its own helper programs.
+The system's own libraries (libstdc++, libgbm, X11, fontconfig, glib ...) are taken out of the folder after the build: the graphics driver loads into the program and needs the system's newer ones (with the box's copies inside, Qt got no OpenGL and the window was black). `savedata.clean_environment` keeps the program's own libraries away from RPCS3 (a Qt program), the file manager and
+the browser.
 
 ## The game patch
 

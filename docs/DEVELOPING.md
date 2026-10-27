@@ -312,15 +312,16 @@ A team tab shows the team picked in the shared team list on the left. To add one
    `tests/test_app.py`'s FakeHost), add a `window_shot.py` state
    (`TEAM_STATES`), and look at it at 100 %, 150 %, 200 %, on a 768-line screen and at `--size 940x640`.
 
-## macOS and Linux
+## Linux (and macOS from source)
 
 `savedata.find_rpcs3` accepts the RPCS3 program (rpcs3.exe, rpcs3, an AppImage, RPCS3.app) or, off
 Windows, RPCS3's data folder; the data is looked for next to the program, then in
 `savedata.data_folders()`. The program's own files go to `datasource.data_home()`
 (`~/Library/Application Support`, `$XDG_DATA_HOME` or `~/.local/share`). Folders and pages open with
-`savedata.open_path`. Tests simulate both layouts (`tests/test_savedata.py`). Build there with
-`bash packaging/build.sh`; `.github/workflows/build.yml` runs the tests on all three systems and
-builds the Mac and Linux programs (from the Actions tab, or on a tag `v*`).
+`savedata.open_path`. Tests simulate both layouts (`tests/test_savedata.py`). The Linux program is built in a
+box (`packaging/linux/build_in_docker.sh`, MAINTAINING.md "The Linux program"); on Linux its window uses Qt WebEngine
+from PySide6 (`window/main.linux_engine`). There is no Mac program since 0.80.1; from source it runs on a Mac.
+`.github/workflows/build.yml` only runs the tests on Linux and Windows.
 
 ## Building the exe
 
@@ -331,10 +332,11 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 Creates `.venv` if needed, installs PyInstaller, pywebview, CustomTkinter, Pillow and certifi there (certifi's
 `cacert.pem` goes into the exe as `legacy_roster\data\cacert.pem`, see "Things that are not
 obvious"), and writes
-`dist\NHLLegacyRosterUpdater.exe` (window: `legacy_roster\web` added as data, `--collect-all` webview, pythonnet,
+`dist\PuckPeakLegacyUpdater.exe` (window: `legacy_roster\web` added as data, `--collect-all` webview, pythonnet,
 clr_loader and customtkinter; about 26 MB: no picture pack goes inside, `build.ps1` refuses a zip in
-`legacy_roster\data` and any `tools\clean_check.py` hit) and
-`dist\NHLLegacyRosterUpdater-cli.exe` (without Tk or pywebview). Both carry Pillow for "Photos and logos";
+`legacy_roster\data` and any `tools\clean_check.py` hit), and a copy `dist\NHLLegacyRosterUpdater.exe` under the
+old name for the update check of 0.80.0 and older copies. No command-line exe since 0.80.1. It carries Pillow for
+"Photos and logos";
 its image readers are named with `--hidden-import` because Pillow loads them by name.
 Close a running copy first: Windows does not let a running exe be replaced (the script stops
 with a message). `build/` and `dist/` are git-ignored.

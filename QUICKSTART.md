@@ -1,6 +1,6 @@
 # Quick start
 
-**NHL Legacy Roster Updater** brings the rosters of *NHL Legacy Edition* (PS3, played on RPCS3)
+**Puck Peak Legacy Updater** brings the rosters of *NHL Legacy Edition* (PS3, played on RPCS3)
 up to today: NHL, European leagues, AHL, juniors and national teams. A free community project
 from [Puck Peak](https://www.puckpeak.com).
 
@@ -22,18 +22,17 @@ from [Puck Peak](https://www.puckpeak.com).
 - **Front office:** each NHL team's payroll, cap space and contracts; change a contract yourself.
 - **Real free agents and drafts:** retired players gone, unsigned NHL players there, every player's
   real draft, and draft prospects on real clubs where the game's draft finds them.
-- **Windows, macOS and Linux**, with RPCS3 or with just a folder of roster saves.
+- **Windows and Linux**, with RPCS3 or with just a folder of roster saves.
 - **Safe:** an update is saved only after it passes a safety check, and the roster it changes is first
   copied to a backup folder (or choose **Save as a new roster** and nothing existing is touched).
 
 ## How to use it
 
-1. Download from [Releases](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest):
-   **`NHLLegacyRosterUpdater.exe`** on Windows, **`...-macos.zip`** on a Mac,
-   **`...-linux.tar.gz`** on Linux, and start it. The program is not signed: on Windows choose
-   *More info > Run anyway*, on a Mac right-click it and choose *Open*.
+1. Download from [Releases](https://github.com/MatusRiedl/puckpeak-nhl-legacy-updater/releases/latest):
+   **`PuckPeakLegacyUpdater.exe`** on Windows, **`...-linux.tar.gz`** on Linux (unpack it, start
+   `PuckPeakLegacyUpdater` in the folder). The program is not signed: on Windows choose *More info > Run anyway*.
 2. **Close RPCS3** if you want photos and logos.
-3. **Setup tab, "Where is RPCS3?":** pick the file `rpcs3.exe` in your RPCS3 folder (on a Mac or
+3. **Setup tab, "Where is RPCS3?":** pick the file `rpcs3.exe` in your RPCS3 folder (on
    Linux the program finds RPCS3 by itself). No RPCS3 on this computer? Tick **Export files to a
    folder** and pick the roster file (README, "Without RPCS3").
 4. **Setup tab, "Which roster do you work on?":** pick the roster to start from. *The game's own
@@ -64,5 +63,5 @@ from [Puck Peak](https://www.puckpeak.com).
 
 The full manual is in [README.md](README.md). Questions, news and help: our Discord,
 [gg.puckpeak.com](https://gg.puckpeak.com) (the **Join our Discord** button at the top of the Setup tab). Found a problem? Open an
-[issue](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/issues) and include the list of
+[issue](https://github.com/MatusRiedl/puckpeak-nhl-legacy-updater/issues) and include the list of
 changes or the error message.

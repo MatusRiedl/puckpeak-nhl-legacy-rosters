@@ -17,8 +17,8 @@ Recycle Bin, `savedata.trash_save`), never adds a
 team and never moves a team to another league (hard limits of the game).
 
 ```
- NHLLegacyRosterUpdater.exe ──► window/ + app/ ──┐   (the page in web/; gui.py = old window, fallback)
- NHLLegacyRosterUpdater-cli.exe ► cli.py ─────────┤
+ PuckPeakLegacyUpdater(.exe) ─► window/ + app/ ──┐   (the page in web/; gui.py = old window, fallback)
+ python -m legacy_roster <args> ► cli.py ─────────┤
                                                   ▼
                                     pipeline.update()
           ┌──────────────┬──────────────┬─────────┴────────┬───────────────┐
@@ -31,14 +31,15 @@ team and never moves a team to another league (hard limits of the game).
                      roster.py / tdb.py (read + write the save), layout.py (team slots)
 ```
 
-## The two programs
+## The programs
 
 | File | Built from | What it is |
 |---|---|---|
-| `NHLLegacyRosterUpdater.exe` | `packaging/launcher.py` | The window (about 26 MB). No pictures inside since 0.32.0: it downloads the picture packs (see "Photos and logos"). `legacy_roster.__main__.main()` opens the window when started without arguments and runs the command line when given some (but as a windowed program it has no console to print to). Since 0.6.0 the only window program (owner, 2026-10-04): 0.4–0.5 also had a plain one without the pictures. |
-| `NHLLegacyRosterUpdater-cli.exe` | `packaging/launcher_cli.py` | The command line (`list`, `update`, `export`, `photos`), with a console. Built without Tk. |
+| `PuckPeakLegacyUpdater.exe` (also published as `NHLLegacyRosterUpdater.exe`, the name before 0.80.1, for older copies' update check) | `packaging/launcher.py` | The window (about 26 MB). No pictures inside since 0.32.0: it downloads the picture packs (see "Photos and logos"). `legacy_roster.__main__.main()` opens the window when started without arguments and runs the command line when given some (but as a windowed program it has no console to print to). Since 0.6.0 the only window program (owner, 2026-10-04): 0.4–0.5 also had a plain one without the pictures. |
+| `PuckPeakLegacyUpdater-<version>-linux.tar.gz` | `packaging/launcher.py`, `packaging/build.sh` in a box | The Linux program, a folder: the same window with its own web engine (Qt WebEngine, PySide6, `window/main.linux_engine`); with arguments the command line, which prints to the terminal. MAINTAINING.md "The Linux program". |
 
-Both are PyInstaller **one-file** builds (`packaging/build.ps1`). On every start the exe unpacks
+No Mac program and no command-line exe since 0.80.1 (owner); `packaging/launcher_cli.py` stays for building one by
+hand. The Windows exe is a PyInstaller **one-file** build (`packaging/build.ps1`). On every start the exe unpacks
 Python, the `legacy_roster` package and `legacy_roster/data/` into a temporary `_MEI…` folder, so
 the window takes about 3 seconds to appear. Code finds its files through `__file__`
 (`theme.DATA`, `datasource.BUNDLED_PACK`), which works the same from source and from the exe.
@@ -47,7 +48,7 @@ The exe is not signed, so Windows SmartScreen warns on first start.
 Dependencies: the engine and the command line use only the Python standard library, except
 "Photos and logos", which draws pictures with Pillow (`art/images.py`, imported only when the
 switch is on; both exes carry it). The window adds [pywebview](https://pywebview.flowrl.com)
-(Edge WebView2 through pythonnet on Windows, WebKit on Mac / Linux) and, for the classic window kept as a fallback in
+(Edge WebView2 through pythonnet on Windows, Qt WebEngine on Linux, WebKit on a Mac from source) and, for the classic window kept as a fallback in
 0.10.x, [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter). PyInstaller is used only to build.
 
 ## Without RPCS3

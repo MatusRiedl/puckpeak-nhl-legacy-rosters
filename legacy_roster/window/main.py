@@ -86,6 +86,42 @@ def window_box(webview):
         return WIDTH, HEIGHT, None, None
 
 
+def linux_engine():
+    """Linux: the program brings its own web engine (Qt WebEngine through PySide6, packaging/build.sh), since many
+    systems lack WebKitGTK and a bundled one cannot start its helpers (0.80.0 opened the classic window that way).
+    'qt' when PySide6 is there, else None (from source: pywebview picks GTK or Qt itself)."""
+    if not sys.platform.startswith('linux'):
+        return None
+    try:
+        import PySide6  # noqa: F401
+    except ImportError:
+        return None
+    from .. import savedata
+    # the engine's sandbox needs user namespaces, which Ubuntu 24.04 and containers refuse to programs outside the
+    # system; the page is the program's own, links open in the player's browser
+    for var, value in (('QT_API', 'pyside6'), ('QTWEBENGINE_DISABLE_SANDBOX', '1')):
+        if var not in os.environ:
+            os.environ[var] = value
+            savedata.OUR_VARIABLES.add(var)
+    return 'qt'
+
+
+def smoke(window, gui, seconds):
+    """The build's check (packaging/linux_check.sh, LEGACY_ROSTER_SMOKE=<seconds>): once the page has drawn, write what
+    shows into logs/smoke.txt, keep the window `seconds` for a picture, then close it."""
+    import time
+    window.events.loaded.wait(90)
+    time.sleep(3)
+    try:
+        buttons = window.evaluate_js("document.querySelectorAll('button').length")
+    except Exception as err:
+        buttons = f"failed: {err}"
+    with open(datasource.app_dir('logs', 'smoke.txt'), 'w', encoding='utf-8') as f:
+        f.write(f"window {gui or 'default'} buttons {buttons}\n")
+    time.sleep(seconds)
+    window.destroy()
+
+
 QUEUE = 64
 
 
@@ -101,21 +137,22 @@ def main(argv=None, after=None):
     argv = sys.argv[1:] if argv is None else argv
     if '--classic' in argv:
         if not classic(None):
-            webview2.message("Legacy Roster Updater", "The classic window is not part of this program.")
+            webview2.message("Puck Peak Legacy Updater", "The classic window is not part of this program.")
         return
     if missing_files():
-        webview2.message("Legacy Roster Updater", X.MISSING_FILES)
+        webview2.message("Puck Peak Legacy Updater", X.MISSING_FILES)
         return
     if not webview2.available():
         if classic("no WebView2 Runtime"):
             return
-        if webview2.message("Legacy Roster Updater",
+        if webview2.message("Puck Peak Legacy Updater",
                             "This program needs Microsoft Edge WebView2 Runtime, a free part of Windows from Microsoft.\n\n"
                             "Open the download page now? Install the \"Evergreen Bootstrapper\", then start this "
                             "program again.", ask=True):
             import webbrowser
             webbrowser.open(webview2.DOWNLOAD)
         return
+    gui = linux_engine()
     try:
         import webview
     except ImportError as err:
@@ -174,7 +211,7 @@ def main(argv=None, after=None):
     host.register('online', online.snapshot)
     api = Api(host, update, editor, uniforms, equipment, lines, strategy, calendar, office, prospects, career, online)
     width, height, x, y = window_box(webview)
-    window = webview.create_window(f"Puck Peak  -  Legacy Roster Updater {__version__}",
+    window = webview.create_window(f"Puck Peak Legacy Updater {__version__}",
                                    url=os.path.join(WEB, 'index.html'), js_api=api, width=width, height=height,
                                    x=x, y=y, min_size=MIN_SIZE, background_color=BACKGROUND, text_select=False)
     host.attach(window)
@@ -189,8 +226,10 @@ def main(argv=None, after=None):
                    'lines': lines, 'strategy': strategy, 'calendar': calendar, 'office': office,
                    'prospects': prospects, 'career': career, 'online': online}
     roomy_server()
+    if after is None and os.environ.get('LEGACY_ROSTER_SMOKE'):
+        after = lambda win, _c: smoke(win, gui, float(os.environ['LEGACY_ROSTER_SMOKE']))   # noqa: E731
     try:
-        webview.start(func=(lambda: after(window, controllers)) if after else None,
+        webview.start(func=(lambda: after(window, controllers)) if after else None, gui=gui,
                       http_server=True, private_mode=True, storage_path=datasource.app_dir('webview'),
                       debug=os.environ.get('LEGACY_ROSTER_DEVTOOLS') == '1',
                       icon=os.path.join(DATA, 'app.ico' if os.name == 'nt' else 'app_256.png'))
@@ -198,6 +237,6 @@ def main(argv=None, after=None):
         from ..app import jobs
         jobs.log_unexpected(err)
         if not classic(f"pywebview failed: {err}"):
-            webview2.message("Legacy Roster Updater",
-                             f"The window could not start: {err}\n\nThe command line works without it "
-                             "(NHLLegacyRosterUpdater-cli).")
+            webview2.message("Puck Peak Legacy Updater",
+                             f"The window could not start: {err}\n\nPlease send us the error log: "
+                             f"{datasource.app_dir('logs', 'error.log')}")

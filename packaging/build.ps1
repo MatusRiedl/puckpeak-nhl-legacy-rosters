@@ -1,7 +1,11 @@
 # Build the Windows program into dist\ :
-#   NHLLegacyRosterUpdater.exe          the window (double-click); its pictures (photos, logos, this season's jerseys and
+#   PuckPeakLegacyUpdater.exe           the window (double-click; with arguments it is the command line, as
+#                                       `python -m legacy_roster`); its pictures (photos, logos, this season's jerseys and
 #                                       centre ice) are not inside: it downloads them (legacy_roster\packs.py)
-#   NHLLegacyRosterUpdater-cli.exe      the same engine on the command line
+#   NHLLegacyRosterUpdater.exe          the same file under the name it had until 0.80.0: copies of 0.80.0 and older look
+#                                       for that name in a release (app\selfupdate.OLD_EXE_ASSET), so 0.80.1 carries both
+#   SHA256SUMS.txt                      the checksums of both
+# No command-line exe and no Mac program since 0.80.1 (owner); the Linux program: packaging/build.sh.
 #
 # Uses its own virtual environment (.venv) so nothing is installed into your Python.
 #   powershell -ExecutionPolicy Bypass -File packaging\build.ps1
@@ -10,8 +14,8 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$running = Get-Process -Name NHLLegacyRosterUpdater, NHLLegacyRosterUpdater-Photos, NHLLegacyRosterUpdater-cli -ErrorAction SilentlyContinue
-if ($running) { throw "Close NHLLegacyRosterUpdater first: Windows does not let a running program be replaced." }
+$running = Get-Process -Name PuckPeakLegacyUpdater, NHLLegacyRosterUpdater, NHLLegacyRosterUpdater-Photos, NHLLegacyRosterUpdater-cli -ErrorAction SilentlyContinue
+if ($running) { throw "Close PuckPeakLegacyUpdater first: Windows does not let a running program be replaced." }
 
 $py = Join-Path $root '.venv\Scripts\python.exe'
 if (-not (Test-Path $py)) {
@@ -46,16 +50,15 @@ $zips = Get-ChildItem $data -Filter '*.zip*' -ErrorAction SilentlyContinue
 if ($zips) { throw "legacy_roster\data holds $($zips.Name -join ', '): packs never go inside the program (private\packs)." }
 & $py tools\clean_check.py
 if ($LASTEXITCODE -ne 0) { throw "tools\clean_check.py found words that must not ship (see above)" }
-$old = Join-Path $root 'dist\NHLLegacyRosterUpdater-Photos.exe'     # the second exe of 0.4-0.5
-if (Test-Path $old) { Remove-Item -Force $old }
+foreach ($old in 'NHLLegacyRosterUpdater-Photos.exe', 'NHLLegacyRosterUpdater-cli.exe', 'NHLLegacyRosterUpdater.exe') {
+    $path = Join-Path $root "dist\$old"         # programs of earlier builds
+    if (Test-Path $path) { Remove-Item -Force $path }
+}
 & $py -m PyInstaller @common --windowed --add-data "$web;legacy_roster\web" `
     --collect-all webview --collect-all pythonnet --collect-all clr_loader --collect-all customtkinter `
-    --name NHLLegacyRosterUpdater packaging\launcher.py
+    --name PuckPeakLegacyUpdater packaging\launcher.py
 if ($LASTEXITCODE -ne 0) { throw "building the window program failed" }
-& $py -m PyInstaller @common --console --exclude-module customtkinter --exclude-module tkinter `
-    --exclude-module webview --exclude-module pythonnet --exclude-module clr_loader --exclude-module clr `
-    --name NHLLegacyRosterUpdater-cli packaging\launcher_cli.py
-if ($LASTEXITCODE -ne 0) { throw "building the command-line program failed" }
+Copy-Item dist\PuckPeakLegacyUpdater.exe dist\NHLLegacyRosterUpdater.exe
 
 # checksums of the programs, to attach to the release (the update check compares the download with them)
 Get-ChildItem dist\*.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |

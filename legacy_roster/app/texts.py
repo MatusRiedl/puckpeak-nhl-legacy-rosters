@@ -197,7 +197,7 @@ NHL_NOTE = "Today's rosters from NHL.com"
 MISSING_FILES = ("Some of this program's files are missing from the system's temporary folder. An antivirus "
                  "or a cleaning program may have removed them.\n\n"
                  "Close this message and start the program again. If it keeps happening, "
-                 "allow NHLLegacyRosterUpdater in your antivirus.")
+                 "allow PuckPeakLegacyUpdater in your antivirus.")
 
 
 def friendly_date(when, now=None):

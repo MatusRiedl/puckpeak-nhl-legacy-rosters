@@ -1,11 +1,11 @@
 <div align="center">
 
-# 🏒 NHL Legacy Roster Updater
+# 🏒 Puck Peak Legacy Updater
 
 ### The ultimate toolkit for **NHL Legacy Edition** on PS3 / RPCS3.
 *One click and your 2014 game plays the 2026-27 season.*
 
-[**⬇ Download the latest version**](https://github.com/MatusRiedl/puckpeak-nhl-legacy-rosters/releases/latest)
+[**⬇ Download the latest version**](https://github.com/MatusRiedl/puckpeak-nhl-legacy-updater/releases/latest)
 &nbsp;·&nbsp; [Quick start](QUICKSTART.md) &nbsp;·&nbsp; [What's new](CHANGELOG.md)
 
 [![Join the Puck Peak Discord](https://img.shields.io/badge/Discord-Join_Puck_Peak-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://gg.puckpeak.com)
@@ -40,7 +40,7 @@ Questions, news and help: **[gg.puckpeak.com](https://gg.puckpeak.com)**
 
 ## 🚀 Get started
 
-1. Download `NHLLegacyRosterUpdater.exe` (about 26 MB; Windows; Mac and Linux builds, both still beta, are on the release page too).
+1. Download `PuckPeakLegacyUpdater.exe` (about 26 MB, Windows) or `PuckPeakLegacyUpdater-<version>-linux.tar.gz` (Linux) from the release page.
 2. In **Setup**, show it where `rpcs3.exe` is and pick a roster. In **Update**, switch on what you want and press **Update roster**.
 3. Start the game. That is all.
 
@@ -109,19 +109,17 @@ players. It keeps the name, city and logo you gave it, and it stays with the oth
 (for exhibition games), because the game does not let a custom team join a league. Do not rename
 one of the game's own teams instead: the update gives that team its real club back.
 
-## macOS and Linux
+## Linux
 
-The program runs on Windows, macOS and Linux. On a Mac or a Linux PC, RPCS3 keeps its saves in a
-folder of its own: `~/Library/Application Support/rpcs3` on a Mac, `~/.config/rpcs3` on Linux
-(`~/.var/app/net.rpcs3.RPCS3/config/rpcs3` for the Flatpak). The program finds that folder by
-itself; if it does not, press **Find RPCS3** in Setup and pick it.
+The Linux program has the same window and tabs as the Windows one. On Linux, RPCS3 keeps its saves in
+`~/.config/rpcs3` (`~/.var/app/net.rpcs3.RPCS3/config/rpcs3` for the Flatpak). The program finds that folder by
+itself; if it does not, press **Find RPCS3** in Setup and pick your RPCS3 AppImage, the `rpcs3` program or that folder.
 
-- **Download:** `NHLLegacyRosterUpdater-<version>-macos.zip` (Mac: unzip, right-click the app,
-  *Open*) and `NHLLegacyRosterUpdater-<version>-linux.tar.gz` (Linux: unpack, run
-  `./NHLLegacyRosterUpdater`), on the release page. They are built on GitHub's machines
-  (`.github/workflows/build.yml`) and attached to the release a few minutes after it appears.
-- **Or run it from source** (below) with Python 3.10 or newer and `pip install pywebview pillow`
-  (on Linux also WebKitGTK, `gir1.2-webkit2-4.1`, and PyGObject).
+- **Download:** `PuckPeakLegacyUpdater-<version>-linux.tar.gz` from the release page. Unpack it and start
+  `PuckPeakLegacyUpdater` in the folder (on a Steam Deck in Desktop Mode). Nothing to install: it brings its own web
+  engine. 64-bit Linux from 2022 or newer (Ubuntu 22.04, Debian 12, Fedora, Arch, SteamOS 3).
+- **Mac:** there is no Mac program (since 0.80.1). Run it from source (below) with Python 3.10 or newer and
+  `pip install pywebview pillow`, or use **Export files to a folder** on another PC.
 
 ## Without RPCS3 (a Mac, a Linux PC, CrossOver, Wine)
 
@@ -374,7 +372,7 @@ The window has ten tabs in one row: **Setup**, **Update** and **Game patch**, th
 **Roster**, **Lines**, **Strategy**, **Jerseys & ice**, **Calendar** and **Front office**, and **Draft & Pro** (above).
 Ctrl+1 to Ctrl+9 and Ctrl+0 open a tab; Ctrl+PgUp and Ctrl+PgDn go to the tab on the left or right.
 
-1. Download `NHLLegacyRosterUpdater.exe` from the Releases page and start it.
+1. Download `PuckPeakLegacyUpdater.exe` (Linux: the `-linux.tar.gz`) from the Releases page and start it.
 2. **Setup: Where is RPCS3?** Pick the file `rpcs3.exe` in your RPCS3 folder. The program finds your
    saves from there, also when RPCS3 keeps its hard disk somewhere else or has several users. If
    RPCS3 is running, or you have used the program before, this is already filled in. **Downloads**
@@ -433,26 +431,27 @@ team, with a search box. The same list is saved as a spreadsheet file next to it
 - **"Could not connect safely"?** Check that the date and time on your PC are right. An antivirus
   that checks web traffic can also cause it: turn its web or HTTPS scanning off for a moment.
 - **"Some of this program's files are missing"?** An antivirus or a cleaning program removed them
-  while the program started. Start it again, and allow `NHLLegacyRosterUpdater.exe` in your antivirus.
+  while the program started. Start it again, and allow `PuckPeakLegacyUpdater.exe` in your antivirus.
 - **Real PS3 console:** saves there are signed. Copy the new save over and re-sign it with a save
   tool such as Apollo. This is untested.
 
 ## Command line
 
-`NHLLegacyRosterUpdater-cli.exe` does the same without a window:
+The command line does the same without a window: from source on any system (`python -m legacy_roster ...`), or the
+Linux program with arguments (`./PuckPeakLegacyUpdater ...`). There is no separate command-line exe since 0.80.1.
 
 ```
-NHLLegacyRosterUpdater-cli list   --rpcs3 "C:\RPCS3\rpcs3.exe"
-NHLLegacyRosterUpdater-cli update --rpcs3 "C:\RPCS3\rpcs3.exe" --source BLES021530202 --leagues nhl,ratings,national,ahl
-NHLLegacyRosterUpdater-cli export --rpcs3 "C:\RPCS3\rpcs3.exe" --source BLES021530202 --out tables
-NHLLegacyRosterUpdater-cli update --rpcs3 "C:\RPCS3\rpcs3.exe" --source disc:NA
+python -m legacy_roster list   --rpcs3 "C:\RPCS3\rpcs3.exe"
+python -m legacy_roster update --rpcs3 "C:\RPCS3\rpcs3.exe" --source BLES021530202 --leagues nhl,ratings,national,ahl
+python -m legacy_roster export --rpcs3 "C:\RPCS3\rpcs3.exe" --source BLES021530202 --out tables
+python -m legacy_roster update --rpcs3 "C:\RPCS3\rpcs3.exe" --source disc:NA
 ```
 
 `--leagues` takes `nhl`, `ratings`, `national`, `liiga`, `extraliga`, `shl`, `del`, `nl`, `norway`,
 `ahl`, `chl` or `all`; without it, everything is updated. `--for EU`, `--for NA` or `--for both`
 chooses the version(s) of the game to save for (default: the version of the roster you start from).
 `--source disc` (or `disc:EU`, `disc:NA`) starts from the game's own roster. `--photos` adds photos and
-logos (RPCS3 closed); `NHLLegacyRosterUpdater-cli photos remove` takes them away. `--savedata <folder>` can be
+logos (RPCS3 closed); `photos remove` takes them away. `--savedata <folder>` can be
 given instead of `--rpcs3` to name a save folder directly. `game-patch install --rpcs3 <rpcs3.exe>
 [--skip-intro] [--no-login]` patches the game (32 teams and the year 2026), `game-patch status` says whether it is,
 `game-patch remove` takes it out; `update --rpcs3` makes a roster for the game as it is in that RPCS3. `export` writes every table of a roster as

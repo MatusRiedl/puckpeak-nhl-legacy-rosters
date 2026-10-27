@@ -141,7 +141,7 @@ class App:
         except datasource.Offline:
             self.pack = {}
 
-        root.title(f"Puck Peak  -  Legacy Roster Updater {__version__}")
+        root.title(f"Puck Peak Legacy Updater {__version__}")
         # as tall as the content likes, but never taller than the screen (768-line laptops)
         room = T.screen_height(root) - 90
         root.geometry(f"1000x{max(MIN_HEIGHT, min(780, room))}")
@@ -200,7 +200,7 @@ class App:
         link.bind('<Leave>', lambda _e: link.configure(font=T.font(14, 'semibold')))
         line = self.title_line = ctk.CTkFrame(head, fg_color='transparent')
         line.pack(pady=(0, 6))
-        ctk.CTkLabel(line, text="LEGACY ROSTER UPDATER", font=T.font(13, 'bold'), text_color=T.TEXT).pack(side='left')
+        ctk.CTkLabel(line, text="LEGACY UPDATER", font=T.font(13, 'bold'), text_color=T.TEXT).pack(side='left')
         ctk.CTkLabel(line, text=f"   |   NHL Legacy Edition on RPCS3   |   version {__version__}",
                      font=T.font(13), text_color=T.MUTED).pack(side='left')
         tk.Label(self.root, image=T.glow_line(self.root, 760), bg=T.BG, bd=0).pack()
@@ -1239,7 +1239,7 @@ def main():
     if T.missing_files():
         root.withdraw()
         messagebox.showerror(
-            "Legacy Roster Updater",
+            "Puck Peak Legacy Updater",
             "Some of this program's files are missing from the system's temporary folder. An antivirus "
             "or a cleaning program may have removed them.\n\n"
             "Close this message and start the program again. If it keeps happening, "
