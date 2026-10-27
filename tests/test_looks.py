@@ -248,6 +248,28 @@ def test_median_and_one_colour_number_sheets():
     assert looks.recolour_sheet(sheet, (200, 20, 20), (0, 0, 0)).getpixel((2, 2))[3] == 0
 
 
+def test_a_number_sheet_gets_its_own_colours_for_names_digits_rings_and_small_digits():
+    """The names are not the digits' colour, the digits have two rings, and a light kit's small digits are not swapped."""
+    for light, digit, outline in ((False, (234, 234, 234), (27, 27, 27)), (True, (130, 17, 19), (27, 27, 27))):
+        sheet = Image.new('RGBA', (512, 512), (0, 0, 0, 0))
+        sheet.paste(digit + (255,), (40, 5, 120, 40))                           # a letter
+        sheet.paste(outline + (255,), (30, 140, 130, 250))                      # a digit: outline round its fill
+        sheet.paste(digit + (255,), (36, 146, 124, 244))
+        sheet.paste((234, 234, 234, 255), (40, 400, 120, 440))                  # a small digit: white fill, red outline
+        sheet.paste((130, 17, 19, 255), (36, 396, 124, 444))
+        sheet.paste((234, 234, 234, 255), (40, 400, 120, 440))
+        out = looks.recolour_numbers(sheet, light, (220, 60, 28), (28, 36, 92), (236, 236, 236), (212, 212, 212))
+        assert out.getpixel((80, 20))[:3] == (212, 212, 212)                    # the letter wears the names' colour
+        assert out.getpixel((80, 200))[:3] == (220, 60, 28)                     # the digit its fill
+        assert out.getpixel((32, 200))[:3] == (28, 36, 92)                      # the ring round it
+        assert out.getpixel((29, 200))[:3] == (236, 236, 236) and out.getpixel((29, 200))[3] == 255   # the second ring
+        assert out.getpixel((80, 420))[:3] == (220, 60, 28)                     # the small digit's fill, dark and light alike
+        assert out.getpixel((38, 420))[:3] == (28, 36, 92)                      # and its ring
+        assert out.getpixel((2, 2))[3] == 0
+    plain = looks.recolour_numbers(sheet, True, (220, 60, 28), (28, 36, 92), None, (212, 212, 212))
+    assert plain.getpixel((29, 200))[3] == 0                                    # no second ring: the shape stays as it is
+
+
 def test_pack_looks_cover_every_league_and_leave_out_a_slot_holding_another_club(base_dir, tmp_path, make_look_pack):
     from legacy_roster.roster import Roster
     R = Roster(os.path.join(base_dir, 'SYS-DATA'))

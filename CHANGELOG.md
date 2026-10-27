@@ -5,6 +5,31 @@ What changed in each version, for players. Developers: details in [AGENTS.md](AG
 
 ## 0.76.0 (2026-10-27)
 
+**Highlights** (this version also carries everything from the test versions 0.60.0 to 0.75.0 below):
+
+1. **Play online with a friend.** A new tab: make a lobby with a six-letter code (or list it publicly), your friend joins,
+   you both press Ready and RPCS3 starts on both PCs and takes you straight to Select Teams. The lobby host's roster is sent
+   to the friend, so you both play with the same players. Europe and US games can play each other; a mixed pair is warned
+   that the match may lose step.
+2. **Linux support.** The program starts RPCS3 for you whether it is the `rpcs3` program, an AppImage or the Flatpak, finds
+   its log and takes the program or its folder in the RPCS3 picker. (Not tried on a real Linux PC yet.)
+3. **Export files to a folder** (Windows, Linux, Flatpak, Mac): everything the program would put into RPCS3, laid out like
+   RPCS3's own folders with a `HOW-TO-INSTALL.txt` for your system. Nothing in RPCS3 is changed.
+4. **Download only the pictures you want.** The picture switch is split into Team names (no download, quick), Photos and
+   logos, This season's jerseys and centre ice, NHL arenas, Bright ice and Team goalie masks, each with its own Restore.
+5. **Newer arenas, centre ice and masks.** Newer boards and banners in the 32 NHL arenas, sharper centre-ice circles
+   (Bright ice) and the goalie masks of the teams.
+6. **This season's jerseys with the right names and numbers.** Names have their own colour, numbers keep their two
+   outlines, small numbers on light jerseys are the right way round.
+7. **Real equipment.** Sock tuck, pant length, stick tape and goalie neck guard follow the real players, and the Equipment
+   window uses the game's own words.
+8. **Real arenas and colours.** All 32 NHL arenas and team colours, and the AHL clubs in their current arenas, with their
+   capacities.
+9. **Lines and roster fixes.** Picking a player in Lines changes only the spot you picked; a damaged roster save is listed
+   as "Cannot be used" instead of breaking the list; online no longer loads forever at a resolution scale other than 100 %.
+
+### All changes
+
 - **Pictures are split into switches, so you download only what you want.** "Photos, logos and team names" is now two
   rows in step 4 of the Update tab. **Team names** needs no download and is on to start with. **Photos and logos** is one
   switch for everything heavy: press its arrow to choose the parts (**Player photos and team logos**, about 105 MB;
@@ -17,6 +42,10 @@ What changed in each version, for players. Developers: details in [AGENTS.md](AG
 - **Bright ice.** Sharper centre-ice circles with the arenas' current names, on solid white ice. It is the other way to get a new centre ice:
   "This season's jerseys and centre ice" and Bright ice never run together (turning one on turns the other off), and the
   group switch turns on this season's.
+- **Jersey names and numbers in the right colours.** The player names on the back were painted in the colour of the
+  numbers (orange names on Edmonton's blue jersey), and numbers lost their outline when it was thin or shared the
+  shirt's colour. Now the names have their own colour, the numbers keep their two outlines and the small numbers on light
+  jerseys are the right way round. Needs the updated jersey download; jerseys already installed are redrawn once.
 - **Team goalie masks.** The goalie masks of the teams (Utah, Seattle and Vegas keep the game's own masks for now). A
   goalie's own mask picture from the Roster editor always wins.
 - **Team names alone are quick.** An update with only Team names on downloads nothing and takes seconds. RPCS3 must be
