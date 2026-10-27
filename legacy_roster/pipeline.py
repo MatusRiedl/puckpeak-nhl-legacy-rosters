@@ -570,7 +570,7 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
         from .art import portraits
         say("Photos and logos: choosing the pictures")
         art = portraits.plan(b, pictures.registry, own_only=pictures.own_only, claims=pictures.claims,
-                             check=pictures.check, moved=pictures.moved)
+                             check=pictures.check, moved=pictures.moved, names_on=getattr(pictures, 'names_on', None))
     elif art_registry is not None:
         from .art import portraits
         say("Photos and logos: choosing the pictures")
@@ -682,7 +682,7 @@ class UpdateResult:
         if self.db_note:
             lines.append("The game patch could not be brought up to date: " + self.db_note)
         if not self.patch_art:
-            lines.append("Switch on \"Photos, logos and team names\" too: without it Season shows Seattle and Vegas "
+            lines.append("Switch on \"Team names\" too: without it Season shows Seattle and Vegas "
                          "as the All-Star teams.")
         return lines
 
@@ -705,7 +705,7 @@ def write_report(result, title, heading=None, leagues=None):
 def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress=None,
            offline=False, dry_run=False, data=None, art_rpcs3=None, art_registry=None, my_edits=None,
            team_edits=None, targets=None, disc=None, in_place=False, backup_root=None, restore_parts=None,
-           default=None, rpcs3=None, game_patch=None):
+           default=None, rpcs3=None, game_patch=None, art_parts=None):
     """The whole job: read the chosen roster save, gather data, build, check, write a new save.
 
     `save_folder`: anything savedata.find_savedata() accepts. `source_folder`: the roster save to
@@ -713,7 +713,9 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
     `targets`: the versions of the game to save the new roster for (title ids, see
     savedata.GAMES); default the source's own. One new save folder each.
     `art_rpcs3` (a savedata.Rpcs3) switches photos and logos on: they are installed into that
-    RPCS3's game folders (one per target) after the new roster is saved (RPCS3 must be closed).
+    RPCS3's game folders (one per target) after the new roster is saved (RPCS3 must be closed). `art_parts` (art/parts.py)
+    says which: default team names, photos and logos, and this season's jerseys and centre ice (the one switch of before
+    0.76.0); the arenas, bright ice and team masks are asked for by name.
     `disc` (a savedata.DiscSlot) starts from the game's own roster on the player's disc instead of a
     roster save; `save_folder` is then the save folder itself (it may not exist yet).
     `in_place` updates the chosen roster save itself instead of making a new one (savedata.update_in_place:
@@ -741,7 +743,7 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
             raise FileNotFoundError("The game's own roster was not found: there is no clean roster save and no game disc.")
         if restore.CALENDAR in parts:
             steps = [s for s in steps if s != SCHEDULE]
-        if restore.PICTURES in parts and not dry_run and savedata.running_rpcs3():
+        if (restore.PICTURES in parts or restore.pictures_of(parts)) and not dry_run and savedata.running_rpcs3():
             raise savedata.InPlaceError("Close RPCS3 first: the game's own pictures can only be put back while the game is closed.")
         if restore.PATCH in parts and not dry_run and savedata.running_rpcs3():
             raise savedata.InPlaceError("Close RPCS3 first: the game patch can only be taken out while RPCS3 is closed.")
@@ -796,7 +798,10 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
         # the pictures are made from the disc of a version RPCS3 knows; the other version gets copies
         art_title = next((t for t in targets if pic_rpcs3.game_disc(t)), targets[0])
         try:
-            pictures = Pictures(pic_rpcs3, art_title, targets, own_only=own, registry=art_registry, say=say)
+            from .art import parts as art_kinds
+            shown = frozenset(art_parts) if art_parts is not None else art_kinds.LEGACY
+            pictures = Pictures(pic_rpcs3, art_title, targets, own_only=own, registry=art_registry, say=say,
+                                parts=frozenset() if own else shown)
         except install.ArtError as err:
             if not own:
                 raise
@@ -907,6 +912,14 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
             done.restored.append("The game's own pictures, team names and jerseys are back." if n else
                                  "No photos or logos were installed: the pictures are the game's own.")
         then("The game's own pictures could not be put back", unpicture)
+    elif restore.pictures_of(parts):
+        from .art import install
+
+        def unparts():
+            n = install.remove_parts(restore.pictures_of(parts), say)
+            done.restored.append("The game's own pictures are back for what you restored." if n else
+                                 "Nothing of that was installed: the pictures are the game's own.")
+        then("The game's own pictures could not be put back", unparts)
     if restore.ROSTERS in parts:
         done.restored.insert(0, "The rosters start from " + restore.describe(default)[0].lower() + restore.describe(default)[1:])
     if restore.CALENDAR in parts:
@@ -917,44 +930,60 @@ def update(save_folder, source_folder=None, steps=ALL_STEPS, name=None, progress
 class Pictures:
     """Photos and logos for one update or one Roster editor save on this PC: what portraits.plan needs before the
     build (the numbers other rosters and packs use, the photos that make no picture) and the install after the save
-    (put_in). `own_only`: the player's own pictures alone (photos and logos are off). Raises install.ArtError when
+    (put_in). `parts` (art/parts.py): what is switched on; default photos, logos, names and this season's looks (the
+    one switch of before 0.76.0), none when `own_only`: the player's own pictures alone. Raises install.ArtError when
     they cannot go in now (RPCS3 runs, no disc)."""
 
-    def __init__(self, rpcs3, title_id, targets=None, own_only=False, registry=None, say=None):
+    def __init__(self, rpcs3, title_id, targets=None, own_only=False, registry=None, say=None, parts=None):
         from .art import install, portraits
+        from .art import parts as P
         say = say or (lambda msg: None)
-        install.check(rpcs3, title_id, own=own_only)
-        self.rpcs3, self.title_id, self.own_only = rpcs3, title_id, own_only
+        self.parts = frozenset(parts if parts is not None else (() if own_only else P.LEGACY))
+        self.photos = P.PHOTOS in self.parts
+        self.own_only = not self.photos         # photos and logos are off: the player's own pictures only
+        self.names_on = P.NAMES in self.parts
+        install.check(rpcs3, title_id, own=not self.parts)
+        self.rpcs3, self.title_id = rpcs3, title_id
         self.targets = list(targets or [title_id])
         self.registry = registry or portraits.Registry()
         self.claims = install.scan_claims(rpcs3)
         # numbers of ours someone else uses: those players get fresh ones, the files go back after the save
-        self.moved = {} if own_only else portraits.forget_conflicts(self.registry, self.claims)
+        self.moved = {} if self.own_only else portraits.forget_conflicts(self.registry, self.claims)
         self.check = lambda links: install.prefetch(links, rpcs3, title_id, say=say)
 
     def put_in(self, result, say):
         """After the roster is saved: its pictures into the game. Returns (what UpdateResult.art holds, teams in this
         season's jerseys, whether the list of changes got rows about pictures that could not be made)."""
         from .art import install
+        from .art import parts as P
         self.registry.save()             # the new roster uses these ids now
         portraits_, logos, names = result.art
-        if not self.own_only:           # a roster for the patched game: Coachella Valley's / Henderson's logos under 900 / 901
+        if self.photos:                 # a roster for the patched game: Coachella Valley's / Henderson's logos under 900 / 901
             from .art import clubart
             logos = clubart.rekey_logos(Roster(result.data), logos)
         bad = result.builder.bad_pictures
         skipped = [('photo', url, why) for url, why in sorted(bad.items())]
         look_teams = 0
-        if self.own_only and not (portraits_ or logos or bad):
+        own = bool(portraits_ or logos or bad)
+        if not (self.parts - {P.PHOTOS}) and self.own_only and not own:
             return None, 0, False       # none of the player's own pictures is in this roster
         try:
-            if not self.own_only:
+            if self.photos:
                 install.give_back((set(self.moved) | self.claims.contested()) - set(portraits_), say)
+            if P.LOOKS in self.parts:
                 look_teams = install_looks(result, self.rpcs3, self.title_id, self.targets, say)
+            if self.photos:
                 install_crests(result, self.rpcs3, self.title_id, self.targets, say)
                 install_masks(result, self.rpcs3, self.title_id, self.targets, say)
-            art = install.install(self.rpcs3, self.title_id, portraits_, logos, say, names=names,
-                                  also=[t for t in self.targets if t != self.title_id], skipped=skipped,
-                                  menus=not self.own_only)
+            for part, work in ((P.ARENAS, install_arenas), (P.BRIGHT_ICE, install_bright_ice),
+                               (P.TEAM_MASKS, install_team_masks)):
+                if part in self.parts:
+                    work(result, self.rpcs3, self.title_id, self.targets, say)
+            art = (0, 0, 0)
+            if self.photos or own or self.names_on:
+                art = install.install(self.rpcs3, self.title_id, portraits_, logos, say, names=names,
+                                      also=[t for t in self.targets if t != self.title_id], skipped=skipped,
+                                      menus=self.names_on, pictures=self.photos or own)
             art = (art[0], art[1], art[2] + len(bad))
         except install.ArtError as err:  # the roster is saved; only the pictures are missing
             say(str(err))
@@ -1026,6 +1055,62 @@ def install_masks(result, rpcs3, title, targets, say):
                             also=[t for t in targets if t != title])
     except Exception as err:
         say(f"Goalie masks: left out ({err})")
+
+
+def _extra(name, what, say):
+    """The small pack `name` (art/extrapack.py) or None, with a line for the player when it is not on this PC yet."""
+    from .art.extrapack import ExtraPack
+    pack = ExtraPack.open(name)
+    if pack is None:
+        say(f"{what}: the download is not here yet, so nothing was changed. Try again in a moment.")
+    return pack
+
+
+def install_arenas(result, rpcs3, title, targets, say):
+    """The NHL arenas' newer pictures (art/arenas.py, the "Arenas" switch)."""
+    from .art import arenas
+    pack = _extra('arenas', "Arenas", say)
+    if pack is None:
+        return
+    skipped = []
+    try:
+        arenas.install_arenas(rpcs3, title, pack, say, also=[t for t in targets if t != title], skipped=skipped)
+    except Exception as err:
+        say(f"Arenas: left out ({err})")
+    finally:
+        pack.close()
+    for art, why in skipped:
+        result.log.append(['', "Arena not installed", f"arena {art}", why, '', SECTION_PICTURES])
+
+
+def install_bright_ice(result, rpcs3, title, targets, say):
+    """Brighter faceoff circles and centre circles (art/brightice.py, the "Bright ice" switch)."""
+    from .art import brightice
+    pack = _extra('ice', "Bright ice", say)
+    if pack is None:
+        return
+    try:
+        brightice.install_bright(rpcs3, title, pack, say, also=[t for t in targets if t != title])
+    except Exception as err:
+        say(f"Bright ice: left out ({err})")
+    finally:
+        pack.close()
+
+
+def install_team_masks(result, rpcs3, title, targets, say):
+    """The goalie masks of the teams (art/masks.py, the "Team goalie masks" switch); a mask picture of the player's own
+    is left to it."""
+    from .art import masks
+    pack = _extra('masks', "Team masks", say)
+    if pack is None:
+        return
+    own = {int(n) for n in getattr(result.builder, 'mask_looks', {})}
+    try:
+        masks.install_team_masks(rpcs3, title, pack, say, also=[t for t in targets if t != title], own=own)
+    except Exception as err:
+        say(f"Team masks: left out ({err})")
+    finally:
+        pack.close()
 
 
 ExportSlot = collections.namedtuple('ExportSlot', 'name folder region')

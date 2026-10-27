@@ -1,6 +1,7 @@
 """Put the picture packs and the data pack on the program's file server (legacy_roster/packs.py, datasource.FILES_URL).
 
-    python tools/publish_packs.py <ssh-host>:<folder>              private/packs/photos.zip, looks.zip + the data pack
+    python tools/publish_packs.py <ssh-host>:<folder>              every pack in private/packs (photos, looks, arenas, ice, masks) + the data pack
+    python tools/publish_packs.py <ssh-host>:<folder> --only arenas,ice   only these packs (the others stay as the server lists them)
     python tools/publish_packs.py <ssh-host>:<folder> --dry-run    only say what would be sent
 
 Writes manifest.json (packs.FORMAT; per pack: file, size, sha256, built), copies each zip under a name of its own
@@ -42,12 +43,15 @@ def built(path):
         return str(json.loads(z.read('index.json')).get('built', ''))
 
 
-def entries(folder):
+def entries(folder, only=None):
+    """The packs to publish: `only` (all must exist) or every pack of packs.NAMES that is in the folder."""
     out = {}
-    for name in packs.NAMES:
+    for name in only or packs.NAMES:
         path = os.path.join(folder, f"{name}.zip")
         if not os.path.isfile(path):
-            sys.exit(f"{path} is missing")
+            if only:
+                sys.exit(f"{path} is missing")
+            continue
         sha = digest(path)
         out[name] = {'file': f"{name}-{sha[:12]}.zip", 'size': os.path.getsize(path), 'sha256': sha,
                      'built': built(path), 'local': path}
@@ -57,7 +61,8 @@ def entries(folder):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('target', help="<ssh-host>:<folder> on the server")
-    ap.add_argument('--packs', default=PACKS, help="the folder with photos.zip and looks.zip (default private/packs)")
+    ap.add_argument('--packs', default=PACKS, help="the folder with the pack zips (default private/packs)")
+    ap.add_argument('--only', help="comma separated pack names; the other packs stay as the server's manifest lists them")
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
     if ':' not in args.target:
@@ -70,9 +75,13 @@ def main():
     pack = datasource.read_pack(datasource.BUNDLED_PACK)
     if pack.get('format') != datasource.PACK_FORMAT:
         sys.exit(f"the data pack is format {pack.get('format')}, the program reads {datasource.PACK_FORMAT}")
-    listed = entries(args.packs)
-    manifest = {'format': packs.FORMAT, 'packs': {n: {k: v for k, v in e.items() if k != 'local'}
-                                                  for n, e in listed.items()}}
+    only = [n.strip() for n in args.only.split(',') if n.strip()] if args.only else None
+    unknown = [n for n in only or [] if n not in packs.NAMES]
+    if unknown:
+        sys.exit(f"not a pack: {', '.join(unknown)} (packs: {', '.join(packs.NAMES)})")
+    listed = entries(args.packs, only)
+    if not listed:
+        sys.exit(f"no pack zip in {args.packs}")
 
     def ssh(command, check=True):
         return subprocess.run(['ssh', host, command], capture_output=True, text=True, check=check)
@@ -87,6 +96,9 @@ def main():
     except ValueError:
         before = {}
     have = set(ssh(f"ls -1 {q(folder)}", check=False).stdout.split())
+    kept = {n: e for n, e in before.items() if n not in listed and n in packs.NAMES and isinstance(e, dict)}
+    manifest = {'format': packs.FORMAT, 'packs': {**kept, **{n: {k: v for k, v in e.items() if k != 'local'}
+                                                              for n, e in listed.items()}}}
     for name, e in listed.items():
         state = "already there" if e['file'] in have else f"to send ({e['size'] / 1e6:.1f} MB)"
         print(f"{name}: {e['file']}, built {e['built']}, {state}")
@@ -109,7 +121,7 @@ def main():
         os.remove(f.name)
     ssh(f"mv {q(folder + '/manifest.json.tmp')} {q(folder + '/manifest.json')}")
 
-    keep = {e['file'] for e in listed.values()} | {e.get('file') for e in before.values() if isinstance(e, dict)}
+    keep = {e['file'] for e in manifest['packs'].values()} | {e.get('file') for e in before.values() if isinstance(e, dict)}
     gone = sorted(n for n in have if n.endswith('.zip') and n not in keep)
     if gone:
         ssh(f"cd {q(folder)} && rm -f -- " + ' '.join(q(n) for n in gone))

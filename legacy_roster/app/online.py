@@ -28,6 +28,7 @@ from . import jobs
 
 SLICE = 'online'
 POLL = 2.0                              # seconds between asking the server while a lobby is open
+STALL_AFTER = 90                        # seconds signed in, with the session still not made or joined, after which the steps are shown to press by hand
 START_GRACE = 180                       # seconds after a launch in which the start entry is left ticked (RPCS3 needs time to appear)
 LIST_POLL = 5.0                         # seconds between asking for the public lobbies while the tab shows and none is open
 ROSTER_NAME = "Puck Peak Online"
@@ -38,7 +39,8 @@ CLOSE_RPCS3 = "Close RPCS3 first: the online setup can only be changed while the
 CLOSE_TO_COPY = "Close RPCS3 so your friend's roster can be copied."
 CLOSE_TO_BRING = "Close RPCS3 so your roster can be copied for the lobby."
 PICK_ROSTER = "Pick the roster you want to play with in Setup first."
-OWN_ROSTER = "The game's own roster is not a save. Update a roster in the Update tab first, then pick it in Setup."
+OWN_ROSTER = ("The game's own roster cannot be shared as it is. Press Update in the Update tab once (it makes a roster of your own, "
+              "your game's roster stays as it is), then pick that roster in Setup.")
 LOBBY_CLOSED = "Your friend left, so the lobby closed. Make a new one, or join another code."
 GAME_DIFFERS = "Plays {theirs}; you have {mine}. Different games may lose step during the match."
 GAME_NOTE = "{friend} plays {theirs}, you play {mine}. Different games may lose step during the match: the same region and version is safest."
@@ -58,6 +60,7 @@ LOAD_ROSTER = ("The online roster \"{name}\" loads by itself when the game start
                "Customize > Save/Load/Delete > Load > Rosters > \"{name}\".")
 BY_ITSELF = ("Nothing to press: the game starts, signs in and takes you to Select Teams with your friend. Pick your team and side. "
              "The first start after a game or RPCS3 update can take up to half an hour while RPCS3 prepares the game: wait, it is not stuck.")
+STALLED = "Is the game still on a menu? Then press these yourself:"
 STEPS_ALL = ("Press X on the welcome screen, if there is one.", "Play > Online > Online Versus Play.",
              "Move to \"Ranked Online Play Now Search\" and press X.")
 STEPS_HOST = ("Choose Create Game Session and press X.", "Press X on the settings screen and wait for your friend.")
@@ -92,6 +95,7 @@ class OnlineController:
         self.log = None                 # onlinecfg.log_state of the running game's log
         self.auto = False               # the game can start by itself into the lobby's search (looked up in refresh)
         self.started_at = 0.0           # time.time() of the launch: only a log written after it says anything about this start
+        self.signed_at = None           # time.time() when the log first showed the sign-in of this start
         self.by_itself = False          # the game was started with the online start entry ticked (it is unticked after the boot)
         self.countdown = None
         self._timer = None
@@ -684,7 +688,7 @@ class OnlineController:
             self.by_itself = patchinstall.auto_start(rpcs3, title)
             if self.by_itself:      # for this start only; _read_log unticks it as soon as the game has booted
                 patchinstall.set_online_start(rpcs3, [title], True)
-            self.started_at = time.time()
+            self.started_at, self.signed_at = time.time(), None
             args = onlinecfg.launch_args(rpcs3, title, config)
             if args is None and not rpcs3.command():
                 raise OSError("The program does not know how to start RPCS3. In Setup, pick the RPCS3 program itself (not only its folder).")
@@ -713,6 +717,8 @@ class OnlineController:
             return
         with self.lock:
             self.log = log
+            if log['name'] and self.signed_at is None:
+                self.signed_at = time.time()
         if log['name'] or log['bound']:     # the game has started and read its patches
             self._untick_start()
         self.changed()
@@ -747,14 +753,20 @@ class OnlineController:
         """Will the game take both players to Select Teams with no key (game version 1.00 or the update 1.01, with the start entry and the screens)?"""
         return self.auto
 
+    def stalled(self):
+        """The game has been signed in for a while and its player still has no session (no host, no guest, not playing): whatever
+        the reason, the steps are then shown to press by hand (a game that went by itself never gets here)."""
+        me = self._member()
+        return bool(self.launched and self.signed_at is not None and time.time() - self.signed_at > STALL_AFTER
+                    and me and me.get('progress') in (None, 'offline', 'in_game', 'signed_in'))
+
     def steps(self, role):
         """The things to press in the game, by role (the host creates the session, the guest joins it)."""
+        load = [LOAD_ROSTER.format(name=self.roster['name'])] if self.roster else []
+        by_hand = list(STEPS_ALL) + list(STEPS_HOST if role == 'host' else STEPS_GUEST)
         if self.by_itself_possible():
-            return ([LOAD_ROSTER.format(name=self.roster['name'])] if self.roster else []) + [BY_ITSELF]
-        steps = list(STEPS_ALL) + list(STEPS_HOST if role == 'host' else STEPS_GUEST)
-        if self.roster:
-            steps.insert(0, LOAD_ROSTER.format(name=self.roster['name']))
-        return steps
+            return load + [BY_ITSELF] + ([STALLED] + by_hand if self.stalled() else [])
+        return load + by_hand
 
     def view(self):
         """The tab's state word: no-rpcs3 | no-account | not-set-up | ready | in-lobby | starting | in-game | failed."""

@@ -68,7 +68,9 @@ Questions or ideas? Come to our [Discord](https://gg.puckpeak.com) (the **Join o
 | AHL | All 32 AHL teams with their real rosters; players on NHL contracts belong to their NHL club | theahl.com (HockeyTech) |
 | CHL | The OHL, QMJHL and WHL clubs; a junior missing from his league's list stays with his club | the leagues' sites (HockeyTech) |
 | Draft prospects | Undrafted prospects of the next drafts play for a real club of their country (the CHL for North Americans), where the game's draft finds them, instead of on custom "Prospects" teams | the community roster's prospect lists |
-| Photos, logos and team names | Today's player photos, club logos and real team names in the game's menus (the National League publishes no photos) | the leagues' sites, downloaded on your PC (see below) |
+| Photos and logos | Today's player photos and club logos in the game's menus (the National League publishes no photos) | the leagues' sites, downloaded on your PC (see below) |
+| Team names | Real team names and short codes (Utah, Seattle, Vegas, rebuilt clubs) in Select Teams and on the scoreboard; nothing to download | made on your PC |
+| This season's jerseys, arenas, bright ice, team goalie masks | Optional picture switches, each downloads only its own small pack (see below) | downloaded from the program's file server |
 | Goalie equipment | A goalie who changed teams wears his new team's colours | the team's colours in the game |
 
 Everything is switched on to start with; switch off what you do not want. Every part passes the
@@ -81,7 +83,7 @@ You do not need a community roster. If RPCS3 lists the game, **Setup** shows **T
 roster** (marked *start fresh*) under your saves. The program reads it from your copy of the game,
 the 2014-15 players, and brings it up to today:
 
-- Seattle and Vegas move into the All-Star teams' places. With "Photos, logos and team names" on,
+- Seattle and Vegas move into the All-Star teams' places. With "Team names" on,
   Utah, Seattle and Vegas show their names and logos in the NHL list.
 - Players of 2014 who are 30 or older and on no team any more retire, unless they played in the
   NHL last season: those become free agents. Their places in the save go to today's players.
@@ -133,7 +135,7 @@ Flatpak or Mac), where RPCS3's folder is and how to copy each part in (on a Mac,
 `dev_hdd0`), which entries to tick in RPCS3 under **Manage > Game Patches**, how to load the roster, how to undo it
 (delete what you copied), and what to do when a roster of that name already exists (rename it to a free `...02NN`).
 Without RPCS3, **Which roster do you work on?** asks for the roster file: pick the `SYS-DATA` of the community
-roster you downloaded. Photos, logos and team names, the game patch and the game's own roster need your copy of the
+roster you downloaded. The picture switches, the game patch and the game's own roster need your copy of the
 game: pick the .iso (or its folder) in Setup. Restore, "Update this roster", Play online and the Be a Pro / Season
 saves are off while you export, because they change RPCS3 itself. On the command line:
 `export-files [--rpcs3 <rpcs3> | --savedata <folder> | --source <SYS-DATA>] --out <folder> [--photos] [--game-patch]
@@ -159,7 +161,7 @@ names then go into both games too.
   - WHL: Penticton;
   - Norway: every club except Stavanger and Vålerenga.
 - **A club new to a league since 2015 takes the slot of one that left,** and keeps the old club's jersey.
-  Its logo and its name in the menus are the old club's unless "Photos, logos and team names" is on
+  Its logo and its name in the menus are the old club's unless "Team names" is on
   (the game takes team names from its own text, not from the roster):
   - Kiekko-Espoo plays in the Espoo Blues slot;
   - Kladno in Chomutov's, České Budějovice in Zlín's;
@@ -183,15 +185,31 @@ names then go into both games too.
     fitting year (the List of changes marks him).
   - The National League does not publish nationality, so its players new to the game are listed as Swiss.
 
-**Photos, logos and team names.** With this switch on, the program also gives the players their
-current photo and the clubs their current logo and real name in the game's menus. Examples: Kladno
+**Pictures and team names.** Step 4 of the Update tab has **Team names** (its own switch, on to start with) and
+**Photos and logos**. Press the arrow of Photos and logos to choose its parts, or switch the row on and every part comes
+with it, so you download only what you want:
+
+| Switch | What it does | Download |
+|---|---|---|
+| Photos and logos: Player photos and team logos | Current player photos and club logos | about 105 MB |
+| Team names | Real team names and short codes, the main menu texts | none |
+| Photos and logos: This season's jerseys and centre ice | New jerseys, pants, socks and centre-ice logos | about 55 MB |
+| Photos and logos: NHL arenas | Newer boards and banners in the 32 NHL arenas | about 13 MB |
+| Photos and logos: Bright ice | Brighter faceoff circles and a white centre circle | about 8 MB |
+| Photos and logos: Team goalie masks | The goalie masks of the teams | about 3 MB |
+
+Each row has its own **Restore** that puts back only its own files. Photos and logos give the players
+their current photo and the clubs their current logo. Team names give, for example: Kladno
+instead of Chomutov; Utah, Seattle and Vegas instead of Arizona, Green and Black; names for
+Coachella Valley, Henderson and the prospect pools. The game takes team names from its own text
+file, so the program writes a corrected copy of that too. In detail: Kladno
 instead of Chomutov; Utah, Seattle and Vegas instead of Arizona, Green and Black; names for
 Coachella Valley, Henderson and the prospect pools. The game takes team names from its own text
 file, so the program writes a corrected copy of that too:
 
 - **RPCS3 must be closed** while it runs.
 - **Downloaded automatically.** While the switch is on, the program downloads its pictures by itself
-  in the background (about 160 MB, once, and again only when they change), and the next update puts
+  in the background (once, and again only when they change; each switch has its own size, listed above), and the next update puts
   them in. Players new since then are downloaded one by one. Everything is kept on your PC, so no
   picture is downloaded twice. Switch it off and nothing is downloaded.
 - **Made for your game.** The pictures are turned into the game's own picture files on your PC,
@@ -214,7 +232,7 @@ file, so the program writes a corrected copy of that too:
 - **Your own pictures are kept.** Before a picture is replaced, the one that was there is kept on
   your PC: the game's own, or one from a picture pack you installed yourself. If you install
   another pack later, its pictures are kept as well.
-- **Undo.** **Restore** on the "Photos, logos and team names" row puts every file back as it was
+- **Undo.** **Restore** on a picture row puts that part's files back as they were
   with the next save; **Restore default** also puts back the rosters and the calendar.
 - **Not covered:** the National League and Extraliga publish no player photos, so their players
   keep the game's pictures. Their club logos are covered.
@@ -261,7 +279,7 @@ crest, the jersey, pants, socks and numbers from the game's own pictures, type t
 then fine-tune each piece for home and away. The national teams share one centre ice, and so do the DEL clubs: a
 picture you put there shows at all their home games. Winter Classic teams wear their NHL team's jerseys: the tab
 shows that team's jerseys, and a change shows on both. Jerseys, crest pictures and the ice show in the game after an
-update with "Photos, logos and team names" on; a custom team's designs and colours come with "My edits" alone.
+update with "Photos and logos" on; a custom team's designs and colours come with "My edits" alone.
 
 **Calendar.** The season on a month page, Monday to Sunday, with arrows for the month before and after.
 

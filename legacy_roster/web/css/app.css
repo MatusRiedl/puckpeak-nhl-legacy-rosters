@@ -273,6 +273,12 @@ input.field:disabled { color: var(--faint); }
 .step.featured:hover { background: linear-gradient(90deg, rgba(242, 185, 51, .22), rgba(242, 185, 51, .12) 45%, rgba(242, 185, 51, .06)); }
 .step.featured.restoring { box-shadow: inset 3px 0 0 var(--amber), inset 0 0 0 1px rgba(224, 178, 90, .3); }
 .step.featured .sub { color: var(--gold-hi); font-weight: 600; }
+.step .arrow { background: none; border: 0; color: var(--gold-hi); cursor: pointer; font-size: 17px; padding: 0 7px 0 0; line-height: 1;
+  transition: transform .15s var(--ease); }
+.step .arrow.open { transform: rotate(90deg); }
+.stepgroup .kids { display: grid; gap: 2px; margin: 2px 0 0 18px; }
+.step.child { padding: 5px 10px; }
+.step.child .title { font-size: 13.5px; font-weight: 500; }
 .step .bar { margin-top: 5px; height: 3px; background: rgba(242, 185, 51, .18); overflow: hidden; }
 .step .bar span { display: block; height: 100%; background: var(--gold); transition: width .3s var(--ease); }
 .step .checks { display: flex; flex-wrap: wrap; gap: 0 18px; }

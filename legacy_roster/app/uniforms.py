@@ -687,7 +687,7 @@ class UniformsController:
         self.host.changed(RAIL)
         if custom:
             self.editor.set_status("The team's look is kept. It is put into the next update with My edits on; a crest "
-                                   "picture also needs \"Photos, logos and team names\" on.", 'warn')
+                                   "picture also needs \"Photos and logos\" on.", 'warn')
         else:
             self.editor.set_status("Jerseys and ice kept. They are made in the next update with \"Photos, logos and "
                                    "team names\" on (and My edits on).", 'warn')

@@ -167,15 +167,18 @@ def forget_conflicts(registry, claims):
     return gone
 
 
-def plan(b, registry, own_only=False, claims=None, check=None, moved=None):
+def plan(b, registry, own_only=False, claims=None, check=None, moved=None, names_on=None):
     """Give every placed player with a photo his portrait id (written into the roster) and list
     the pictures to make: ({artid: photo link}, {team artid: (logo link, colours)}, names).
 
     `own_only`: only the player's own pictures (the Roster editor's; photos and logos are off): no other
     player, team or name changes. `claims` (Claims): numbers the rest of this PC uses. `check(links)` ->
     {link: why} the photos that cannot be made: those players keep the picture they had. `moved`
-    (forget_conflicts): players whose id was given back get a fresh one with the photo they had."""
+    (forget_conflicts): players whose id was given back get a fresh one with the photo they had. `names_on`: the team
+    names are chosen too (the "Team names" switch; default: with photos and logos, as before 0.76.0)."""
     P, T = b.P, b.R.T
+    if names_on is None:
+        names_on = not own_only
     taken = {P.get(r, 'artid') for r in range(P.cur_rec)}
     key_of = lambda r: person_key(P.get(r, 'PedH'), P.get(r, 'RMbQ'), birth_of(P, r))
     here = {}           # id -> the people this roster shows with it
@@ -217,7 +220,7 @@ def plan(b, registry, own_only=False, claims=None, check=None, moved=None):
             T.set(slot, 'artid', POOL_ART + slot)      # as _pool_logos does: not every pool's logo
         colours = tuple(tuple(T.get(slot, f"{c}color_{x}") for x in 'rgb') for c in ('primary', 'secondary'))
         logos[T.get(slot, 'artid')] = (url, colours)
-    return portraits, logos, None if own_only else names(b)
+    return portraits, logos, names(b) if names_on else None
 
 
 def _pool_logos(b):

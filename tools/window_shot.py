@@ -476,6 +476,9 @@ SCROLL_STEPS = ("<script>setInterval(() => { const step = document.querySelector
 # SHOT_SCROLL=1: an in-page window scrolled to its end (the lower part of a long window)
 SCROLL_MODAL = ("<script>setInterval(() => { const body = document.querySelector('.modal .m-body'); "
                 "if (body) body.scrollTop = body.scrollHeight; }, 200);</script>")
+# SHOT_OPEN=1: the Photos and logos row opened (its parts shown)
+OPEN_GROUP = ("<script>const opened = setInterval(() => { const a = document.querySelector('.step .arrow:not(.open)'); "
+              "if (a) { a.click(); clearInterval(opened); } }, 200);</script>")
 
 
 def serve(message, extra=''):
@@ -618,7 +621,8 @@ def main():
             for real, shown in ((work, r'C:\Users\Player\AppData\Local'), (os.path.expanduser('~'), r'C:\Users\Player')):
                 text = text.replace(json.dumps(real)[1:-1], json.dumps(shown)[1:-1])
             message = json.loads(text)
-        server, url = serve(message, SCROLL_MODAL if os.environ.get('SHOT_SCROLL') else '')
+        server, url = serve(message, (SCROLL_MODAL if os.environ.get('SHOT_SCROLL') else '') +
+                            (OPEN_GROUP if os.environ.get('SHOT_OPEN') else ''))
         query = f'&tab={tab}' + ('&details' if details else '')
         if args.browser:
             import webbrowser

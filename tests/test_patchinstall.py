@@ -285,7 +285,7 @@ def test_an_update_follows_rpcs3_a_patch_roster_while_patched_turned_back_after_
     assert gamepatch.is_patch_roster(R) and gamepatch.check_years(R, patch_data.season_year) == []
     assert gamepatch.check_games(R) == [] and gamepatch.check_future(R) == [] and gamepatch.check_all_star(R) == []
     assert first.patch == [EU] and first.db_note is None
-    assert first.patch_lines()[0].startswith("Made for the patched game") and 'Photos, logos' in first.patch_lines()[1]
+    assert first.patch_lines()[0].startswith("Made for the patched game") and 'Team names' in first.patch_lines()[1]
 
     again = run()                                                       # the patch roster updated again: the same bytes
     assert again.build.ok and again.unchanged and again.build.data == first.build.data

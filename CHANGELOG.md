@@ -3,6 +3,29 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.76.0 (2026-10-27)
+
+- **Pictures are split into switches, so you download only what you want.** "Photos, logos and team names" is now two
+  rows in step 4 of the Update tab. **Team names** needs no download and is on to start with. **Photos and logos** is one
+  switch for everything heavy: press its arrow to choose the parts (**Player photos and team logos**, about 105 MB;
+  **This season's jerseys and centre ice**, about 55 MB; **NHL arenas**, **Bright ice** and **Team goalie masks**, small
+  downloads), or just switch the row on and every part comes with it. Each part is downloaded only when it is on, and has
+  its own **Restore** that puts back only its own files (the row's Restore does all of them). If you had the old switch
+  on, Photos and logos and the jerseys stay on.
+- **NHL arenas.** Newer boards and banners in the 32 NHL arenas. Made on your PC from your own game's files; the download
+  holds only the differences.
+- **Bright ice.** Brighter faceoff circles and a white centre circle. Where "This season's jerseys and centre ice" is on,
+  its centre ice for that team is kept.
+- **Team goalie masks.** The goalie masks of the teams (Utah, Seattle and Vegas keep the game's own masks for now). A
+  goalie's own mask picture from the Roster editor always wins.
+- **Team names alone are quick.** An update with only Team names on downloads nothing and takes seconds. RPCS3 must be
+  closed (the names are written into the game's folder).
+- The command line has `--names`, `--looks`, `--arenas`, `--bright-ice` and `--team-masks` (`--photos` still means
+  photos, logos, names and jerseys); `photos remove --part <name>` undoes one part.
+- **One damaged roster no longer breaks the whole list.** A roster save in your RPCS3 folder whose data could not be
+  unpacked stopped the scan with "Error -3 while decompressing data" and left step 1 empty. It is now listed as "Cannot
+  be used" and the other rosters work. It has nothing to do with the game being present.
+
 ## 0.75.0 (2026-10-26)
 
 - **Real equipment for the players.** Players now dress like their real selves where the program's data knows them (almost
@@ -20,6 +43,11 @@ What changed in each version, for players. Developers: details in [AGENTS.md](AG
   Family Forum, the Barracuda: Tech CU Arena, many more renamed), with their capacities.
 
 Also in this version (unreleased before):
+
+- **Multiplayer: when the game stays on a menu, the steps show up.** After a live match a friend's game stopped at the
+  Online menu while the other one went into the search by itself. When the game has been signed in for 90 seconds and has
+  no session, the tab now lists what to press (host: Create Game Session, guest: Browse and join). The message for the
+  game's own roster says what to do: press Update once, then pick the new roster in Setup.
 
 - **Lines: picking a player never moves anybody else.** Before, picking a player who already played in another place of
   the same kind (a line, a pair) swapped the two, so fixing one spot sent him back to the other: a circle. Now only the

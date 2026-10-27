@@ -140,9 +140,14 @@ function FromBar({ s }) {
 }
 
 function StepRow({ row }) {
-  return html`<div class=${cls('step', row.on && 'on', row.restoring && 'restoring', row.featured && 'featured')}>
+  // a group row (Photos and logos) has an arrow that opens its parts; its switch turns them all on or off
+  const [open, setOpen] = useState(false);
+  const kids = row.children;
+  const head = html`<div class=${cls('step', row.on && 'on', row.restoring && 'restoring', row.featured && 'featured', row.child && 'child')}>
     <div class="main">
-      <div class="title">${row.title}</div>
+      <div class="title">
+        ${kids && html`<button class=${cls('arrow', open && 'open')} aria-expanded=${open} title=${open ? 'Hide the parts' : 'Choose the parts'}
+            onClick=${() => setOpen(!open)}>▸</button>`}${row.title}</div>
       <div class="sub">${row.sub}</div>
       ${row.bar != null && html`<div class="bar"><span style=${{ width: `${Math.round(row.bar * 100)}%` }}></span></div>`}
       ${row.warn && html`<div class="warn">${row.warn}</div>`}
@@ -154,6 +159,9 @@ function StepRow({ row }) {
     <${Toggle} on=${row.on} gold=${row.featured} disabled=${!row.enabled} label=${row.title}
         onChange=${(v) => call('set_step', row.key, v)}/>
   </div>`;
+  if (!kids) return head;
+  return html`<div class="stepgroup">${head}
+    ${open && html`<div class="kids">${kids.map((k) => html`<${StepRow} key=${k.key} row=${k}/>`)}</div>`}</div>`;
 }
 
 function StepsCard({ s }) {

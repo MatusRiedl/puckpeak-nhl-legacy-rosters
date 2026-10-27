@@ -368,7 +368,7 @@ function TeamWindow({ m }) {
       <${Button} kind="pick" onClick=${() => call('team_apply', fields)}>Apply<//>
       <${Button} onClick=${() => call('team_undo')} disabled=${!m.mine}>Undo team edit<//>
       <${Button} onClick=${() => call('modal_close')}>Close<//>`}>
-    <p class="small-note">The logo goes into the game when you press Save. The game's menus show these names after an update with "Photos, logos and team names" on.</p>
+    <p class="small-note">The logo goes into the game when you press Save. The game's menus show these names after an update with "Team names" on.</p>
     <div class="tw-form">
       ${[['full', 'Full name'], ['city', 'City'], ['abbr', 'Abbreviation']].map(([k, label]) => html`
         <label key=${k} class="pc-row"><span>${label}</span>
@@ -435,7 +435,7 @@ function EquipmentWindow({ q }) {
       </div>
       <p class="small-note">${q.mask_picture ? 'Picture: ' + q.mask_picture : 'No picture of your own: the goalie wears the mask picked below.'}${' '}
         Keep it 512 x 512. The goalie gets a mask number nobody wears, so no other goalie changes. Shown in the game after
-        "Photos, logos and team names" is run.</p>
+        "Photos and logos" is run.</p>
     </div>`}
     <div class="list eq-rows">
       ${q.rows.map((r) => html`<div key=${r.choice} class=${cls('eq-row', r.touched && 'touched')}>

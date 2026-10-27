@@ -50,6 +50,45 @@ def _digest(n, path):
     return f"{SOURCE}{DRAWING}:{n}:{h}"
 
 
+def install_team_masks(rpcs3, title_id, pack, say=print, also=(), own=()):
+    """The team masks of the pack `masks` (art/extrapack.py; index.json {"format": 1, "built": ..., "masks": {"<mask number>":
+    "m/<mask number>.webp"}}): the pictures of the masks the teams' goalies share (numbers 2-29: the mask number is the
+    team's art id), laid into the disc's own file of that number as loose files (RPCS3 closed). A number in `own` (a
+    mask picture of the player's own) is left to it. A mask the pack no longer holds is put back as the game had it.
+    Returns how many files were written."""
+    from . import install, parts
+    from .lab import Disc
+    install.check(rpcs3, title_id)
+    targets = [title_id] + [t for t in also if t != title_id]
+    writer = install._Writer([rpcs3.game_folder(t) for t in targets])
+    disc = Disc(rpcs3.game_disc(title_id))
+    written, wanted = 0, set()
+    try:
+        for n, member in sorted(pack.index.get('masks', {}).items(), key=lambda kv: int(kv[0])):
+            if int(n) in own:
+                continue
+            rel = MASK.format(n=n)
+            source = f"{parts.TEAM_MASK_TAG}{DRAWING}:{n}:{pack.index.get('built', '')}"
+            wanted.add(rel)
+            if writer.current(tuple(rel.split('/')), source):
+                continue
+            try:
+                data = mask_file(disc, n, pack.picture(member))
+            except Exception as err:
+                say(f"Team masks: mask {n} left out ({err})")
+                wanted.discard(rel)
+                continue
+            writer.write(tuple(rel.split('/')), data, source)
+            written += 1
+            writer.save()
+        for key in writer.stale(parts.TEAM_MASK_TAG, wanted):
+            writer.drop(tuple(key.split('/')))
+    finally:
+        writer.save()
+    say(f"Team masks: {written} masks made" if written else "Team masks: all masks are installed already")
+    return written
+
+
 def install_masks(rpcs3, title_id, masks, say=print, also=()):
     """Write the mask files of `masks` ({mask number: picture link}) into the game folder(s) (RPCS3 closed), with kept
     copies of anything replaced; a mask no goalie wears with a picture any more is put back as the game had it.

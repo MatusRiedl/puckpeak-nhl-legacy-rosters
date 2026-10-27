@@ -222,14 +222,15 @@ def _games_of(rpcs3, games, source):
 
 def run(out_root=None, source=None, rpcs3=None, steps=pipeline.ALL_STEPS, targets=None, name=None, photos=False,
         game_patch=False, intro=True, login=False, my_edits=None, team_edits=None, progress=None, offline=False, data=None,
-        games=None, now=None, system=None):
+        games=None, now=None, system=None, art_parts=None):
     """Make the update and write its files into a new folder in `out_root` (default: next to the program).
 
     `source`: the roster to start from: a savedata.Slot (a roster save of `rpcs3`, or of a save folder), a DiscSlot (the
     game's own roster), or the path of a SYS-DATA file (the community roster, no RPCS3 needed). `rpcs3`: the player's RPCS3
     or save folder (savedata.Rpcs3 / SaveFolder), only read: it says where the game is and which roster numbers are taken.
     `games`: {title id: the game's .iso or folder} the player pointed at. `targets`: the versions to make the roster for
-    (title ids; default: the source's own, EU for a file). `photos`: pictures, names and jerseys (they need the game).
+    (title ids; default: the source's own, EU for a file). `photos`: pictures, names and jerseys (they need the game);
+    `art_parts` (art/parts.py) says which of them (default: names, photos and logos, this season's jerseys).
     `game_patch`: a roster for the patched game, with the patch's files (they need the game; `intro` / `login`: which of its
     small entries to offer). Returns an ExportResult; `folder` is None (and nothing is kept) when the new roster failed its
     safety checks."""
@@ -273,7 +274,7 @@ def run(out_root=None, source=None, rpcs3=None, steps=pipeline.ALL_STEPS, target
             result = pipeline.update(work_savedata, folder, steps, name, progress, offline=offline, data=data,
                                      art_rpcs3=target if photos else None, art_registry=registry, my_edits=my_edits,
                                      team_edits=team_edits, targets=targets, disc=disc_slot, rpcs3=target,
-                                     game_patch=bool(game_patch))
+                                     game_patch=bool(game_patch), art_parts=art_parts)
             if result.slot is None:                # the safety checks failed: nothing is kept
                 return ExportResult(result)
             entries = []

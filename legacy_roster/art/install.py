@@ -571,21 +571,22 @@ def install_menus(disc, writer, say, mode=None):
 
 
 def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=None, names=None, also=(),
-            cache=None, skipped=None, menus=True):
+            cache=None, skipped=None, menus=True, pictures=True):
     """Make and install the pictures. `portraits` {artid: photo link}, `logos` {team artid:
     (logo link, colours)} (from portraits.plan()). Pictures come from the program's photo pack
     (`pack`; default: the bundled one, if this edition has it; False: none) or are downloaded.
     `names` (portraits.names()) go into the game's text files. Templates come from the disc of
     `title_id`; `also` are further versions of the game (title ids) that get every file as well.
     `skipped` (a list) gets (what, link, why) of every picture that could not be made. `menus`: the main menu
-    without its dead entries goes in too (not with the player's own pictures alone).
+    without its dead entries goes in too (not with the player's own pictures alone). `pictures` False: only the
+    names and the menu (the "Team names" switch alone); the photos and logos are left as they are.
     Returns (written, already there, failed)."""
-    check(rpcs3, title_id, own=not menus)
+    check(rpcs3, title_id, own=not (menus or names))
     if not _REDIRECT and os.path.exists(lab.manifest_path()):       # an export never touches the player's RPCS3
         lab.remove(say=lambda msg: None)  # the one-off art test, if it is still installed
     say("Photos and logos: reading picture templates from your game")
     disc = Disc(rpcs3.game_disc(title_id))
-    p_templates = {k: disc.portrait(k, PORTRAIT_TEMPLATE) for k in PORTRAIT_KINDS}
+    p_templates = {k: disc.portrait(k, PORTRAIT_TEMPLATE) for k in PORTRAIT_KINDS} if pictures else {}
     targets = [title_id] + [t for t in also if t != title_id]
     writer = _Writer([rpcs3.game_folder(t) for t in targets])
     pack = PhotoPack.open() if pack is None else pack or None
@@ -597,6 +598,8 @@ def install(rpcs3, title_id, portraits, logos, say=print, workers=WORKERS, pack=
             install_menus(disc, writer, say)
     finally:
         writer.save()
+    if not pictures:
+        return 0, 0, 0
 
     jobs = []           # (description, function, [(relative path, key in the result)], link, source in the manifest)
     bundled = kept = 0
@@ -677,6 +680,32 @@ def remove(say=print):
     n, left = _put_back(m)
     _forget_handled(m, ART_STORE)
     say(f"The game's own pictures are back: {n} files put back as they were." + _left_line(left))
+    return n
+
+
+def remove_parts(parts, say=print):
+    """Put back only the files of `parts` (art/parts.py): their kept copies return, the files they added go, every other
+    part stays installed. Returns how many files were handled. RPCS3 must be closed."""
+    from . import parts as P
+    m = load_manifest()
+    chosen = {d: {k: e for k, e in files.items() if any(P.belongs(e.get('source'), p) for p in parts)}
+              for d, files in m['games'].items()}
+    chosen = {d: files for d, files in chosen.items() if files}
+    if not chosen:
+        say("None of these pictures is installed.")
+        return 0
+    if savedata.running_rpcs3():
+        raise ArtError("Close RPCS3 first: pictures can only be removed while the game is closed.")
+    sub = dict(m)
+    sub['games'] = {d: dict(files) for d, files in chosen.items()}
+    n, left = _put_back(sub)
+    for d, files in chosen.items():
+        if d not in left:
+            for key in files:
+                m['games'][d].pop(key, None)
+    m['games'] = {d: files for d, files in m['games'].items() if files}
+    _forget_handled(m, ART_STORE)
+    say(f"The game's own pictures are back for these parts: {n} files put back as they were." + _left_line(left))
     return n
 
 

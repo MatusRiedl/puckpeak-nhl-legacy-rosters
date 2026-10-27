@@ -10,6 +10,7 @@ import time
 
 from .. import __version__, datasource, export, gamepatch, layout, packs, patchinstall, pipeline, restore, savedata
 from .. import edits as my_edits
+from ..art import parts as P
 from ..art.install import ArtError, installed as art_installed, remove as remove_art
 from ..gui_state import is_current_scan
 from ..progress import fraction
@@ -111,15 +112,23 @@ class UpdateController:
         self.use_edits = bool(remembered.get(S.EDITS, True))
         self.skip_intro = bool(remembered.get(S.SKIP_INTRO, True))
         self.no_login = bool(remembered.get(S.NO_LOGIN, False))
+        # 0.76.0: team names, this season's jerseys, arenas, bright ice and team masks have switches of their own. A
+        # settings file from before keeps what it had: photos on meant names and jerseys on too.
+        self.art_on = {S.NAMES: bool(remembered.get(S.NAMES, True)),
+                       S.LOOKS: bool(remembered.get(S.LOOKS, self.photos)),
+                       S.ARENAS: bool(remembered.get(S.ARENAS, False)),
+                       S.BRIGHT_ICE: bool(remembered.get(S.BRIGHT_ICE, False)),
+                       S.TEAM_MASKS: bool(remembered.get(S.TEAM_MASKS, False))}
         if S.PHOTOS_DEFAULT not in self.settings:       # 0.65: the switch starts off for everyone, once; ticking it again is kept
             self.photos = False
             self.settings[S.PHOTOS_DEFAULT] = True
             self.save_settings()
         self.marks = {}             # row key -> its part of restore.py ("Restore" pressed)
-        # the picture packs (packs.py), downloaded in the background while "Photos, logos and team names" is on
-        self.fetch = 'ready' if all(packs.have(n) for n in packs.NAMES) else 'idle'     # running / failed
+        # the picture packs (packs.py), downloaded in the background while a switch that needs one is on
+        self.fetch = 'ready' if all(packs.have(n) for n in self.packs_wanted()) else 'idle'     # running / failed
         self.fetch_at = 0.0         # 0..1 while running
         self.fetch_size = None      # bytes still to download, once the server said
+        self.pack_sizes = {}        # pack name -> its size on the server, once the list was read
         self._fetch_stop = threading.Event()
         self._fetching = False
         self.waiting = None         # Update pressed during the download: start(everything) once it is done
@@ -183,12 +192,23 @@ class UpdateController:
             self.settings['update_skipped'] = release.text
             S.save(self.settings)
 
-    # --- the pictures of "Photos, logos and team names" (packs.py) ----------------------------------------
+    # --- the pictures: photos, jerseys, arenas, bright ice, team masks (packs.py) ---------------------------
+    def parts_on(self):
+        """The picture parts switched on (art/parts.py names)."""
+        on = {p for p, v in self.art_on.items() if v}
+        if self.photos:
+            on.add(P.PHOTOS)
+        return frozenset(on)
+
+    def packs_wanted(self):
+        """The packs the switched-on parts need (packs.NAMES): the names switch needs none."""
+        return P.packs_for(self.parts_on())
+
     def download_pictures(self):
-        """While the switch is on: download what is missing or changed, in the background (at start, when the
-        switch goes on, and before an update when the last try failed). The next update uses it."""
+        """While a switch that needs a pack is on: download what is missing or changed, in the background (at start,
+        when a switch goes on, and before an update when the last try failed). The next update uses it."""
         with self.lock:
-            if not self.photos or self._fetching:
+            if not self.packs_wanted() or self._fetching:
                 return
             self._fetching = True
             self._fetch_stop.clear()
@@ -196,6 +216,7 @@ class UpdateController:
 
     def _download(self):
         why = None
+        wanted = self.packs_wanted()
         try:
             try:
                 packs.prune()           # what an earlier run still had open
@@ -205,13 +226,14 @@ class UpdateController:
             if listed is None:
                 why = 'offline'
             else:
-                names = packs.missing(listed)
+                names = packs.missing(listed, wanted)
                 with self.lock:
+                    self.pack_sizes = {n: e['size'] for n, e in listed.items()}
                     self.fetch_size = packs.size_of(listed, names) or None
                     if names:
                         self.fetch, self.fetch_at = 'running', 0.0
                     self.changed()
-                why = packs.sync(self._fetch_progress, self._fetch_stop.is_set, listed)[1]
+                why = packs.sync(self._fetch_progress, self._fetch_stop.is_set, listed, wanted)[1]
         except packs.Cancelled:
             why = 'stopped'
         except Exception as err:        # a folder that cannot be written: logged, tried again later
@@ -221,7 +243,7 @@ class UpdateController:
             self.host.log(f"The pictures were not downloaded ({why}). The program tries again.")
         with self.lock:
             self._fetching = False
-            have = all(packs.have(n) for n in packs.NAMES)
+            have = all(packs.have(n) for n in wanted)
             self.fetch = ('ready' if why is None or have else 'idle' if why == 'stopped' else 'failed')
             waiting, self.waiting = self.waiting, None
             if waiting is not None:
@@ -280,6 +302,7 @@ class UpdateController:
     def save_settings(self):
         self.settings['steps'] = dict(self.steps)
         self.settings['steps'][S.PHOTOS] = self.photos
+        self.settings['steps'].update(self.art_on)
         self.settings['steps'][S.EDITS] = self.use_edits
         self.settings['steps'].update({S.SKIP_INTRO: self.skip_intro, S.NO_LOGIN: self.no_login})
         S.save(self.settings)
@@ -635,14 +658,20 @@ class UpdateController:
             on = bool(on)
             if key in self.steps:
                 self.steps[key] = on
-            elif key == S.PHOTOS:
+            elif key in S.PICTURE_KEYS or key == S.PICTURES:
                 if on and (self.rpcs3 is not None and self.rpcs3.plain and not self.export_mode
                            or self.export_mode and not self.export_games()):
                     return
-                self.photos = on
+                for k in (S.GROUP if key == S.PICTURES else (key,)):     # the group row switches all its parts together
+                    if k == S.PHOTOS:
+                        self.photos = on
+                    else:
+                        self.art_on[k] = on
+                    if on:
+                        self.marks.pop(k, None)
                 if on:
                     self.download_pictures()
-                else:
+                elif not self.packs_wanted():
                     self._fetch_stop.set()      # what is already on this PC stays, for the next time it is on
             elif key == S.EDITS:
                 self.use_edits = on
@@ -804,13 +833,26 @@ class UpdateController:
         with self.lock:
             if self.busy or self.scanning or self.export_mode:
                 return
-            if key in self.marks:
+            if key == S.PICTURES:           # the group row: Restore for every part in it (again: undo)
+                if any(k in self.marks for k in S.GROUP):
+                    for k in S.GROUP:
+                        self.marks.pop(k, None)
+                else:
+                    for k in S.GROUP:
+                        self.marks[k] = restore.picture_part(k)
+                    self.photos = False
+                    for k in S.GROUP[1:]:
+                        self.art_on[k] = False
+                    self.save_settings()
+            elif key in self.marks:
                 del self.marks[key]
-            elif key in self.steps or key == S.PHOTOS:
+            elif key in self.steps or key in S.PICTURE_KEYS:
                 self.marks[key] = (restore.CALENDAR if key == pipeline.SCHEDULE else
-                                   restore.PICTURES if key == S.PHOTOS else restore.ROSTERS)
+                                   restore.picture_part(key) if key in S.PICTURE_KEYS else restore.ROSTERS)
                 if key == S.PHOTOS:
                     self.photos = False
+                elif key in self.art_on:
+                    self.art_on[key] = False
                 else:
                     self.steps[key] = False
                 self.save_settings()
@@ -889,8 +931,9 @@ class UpdateController:
                 name = self.name.strip() if self.name_edited and self.name.strip() != slot.name else None
             else:
                 name = self.name.strip() if self.name_edited and self.name.strip() else savedata.default_name()
-            art = self.rpcs3 if self.photos and not self.rpcs3.plain and not everything else None
-            if art is not None and not waited and (self._fetching or self.fetch == 'failed'):
+            shown = self.parts_on()
+            art = self.rpcs3 if shown and not self.rpcs3.plain and not everything else None
+            if art is not None and not waited and self.packs_wanted() and (self._fetching or self.fetch == 'failed'):
                 self.waiting = everything           # the pictures first; a failed download is tried once more
                 self._fit = slot.folder if fit else None
                 self.busy, self.at = True, self.fetch_at
@@ -900,14 +943,14 @@ class UpdateController:
                 return
             self._begin("Updating... (the last result is shown until the new one is ready)")
             self.photos_running = art is not None
-            self.pictures_short = art is not None and not all(packs.have(n) for n in packs.NAMES)
+            self.pictures_short = art is not None and not all(packs.have(n) for n in self.packs_wanted())
             mine = (my_edits.load(), my_edits.load_teams()) if self.use_edits and not everything else (None, None)
             rpcs3, targets = self.rpcs3, [slot.title_id] if fit else self.save_targets(slot)
 
         def work():
             default = restore.default_slot(rpcs3, slot.title_id) if parts else None
             result = pipeline.update(rpcs3.savedata, slot.folder, steps, name, self.say,
-                                     art_rpcs3=art, my_edits=mine[0] or None, team_edits=mine[1] or None,
+                                     art_rpcs3=art, art_parts=shown, my_edits=mine[0] or None, team_edits=mine[1] or None,
                                      targets=targets, disc=slot if getattr(slot, 'disc', False) else None,
                                      in_place=in_place, restore_parts=parts, default=default,
                                      rpcs3=None if rpcs3.plain else rpcs3)
@@ -1184,8 +1227,9 @@ class UpdateController:
             return
         self.save_settings()
         games = self.export_games()
-        photos = self.photos and bool(games)
-        if photos and not waited and (self._fetching or self.fetch == 'failed'):
+        shown = self.parts_on()
+        photos = bool(shown) and bool(games)
+        if photos and not waited and self.packs_wanted() and (self._fetching or self.fetch == 'failed'):
             self.waiting = False                    # the pictures first; a failed download is tried once more
             self.busy, self.at = True, self.fetch_at
             self.status = (X.PHOTOS_WAITING.format(pct=int(self.fetch_at * 100)), 'body')
@@ -1194,7 +1238,7 @@ class UpdateController:
             return
         self._begin("Working... (the last result is shown until the new one is ready)")
         self.photos_running = photos
-        self.pictures_short = photos and not all(packs.have(n) for n in packs.NAMES)
+        self.pictures_short = photos and not all(packs.have(n) for n in self.packs_wanted())
         mine = (my_edits.load(), my_edits.load_teams()) if self.use_edits else (None, None)
         name = self.name.strip() if self.name_edited and self.name.strip() else savedata.default_name()
         rpcs3, targets, patch = self.rpcs3, self._export_targets(source), self.export_patch
@@ -1204,7 +1248,7 @@ class UpdateController:
         def work():
             return export.run(None, source, rpcs3=rpcs3, steps=steps, targets=targets, name=name, photos=photos,
                               game_patch=patch, intro=intro, login=login, my_edits=mine[0] or None,
-                              team_edits=mine[1] or None, progress=self.say, games=games)
+                              team_edits=mine[1] or None, progress=self.say, games=games, art_parts=shown)
 
         def context():
             return [f"export from {label}{'' if not isinstance(source, str) or os.path.exists(source) else '  (missing)'}",
@@ -1328,7 +1372,7 @@ class UpdateController:
             made = f"{made.day} {made:%b %Y}"
         except ValueError:
             made = ''
-        return [{'title': X.PHOTOS_TITLE, 'text': pictures, 'tone': 'good' if self.fetch == 'ready' else
+        return [{'title': "Pictures", 'text': pictures, 'tone': 'good' if self.fetch == 'ready' else
                  'amber' if self.fetch == 'failed' else 'muted', 'bar': round(self.fetch_at, 3) if running else None},
                 {'title': "Rosters, ratings, contracts and the calendar",
                  'text': f"Data from {made}" if made else "No data available",
@@ -1479,26 +1523,71 @@ class UpdateController:
                  'enabled': not self.busy, 'restore': not export, 'restore_enabled': restorable,
                  'restoring': k in self.marks}
                 for k in self.step_keys]
-        rows.insert(0, self._photos_row(export, plain, restorable))
+        rows[:0] = [self._photos_row(export, plain, restorable), self._picture_row(S.NAMES, export, plain, restorable)]
         rows.append({'key': S.EDITS, 'title': "My edits", 'sub': "Your changes from the Roster editor, applied after the update",
                      'warn': None, 'hint': X.EDITS_HINT, 'on': self.use_edits, 'enabled': not self.busy,
                      'restore': False, 'restore_enabled': False, 'restoring': False})
         return rows
 
     def _photos_row(self, export, plain, restorable):
-        """First in the list and highlighted: its status says only that the pictures are downloaded automatically."""
+        """First in the list and highlighted: the group "Photos and logos". Its switch turns every part inside on or off
+        (the page opens the list of parts with an arrow); the status line says only whether the downloads are here."""
         offered = bool(self.export_games()) if export else not plain      # an export needs the game, not RPCS3
-        on = self.photos and offered
-        running = on and self.fetch == 'running'
-        sub = (X.PHOTOS_EXPORT if export and not offered else X.PHOTOS_NEEDS_RPCS3 if plain and not export else
-               X.PHOTOS_OFF if not self.photos else
-               X.PHOTOS_RUNNING.format(pct=int(self.fetch_at * 100)) if running else
-               X.PHOTOS_READY if self.fetch == 'ready' else
-               X.PHOTOS_RETRY if self.fetch == 'failed' else X.photos_will(self.fetch_size))
-        return {'key': S.PHOTOS, 'title': X.PHOTOS_TITLE, 'sub': sub, 'warn': None, 'hint': X.PHOTOS_HINT,
+        kids = [self._picture_row(k, export, plain, restorable) for k in S.GROUP]
+        for kid in kids:
+            kid['child'] = True
+        wanted = P.packs_for({k for k in S.GROUP if (self.photos if k == S.PHOTOS else self.art_on[k])})
+        on = any(kid['on'] for kid in kids)
+        here = all(packs.have(n) for n in wanted)
+        running = on and self.fetch == 'running' and not here
+        if not offered:
+            sub = kids[0]['sub']
+        elif not on:
+            sub = X.PHOTOS_OFF
+        elif running:
+            sub = X.PHOTOS_RUNNING.format(pct=int(self.fetch_at * 100))
+        elif here:
+            sub = X.PHOTOS_READY
+        elif self.fetch == 'failed':
+            sub = X.PHOTOS_RETRY
+        else:
+            sub = X.photos_will(sum(self.pack_sizes.get(n) or X.PICTURE_SIZES.get(n, 0) for n in wanted))
+        count = sum(1 for kid in kids if kid['on'])
+        if offered and on and count < len(kids):
+            sub = f"{count} of {len(kids)} parts on. " + sub
+        return {'key': S.PICTURES, 'title': X.PHOTOS_TITLE, 'sub': sub, 'warn': None, 'hint': X.PHOTOS_HINT, 'featured': True,
                 'on': on, 'enabled': not self.busy and offered, 'restore': offered and not export,
-                'restore_enabled': restorable,
-                'restoring': S.PHOTOS in self.marks, 'featured': True,
+                'restore_enabled': restorable, 'restoring': any(k in self.marks for k in S.GROUP),
+                'bar': round(self.fetch_at, 3) if running else None, 'children': kids}
+
+    def _picture_row(self, key, export, plain, restorable):
+        """One of the picture switches (art/parts.py): its status says only whether its download is here."""
+        offered = bool(self.export_games()) if export else not plain      # an export needs the game, not RPCS3
+        flag = self.photos if key == S.PHOTOS else self.art_on[key]
+        title, hint, guess = X.PICTURE_ROWS[key]
+        pack = P.PACK_OF.get(key)
+        on = flag and offered
+        running = on and pack is not None and self.fetch == 'running' and not packs.have(pack)
+        size = self.pack_sizes.get(pack) or guess
+        if export and not offered:
+            sub = X.PHOTOS_EXPORT
+        elif plain and not export:
+            sub = X.PHOTOS_NEEDS_RPCS3
+        elif not flag:
+            sub = X.PICTURE_NAMES_OFF if key == S.NAMES else X.PHOTOS_OFF
+        elif pack is None:
+            sub = X.PICTURE_NO_DOWNLOAD
+        elif running:
+            sub = X.PHOTOS_RUNNING.format(pct=int(self.fetch_at * 100))
+        elif packs.have(pack):
+            sub = X.PHOTOS_READY
+        elif self.fetch == 'failed':
+            sub = X.PHOTOS_RETRY
+        else:
+            sub = X.photos_will(size)
+        return {'key': key, 'title': title, 'sub': sub, 'warn': None, 'hint': hint,
+                'on': on, 'enabled': not self.busy and offered, 'restore': offered and not export,
+                'restore_enabled': restorable, 'restoring': key in self.marks,
                 'bar': round(self.fetch_at, 3) if running else None}
 
     def _save_view(self, slot, export, in_place, ready, any_step, full=()):

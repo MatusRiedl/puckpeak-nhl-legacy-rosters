@@ -4,7 +4,11 @@ import json
 from .. import datasource
 
 FILE = 'settings.json'
-PHOTOS = 'photos'           # the "Photos, logos and team names" switch in settings['steps']
+PHOTOS = 'photos'           # the "Photos and logos" switch in settings['steps'] (before 0.76.0 also names and jerseys)
+NAMES, LOOKS, ARENAS, BRIGHT_ICE, TEAM_MASKS = 'names', 'looks', 'arenas', 'bright_ice', 'team_masks'    # 0.76.0: switches of their own
+PICTURE_KEYS = (PHOTOS, NAMES, LOOKS, ARENAS, BRIGHT_ICE, TEAM_MASKS)     # the rows of art/parts.py (same words)
+PICTURES = 'pictures'    # the Update tab's group row "Photos and logos": switches GROUP together, never stored
+GROUP = (PHOTOS, LOOKS, ARENAS, BRIGHT_ICE, TEAM_MASKS)     # what the group holds; team names are a row of their own
 EDITS = 'edits'             # the "My edits" switch
 GAME_PATCH = 'game_patch'   # "32 teams and the year 2026 (game patch)"
 SKIP_INTRO, NO_LOGIN = 'skip_intro', 'no_login'     # its two small switches (on / off at first)

@@ -100,8 +100,14 @@ keep the bundled pack's values (the script says so).
 
 ```
 python tools/publish_packs.py <ssh-host>:<folder> --dry-run      # what would be sent
-python tools/publish_packs.py <ssh-host>:<folder>                # the packs, the data pack, then manifest.json
+python tools/publish_packs.py <ssh-host>:<folder>                # every pack in private/packs, the data pack, then manifest.json
+python tools/publish_packs.py <ssh-host>:<folder> --only arenas,ice,masks   # just these (the manifest keeps the others)
 ```
+
+**The small packs** (0.76.0: `arenas`, `ice`, `masks`): made from the community's 26-27 Extras folder by
+`private/build_extras.py "<folder>"` (`.venv\Scripts\python -I`, `LEGACY_ROSTER_DISC` = the EU disc, read only). Run it again when
+the folder changes; it prints what it took and what it left out. Arenas carry the sha1 of the disc's file: an NA or other game version
+whose file differs is skipped in the player's List of changes, so compare the NA files first. Findings: docs/notes/community-extras.md.
 
 - It refuses when `tools/clean_check.py --server` finds a word in the data pack or the packs' `index.json` / file names,
   or when the data pack is not the format the program reads.

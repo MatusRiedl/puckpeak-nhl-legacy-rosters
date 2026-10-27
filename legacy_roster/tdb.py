@@ -267,7 +267,10 @@ class RosterFile:
         if self.compressed:
             zlen = struct.unpack_from('<I', b, 0x2C)[0]
             self.zlib_len = zlen
-            db = zlib.decompress(b[0x30:0x30 + zlen])
+            try:
+                db = zlib.decompress(b[0x30:0x30 + zlen])
+            except zlib.error as err:     # the checksum fits but the data does not unpack: damaged, or another tool's file
+                raise ValueError("this roster file is damaged or was not made by the game (its data cannot be unpacked)") from err
         else:
             db = b[0x2C:0x2C + self.section_size]
         self._parse_db(db)

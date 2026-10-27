@@ -604,3 +604,24 @@ def test_without_the_start_entry_the_steps_are_pressed_by_hand_and_nothing_is_ti
     host.code, host.title = 'ABCDEF', EU
     host._start_game()
     assert ticks == [] and not host.by_itself
+
+
+def test_a_game_that_stays_signed_in_on_a_menu_gets_the_steps_to_press_by_hand(server, tmp_path, monkeypatch):
+    host = _controller(tmp_path, monkeypatch)
+    host.auto, host.launched, host.signed_at = True, 'ABCDEF', None
+    member = {'name': host.account, 'role': 'host', 'progress': 'signed_in'}
+    monkeypatch.setattr(host, '_member', lambda: member)
+    assert not host.stalled() and host.steps('host') == [online.BY_ITSELF]
+    host.signed_at = time.time() - 10
+    assert not host.stalled()                                           # signed in a moment ago: the game is on its way
+    host.signed_at = time.time() - online.STALL_AFTER - 5
+    assert host.stalled()
+    steps = host.steps('host')
+    assert steps[:2] == [online.BY_ITSELF, online.STALLED] and 'Create Game Session' in ' '.join(steps)
+    assert 'Browse Available Game Sessions' in ' '.join(host.steps('guest'))
+    member['progress'] = 'hosting'                                      # the session is made: nothing to press
+    assert not host.stalled() and host.steps('host') == [online.BY_ITSELF]
+
+
+def test_the_games_own_roster_says_what_to_do_instead(tmp_path, monkeypatch):
+    assert 'Update tab' in online.OWN_ROSTER and 'Setup' in online.OWN_ROSTER

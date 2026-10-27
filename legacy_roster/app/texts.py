@@ -37,8 +37,8 @@ ROOM_FULL = savedata.FULL_TEXT
 HIDDEN_IN_GAME = ("The game does not show this roster: it lists only 10. Delete a roster you no longer play, "
                   "and this one shows again.")
 PHOTOS_HINT ="RPCS3 must be closed. The game's own pictures are kept and can be put back."
-PHOTOS_TITLE = "Photos, logos and team names"
-PHOTOS_SIZE = 160 * 1000 * 1000        # what the row says before the program knows the real size
+PHOTOS_TITLE = "Photos and logos"
+PHOTOS_SIZE = 105 * 1000 * 1000       # what the row says before the program knows the real size
 PHOTOS_RUNNING = "Downloading automatically... {pct} %"
 PHOTOS_READY = "Downloaded automatically. Ready."
 PHOTOS_RETRY = "Not downloaded yet. It tries again automatically."
@@ -48,10 +48,26 @@ PHOTOS_NEEDS_RPCS3 = f"Needs RPCS3: pick {PROGRAM} in step 1."
 PHOTOS_EXPORT = "Pick your copy of the game in Setup first: the pictures are made from it."
 PHOTOS_WAITING = "Waiting for the download... {pct} %"
 PHOTOS_SHORT = "Some pictures could not be downloaded; the next update tries again."
+# 0.76.0: the picture rows after "Photos and logos" (settings key -> title, what it does, about how many bytes it downloads)
+PICTURE_ROWS = {
+    'photos': ("Player photos and team logos", "The pictures of the players and the logos of the teams.",
+               PHOTOS_SIZE),
+    'names': ("Team names", "Team names and short codes in Select Teams and on the scoreboard, and the main menu texts. "
+                            "RPCS3 must be closed.", 0),
+    'looks': ("This season's jerseys and centre ice", "New jerseys, pants, socks and centre-ice logos for the teams.", 55 * 1000 * 1000),
+    'arenas': ("NHL arenas", "Newer boards and banners in the 32 NHL arenas.", 13 * 1000 * 1000),
+    'bright_ice': ("Bright ice", "Brighter faceoff circles and a white centre circle.",
+                   8 * 1000 * 1000),
+    'team_masks': ("Team goalie masks", "The goalie masks of the teams.", 3 * 1000 * 1000),
+}
+PICTURE_SIZES = {pack: PICTURE_ROWS[key][2] for pack, key in (('photos', 'photos'), ('looks', 'looks'), ('arenas', 'arenas'),
+                                                                      ('ice', 'bright_ice'), ('masks', 'team_masks'))}     # about how big, before the server says
+PICTURE_NAMES_OFF = "Off: the game keeps its own team names."
+PICTURE_NO_DOWNLOAD = "Nothing to download."
 SAVED_DESPITE = ("The roster is saved: you can load it in the game. The details of what went wrong are in {log}; "
                  "send that file with a bug report.")
 SAVED_SOME_FAILED = "Something after the save went wrong."
-LOOKS_MISSING = "This season's jerseys come with Photos, logos and team names (Update tab)."
+LOOKS_MISSING = "This season's jerseys come with the switch \"This season's jerseys and centre ice\" (Update tab)."
 EDITS_HINT = "Kept on this PC, so the next download does not undo them."
 PATCH_TITLE = "32 teams and the year 2026 (game patch)"
 PATCH_SUB = "Seattle and Vegas in Season and Be a GM: 32 NHL and 32 AHL teams, 84 games. New."
@@ -74,7 +90,7 @@ PATCH_ASK = ["This patches the game in RPCS3 (every version you have) for 32 tea
 UNPATCH_ASK = ["This takes the game patch out of RPCS3: the game is as it was.",
                "Rosters made for the patch, and Season and Be a GM saves started with it, do not open without it. "
                "Update a roster made for the patch, and it is made for the game as it is again. "
-               "Your rosters and saves are not changed now. RPCS3 must be closed."]
+               "Your rosters and saves are not changed now."]
 MISFIT_PATCHED = "The patched game cannot load this roster (it says \"damaged\"). Update it to make it a 32-team roster."
 MISFIT_UNPATCHED = "Made for the game patch: the game without it cannot load this roster. Update it to turn it back."
 MISFIT_VERSION = ("Made for another version of the game patch: the patched game cannot load this roster (it says "
@@ -93,7 +109,7 @@ PATCH_INFO = [
         "The real 2026-27 calendar: 84 games per team. The seasons after it get a 32-team calendar too.",
         "The farm league has 32 AHL clubs in their 2026-27 divisions, with Coachella Valley (Seattle) and Henderson "
         "(Vegas). Call-ups and send-downs work for every team. Both clubs are also in Play Now's AHL list (their names "
-        "come with Photos, logos and team names).",
+        "come with the Team names switch).",
         "The playoffs, the trade deadline, the off-season, the All-Star game and the draft with the lottery work "
         "with 32 teams (7 rounds, 224 picks a year).",
         "Salary cap in real money: $104.0M in 2026-27 (floor $76.9M), $113.5M in 2027-28, $127.5M in 2028-29, "

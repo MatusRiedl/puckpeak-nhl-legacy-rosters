@@ -113,8 +113,18 @@ def test_remove_frees_the_space(site):
     publish(site, {'photos': b'P' * 5000, 'looks': b'L' * 1000})
     packs.sync()
     assert packs.remove_all() == 6000
-    assert packs.path('photos') is None and packs.status() == {'photos': None, 'looks': None}
+    assert packs.path('photos') is None and set(packs.status().values()) == {None}
     assert packs.missing(packs.manifest()) == ['photos', 'looks']
+
+
+def test_only_the_wanted_packs_are_downloaded_and_a_pack_the_server_lacks_is_fine(site):
+    publish(site, {'photos': b'P' * 3000, 'looks': b'L' * 1000, 'arenas': b'A' * 500, 'masks': b'M' * 200})
+    listed = packs.manifest()
+    assert packs.missing(listed, ['arenas', 'ice']) == ['arenas']        # 'ice' is not on the server: not missing
+    assert packs.size_of(listed, ['arenas', 'masks']) == 700
+    assert packs.sync(wanted=['masks', 'arenas'], listed=listed) == (['arenas', 'masks'], None)
+    assert packs.have('arenas') and packs.have('masks') and not packs.have('photos') and not packs.have('looks')
+    assert packs.missing(listed) == ['photos', 'looks']                  # the rest still waits for its switch
 
 
 def test_a_developers_own_pack_wins_and_is_not_downloaded(site, tmp_path, monkeypatch):

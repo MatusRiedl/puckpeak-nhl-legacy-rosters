@@ -6,8 +6,9 @@
             [--leagues nhl,ratings,national,liiga,... | all] [--name "<roster name>"] [--dry-run] [--offline]
             [--for EU|NA|both]                        which version(s) of the game to save it for
             [--in-place]                              update the roster save itself (old one copied first), no new folder
-            [--photos]                                also install current photos and logos (RPCS3 closed)
-            [--edits]                                 apply your edits from the window's Roster editor
+            [--photos]                                also install team names, photos and logos, this season's jerseys (RPCS3 closed)
+            [--names] [--looks] [--arenas] [--bright-ice] [--team-masks]   the parts one by one (each downloads only its own pack)
+            [--edits]                                apply your edits from the window's Roster editor
                                                       a patched RPCS3 (game-patch install) gets a roster for 32
                                                       teams and the year 2026, an unpatched one a normal roster
             [--game-patch [--skip-intro] [--no-login]]   patch RPCS3 first (RPCS3 closed), then update
@@ -16,7 +17,7 @@
                                                       take the patch out again
     export-roster --file <SYS-DATA> [--out <folder>] [--for-patch]   update a roster file without RPCS3: writes a new
                                                       SYS-DATA folder next to the program (--for-patch: for a patched game)
-    photos remove                                     take the photos and logos away again
+    photos remove [--part names|photos|looks|arenas|bright_ice|team_masks]   take the pictures away again (all, or only that part)
     packs download | status | remove                  the pictures for --photos: download them now, show what is on
                                                       this PC, free the space (update --photos downloads by itself)
     export-files [--rpcs3 <rpcs3.exe> | --savedata <folder>] [--source <save>|<SYS-DATA>] --out <folder> [--photos]
@@ -240,13 +241,13 @@ def cmd_update(args):
                 sys.exit(str(err))
     elif args.skip_intro or args.no_login:
         sys.exit("--skip-intro and --no-login go with --game-patch")
-    art_rpcs3 = None
-    if args.photos:
+    art_rpcs3, art_parts = None, _art_parts(args)
+    if args.photos or art_parts:
         if not args.rpcs3:
-            sys.exit("--photos needs --rpcs3 <rpcs3.exe>: the pictures go into RPCS3's game folder")
+            sys.exit("--photos and the other picture switches need --rpcs3 <rpcs3.exe>: the pictures go into RPCS3's game folder")
         art_rpcs3 = _find(args)
         if not args.offline and not args.dry_run:
-            _download_packs()
+            _download_packs(art_parts)
     data = None
     if args.research:      # saved inputs instead of live data (tests, reproducing an old build)
         r = datasource.load_research_dir(args.research)
@@ -262,7 +263,7 @@ def cmd_update(args):
         res = pipeline.update(folder, slot.folder, steps, args.name, print, args.offline, args.dry_run, data,
                               art_rpcs3=art_rpcs3, my_edits=mine, team_edits=teams,
                               targets=targets, disc=slot if getattr(slot, 'disc', False) else None,
-                              in_place=args.in_place, rpcs3=rpcs3, game_patch=game_patch)
+                              in_place=args.in_place, rpcs3=rpcs3, game_patch=game_patch, art_parts=art_parts)
     except layout.LayoutError as err:    # e.g. EU patched, NA not, saving for both
         sys.exit(str(err))
     except RuntimeError as err:         # photos and logos: RPCS3 running, game not found; in place: refused
@@ -436,16 +437,33 @@ def cmd_export(args):
 def cmd_photos(args):
     from .art import install
     try:
-        install.remove()
+        if args.part:
+            install.remove_parts(args.part)
+        else:
+            install.remove()
     except RuntimeError as err:
         sys.exit(str(err))
 
 
-def _download_packs():
-    """The pictures for --photos (packs.py): what is missing or changed, with a line per tenth."""
+def _art_parts(args):
+    """The picture parts the options ask for (art/parts.py), or None: --photos alone is what it always was (team names,
+    photos and logos, this season's jerseys). The other switches add to it: --arenas alone is only the arenas."""
+    from .art import parts
+    extra = {p for p, flag in ((parts.NAMES, args.names), (parts.LOOKS, args.looks), (parts.ARENAS, args.arenas),
+                               (parts.BRIGHT_ICE, args.bright_ice), (parts.TEAM_MASKS, args.team_masks)) if flag}
+    if not extra:
+        return None
+    return frozenset(extra | (parts.LEGACY if args.photos else set()))
+
+
+def _download_packs(art_parts=None):
+    """The pictures for --photos (packs.py): what is missing or changed, with a line per tenth. `art_parts`: only the
+    packs these parts need (default: the photos' and the jerseys')."""
     from . import packs
+    from .art import parts
+    wanted = parts.packs_for(art_parts if art_parts is not None else parts.LEGACY)
     listed = packs.manifest()
-    names = packs.missing(listed) if listed is not None else []
+    names = packs.missing(listed, wanted) if listed is not None else []
     if names:
         print(f"Downloading the pictures ({packs.size_of(listed, names) / 1e6:.0f} MB)...")
     shown = [-1]
@@ -454,9 +472,9 @@ def _download_packs():
         if int(at * 10) > shown[0]:
             shown[0] = int(at * 10)
             print(f"   {int(at * 100)} %")
-    done, why = packs.sync(step if names else None, listed=listed) if listed is not None else ([], 'offline')
+    done, why = packs.sync(step if names else None, listed=listed, wanted=wanted) if listed is not None else ([], 'offline')
     if why:
-        have = [n for n in packs.NAMES if packs.have(n)]
+        have = [n for n in wanted if packs.have(n)]
         print("The pictures were not downloaded" + ("" if why == 'offline' else f" ({why})") + ": "
               + ("the copy on this PC is used." if have else "photos come one by one, jerseys stay the game's own."))
     return done
@@ -576,7 +594,12 @@ def main(argv=None):
             p.add_argument('--offline', action='store_true', help="use the data shipped with the program only")
             p.add_argument('--photos', action='store_true',
                            help="also install current photos and logos into RPCS3's game folder (new; RPCS3 must "
-                                "be closed; 'photos remove' takes them away)")
+                                "be closed; 'photos remove' takes them away); with team names and this season's jerseys")
+            p.add_argument('--names', action='store_true', help="team names, short codes and menu texts in the game (RPCS3 closed)")
+            p.add_argument('--looks', action='store_true', help="this season's jerseys and centre ice (downloads the look pack)")
+            p.add_argument('--arenas', action='store_true', help="the NHL arenas' newer pictures (downloads the arena pack)")
+            p.add_argument('--bright-ice', action='store_true', help="brighter faceoff circles and centre circle (downloads the ice pack)")
+            p.add_argument('--team-masks', action='store_true', help="the goalie masks of the teams (downloads the mask pack)")
             p.add_argument('--edits', action='store_true',
                            help="apply your own edits from the window's Roster editor after the update")
             p.add_argument('--game-patch', action='store_true',
@@ -626,6 +649,8 @@ def main(argv=None):
     p = sub.add_parser('photos', help="remove the installed photos and logos (every file goes back as it was)")
     p.set_defaults(fn=cmd_photos)
     p.add_argument('action', choices=('remove',))
+    p.add_argument('--part', action='append', choices=('names', 'photos', 'looks', 'arenas', 'bright_ice', 'team_masks'),
+                   help="take away only this part (repeat for more); default: all of them")
     p = sub.add_parser('packs', help="the pictures for --photos: download them now, show them, free the space")
     p.set_defaults(fn=cmd_packs)
     p.add_argument('action', choices=('download', 'status', 'remove'))

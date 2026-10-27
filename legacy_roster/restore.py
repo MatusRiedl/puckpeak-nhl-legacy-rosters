@@ -10,6 +10,16 @@ from .roster import Roster
 ROSTERS, CALENDAR, PICTURES = 'rosters', 'calendar', 'pictures'
 PATCH = 'patch'                         # the game patch out of RPCS3 (patchinstall.remove)
 ALL_PARTS = (ROSTERS, CALENDAR, PICTURES, PATCH)
+PICTURE_PART = 'pictures:'              # + a part of art/parts.py: only that row's pictures go back (0.76.0)
+
+
+def picture_part(part):
+    return PICTURE_PART + part
+
+
+def pictures_of(parts):
+    """The picture parts (art/parts.py names) among restore `parts`, in order."""
+    return sorted(p[len(PICTURE_PART):] for p in parts if str(p).startswith(PICTURE_PART))
 
 
 class _Raw:

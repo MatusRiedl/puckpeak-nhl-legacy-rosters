@@ -1,7 +1,8 @@
 """The picture packs the program downloads from its own file server (0.32.0): `photos` (players' photos and club
-logos) and `looks` (this season's jerseys and centre-ice logos). They are not inside the program. While "Photos, logos
-and team names" is on, the window downloads what is missing or changed in the background (app/update.py, `sync`), and
-the next update uses it; the command line downloads before `update --photos` (cli.py `packs`).
+logos), `looks` (this season's jerseys and centre-ice logos) and, since 0.76.0, `arenas`, `ice` and `masks`. They are
+not inside the program. While a switch that needs a pack is on, the window downloads that pack (only that one) if it is
+missing or changed, in the background (app/update.py, `sync(wanted=)`), and the next update uses it; the command line
+downloads before `update --photos` (cli.py `packs`). A pack the server does not list yet is simply not offered.
 
     <files_url>manifest.json
         {"format": 1, "packs": {"photos": {"file": "photos-<sha12>.zip", "size": bytes, "sha256": "...",
@@ -24,7 +25,7 @@ import re
 
 from . import datasource
 
-NAMES = ('photos', 'looks')
+NAMES = ('photos', 'looks', 'arenas', 'ice', 'masks')      # 0.76.0: arenas, ice and masks (art/parts.py PACK_OF)
 FORMAT = 1
 STATE = 'state.json'
 
@@ -97,11 +98,14 @@ def manifest(timeout=20):
     return {name: entry for name, entry in listed['packs'].items() if name in NAMES and _valid(entry)}
 
 
-def missing(listed):
-    """The names whose pack on this PC is not the one `listed` (manifest) names, in NAMES order."""
+def missing(listed, names=None):
+    """The names whose pack on this PC is not the one `listed` (manifest) names, in NAMES order. `names`: only these
+    packs are asked about (the ones the switched-on parts need); a pack the server does not list is not missing."""
     state = _state()
     out = []
     for name in NAMES:
+        if names is not None and name not in names:
+            continue
         entry = listed.get(name)
         if entry is None or dev_path(name):
             continue
@@ -153,14 +157,14 @@ def fetch(name, entry, progress=None, cancelled=None):
     return target
 
 
-def sync(progress=None, cancelled=None, listed=None):
-    """Download every pack that is missing or changed. `progress(fraction 0-1)` over all of them. Returns
-    (names downloaded, None) or (names downloaded so far, the reason it stopped): 'offline' when the list cannot be
-    read, else the error's text. Cancelled is passed on."""
+def sync(progress=None, cancelled=None, listed=None, wanted=None):
+    """Download every pack that is missing or changed (`wanted`: only these names). `progress(fraction 0-1)` over all
+    of them. Returns (names downloaded, None) or (names downloaded so far, the reason it stopped): 'offline' when the
+    list cannot be read, else the error's text. Cancelled is passed on."""
     listed = manifest() if listed is None else listed
     if listed is None:
         return [], 'offline'
-    names = missing(listed)
+    names = missing(listed, wanted)
     total = size_of(listed, names) or 1
     done, base = [], 0
     for name in names:

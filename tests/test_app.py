@@ -1109,12 +1109,37 @@ def test_the_photos_row_is_first_highlighted_and_off_until_the_player_ticks_it(b
     from legacy_roster.app.update import UpdateController
     upd = UpdateController(FakeHost(), settings={}, pack=pack)          # nothing remembered: a first start
     row = upd._steps_view(False, False)[0]
-    assert row['key'] == 'photos' and row['featured'] and not row['on'] and row['bar'] is None
+    assert row['key'] == 'pictures' and row['featured'] and not row['on'] and row['bar'] is None
     assert row['sub'] == X.PHOTOS_OFF
+    assert [c['key'] for c in row['children']] == ['photos', 'looks', 'arenas', 'bright_ice', 'team_masks']
+    names = upd._steps_view(False, False)[1]                            # team names: a row of their own, on to start with
+    assert names['key'] == 'names' and names['on'] and not names.get('featured') and 'children' not in names
     assert not any(r.get('featured') for r in upd._steps_view(False, False)[1:])
-    upd.set_step('photos', True)
-    assert upd._steps_view(False, False)[0]['sub'] == "Downloaded automatically (about 160 MB)" == X.photos_will()
+    upd.set_step('pictures', True)                                      # the group switch: every part inside goes on
+    row = upd._steps_view(False, False)[0]
+    assert row['on'] and all(c['on'] for c in row['children']) and row['sub'].startswith("Downloaded automatically (about")
+    assert upd._steps_view(False, False)[1]['on']                       # and the names are not part of it
+    upd.set_step('looks', False)                                        # one part off again: the group says how many
+    row = upd._steps_view(False, False)[0]
+    assert row['on'] and row['sub'].startswith("4 of 5 parts on. ")
+    upd.set_step('pictures', False)                                     # off: all parts off, the names stay
+    assert not any(c['on'] for c in upd._steps_view(False, False)[0]['children']) and upd.art_on['names']
+    upd.set_step('pictures', True)
     assert upd._steps_view(True, False)[0]['sub'] == X.PHOTOS_EXPORT and not upd._steps_view(True, False)[0]['on']
+
+
+def test_restore_on_the_group_row_marks_every_part_in_it_and_again_undoes_it(base_dir, tmp_path, monkeypatch, pack):
+    from legacy_roster.app.update import UpdateController
+    upd = UpdateController(FakeHost(), settings={}, pack=pack)
+    monkeypatch.setattr(upd, 'download_pictures', lambda: None)
+    upd.set_step('pictures', True)
+    upd.toggle_restore('pictures')
+    assert set(upd.marks) == {'photos', 'looks', 'arenas', 'bright_ice', 'team_masks'} and not upd.parts_on() - {'names'}
+    assert upd._steps_view(False, False)[0]['restoring']
+    upd.toggle_restore('pictures')
+    assert not upd.marks
+    upd.toggle_restore('names')                                         # names keep their own Restore
+    assert set(upd.marks) == {'names'}
 
 
 def test_photos_start_off_for_a_player_who_had_them_on_and_a_new_choice_is_kept(base_dir, tmp_path, monkeypatch, pack):
@@ -1163,20 +1188,25 @@ def test_the_pictures_download_by_themselves_only_while_the_switch_is_on(tmp_pat
     from legacy_roster import packs
     from legacy_roster.app import texts as X
     from legacy_roster.app.update import UpdateController
-    server = _site(tmp_path, monkeypatch, {'photos': b'P' * 2_000_000, 'looks': b'L' * 1000})
+    server = _site(tmp_path, monkeypatch, {'photos': b'P' * 2_000_000, 'looks': b'L' * 1000, 'arenas': b'A' * 1000})
     (tmp_path / 'packs').mkdir()
     monkeypatch.setattr(packs, 'folder', lambda: str(tmp_path / 'packs'))
     try:
-        upd = UpdateController(FakeHost(), settings={'steps': {'photos': False}}, pack=pack)
+        upd = UpdateController(FakeHost(), settings={'steps': {'photos': False, 'names': False}}, pack=pack)
         upd.download_pictures()                                         # off: nothing happens
-        assert not upd._fetching and packs.status() == {'photos': None, 'looks': None}
+        assert not upd._fetching and set(packs.status().values()) == {None}
         seen = []
-        upd.host.changed = lambda name: seen.append(upd._steps_view(False, False)[0]['sub'])
+        upd.host.changed = lambda name: seen.append(upd._steps_view(False, False)[0]['children'][0]['sub'])      # the photos part
+        upd.set_step('looks', True)                                     # jerseys alone: only their pack comes
+        wait(lambda: not upd._fetching, 30)
+        with upd.lock:
+            pass
+        assert packs.have('looks') and not packs.have('photos') and not packs.have('arenas')
         upd.set_step('photos', True)                                    # on: the download starts by itself
         wait(lambda: not upd._fetching, 30)
         with upd.lock:                  # the thread clears _fetching first, then sets fetch and tells the page
             pass
-        assert upd.fetch == 'ready' and packs.have('photos') and packs.have('looks')
+        assert upd.fetch == 'ready' and packs.have('photos') and packs.have('looks') and not packs.have('arenas')
         assert any(s.startswith("Downloading automatically...") for s in seen) and seen[-1] == X.PHOTOS_READY
     finally:
         server.shutdown()
@@ -1197,7 +1227,7 @@ def test_an_update_pressed_during_the_download_waits_for_it(app, monkeypatch):
     monkeypatch.setattr('legacy_roster.packs.manifest', lambda timeout=20: None)       # the line dropped
     upd._download()
     assert started == [(False, True)] and not upd.busy and upd.fetch == 'failed'
-    assert upd._steps_view(False, False)[0]['sub'] == X.PHOTOS_RETRY
+    assert upd._steps_view(False, False)[0]['sub'].endswith(X.PHOTOS_RETRY)
 
 
 def test_the_jerseys_window_says_this_seasons_come_with_the_photos(app):

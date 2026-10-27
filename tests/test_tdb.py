@@ -118,3 +118,16 @@ def test_a_longer_save_section_keeps_the_database(base_bytes):
     assert struct.unpack_from('>I', out, 0x24)[0] == size + 864 and again.build_db() == RosterFile(data=base_bytes).build_db()
     again.resize(size)
     assert again.build() == RosterFile(data=base_bytes).build()   # back to the game's own length
+
+
+def test_a_save_whose_data_does_not_unpack_is_refused_as_a_value_error():
+    """A tester's roster folder had a file with a fitting checksum and bytes that are no zlib data: the scan crashed with
+    zlib.error (not a ValueError) instead of marking that one roster as unusable."""
+    section = struct.pack('<I', 20) + b'this is not zlib data'
+    raw = bytearray(0x2C) + section
+    raw[:0x10] = tdb.ROSTER_MAGIC.ljust(0x10, b'\0')
+    struct.pack_into('>I', raw, 0x1C, 1)
+    struct.pack_into('>I', raw, 0x24, len(section))
+    struct.pack_into('>I', raw, 0x28, tdb.crc32_bzip2(bytes(section)))
+    with pytest.raises(ValueError, match='cannot be unpacked'):
+        RosterFile(data=bytes(raw))
