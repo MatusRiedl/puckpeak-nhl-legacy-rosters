@@ -7,6 +7,10 @@ What changed in each version, for players. Developers: details in [AGENTS.md](AG
 
 Fixes from testers' reports.
 
+- **Better player photos.** The photo pack now has 765 new, sharper-coloured player photos (the NHL players' headshots from a
+  new set). They are made to fit the game's portrait frame, and a long face is drawn a little smaller so the chin is never
+  cut off. Players the set lacks keep their old photo. The pack downloads by itself when "Photos, logos and team names" is on.
+
 - **The Roster editor can save the game's own roster.** Before, saving it stopped with "Seattle Kraken has 0 captain(s)
   and 0 alternate(s)": the program made a 2026 roster out of it first. Now an edit-only save keeps it the game's own
   2014 roster (All-Star teams, birth years and all) with just your changes. The 2026 update only runs when you press

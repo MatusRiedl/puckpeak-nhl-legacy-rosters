@@ -194,6 +194,8 @@ wording (`progress.py`).
 
 ## Current state
 
+**Photo pack (2026-10-28, part of 0.81.0, published with the owner's go):** the owner's folder of 848 player photos replaced 765 portraits of `photos.zip` (new `photos-691d56680e8a.zip` on the server, old pack kept there; notes docs/notes/photo-folder.md, tool `private/photos_folder.py`; long faces scaled so the jaw stays above the shoulder fade).
+
 **Version 0.81.0 (2026-10-28, built, committed locally, not pushed; plan docs/plans/purring-watching-pearl.md, PLAN.md top, lab notes
 docs/notes/lab-round-55.md):** three testers' reports. (1) **The Roster editor saves the game's own roster**: `pipeline.build`
 runs `stock.prepare` only when an update step runs (`as_disc`), so an edit-only save keeps the 2014 roster (All-Star teams, birth
