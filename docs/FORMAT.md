@@ -125,7 +125,9 @@ record. The line slots are named: `l1lw l1c l1rw l1ld l1rd` ... `l4rw`, `pp1*`, 
    free agents have no contract fields set.
 4. Each line slot has at most one holder per team; a player is dressed exactly when he holds a
    slot. NHL and national teams dress 20: 12 forwards, 6 defencemen, 2 goalies.
-5. Every NHL team has three letters: one C and two A, or three A.
+5. Letters: the update gives every NHL team three (one C and two A, or three A), but since 0.81.0 the game and
+   `verify` accept any number, none included (lab round 55: Play Now and Edit Lines with none, all C, all A and a
+   goalie's letter). Season / Be a GM with such teams is not played yet.
 6. The free-agent list only holds links that no roster entry uses.
 7. **Hard limits.** No team can be added (the team table is full and team ids are 8-bit) and no
    team can change league. Only existing slots can be refilled.

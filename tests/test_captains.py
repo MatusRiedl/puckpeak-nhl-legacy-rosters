@@ -149,17 +149,15 @@ def test_a_second_build_with_the_letters_changes_nothing(lettered, pack):
     assert again.ok and again.data == result.data
 
 
-def test_verify_refuses_two_captains_or_a_goalies_letter_on_a_club(lettered):
+def test_verify_allows_any_letters_on_a_club(lettered):      # 0.81.0: the player's own choice (lab round 55)
     _full, result, slot, _who = lettered
     R = Roster(result.data)
     ents = [e for e in range(R.U.cur_rec) if R.U.get(e, 'BSXd') == slot]
     kind = {e: R.P.get(R.p_by_id[R.link_to_pid[R.U.get(e, 'TWSX')]], 'aljv') for e in ents}
     skaters = [e for e in ents if kind[e] != 4 and not R.U.get(e, 'lcCm')]
-    R.U.set(skaters[0], 'lcCm', 1)
-    problems, _ = verify.structure(R)
-    assert ('letters', slot) in problems
-    R.U.set(skaters[0], 'lcCm', 0)
+    for e in skaters:                                  # a whole club of captains
+        R.U.set(e, 'lcCm', 1)
     goalie = next(e for e in ents if kind[e] == 4)
-    R.U.set(goalie, 'lcCm', 2)
+    R.U.set(goalie, 'lcCm', 2)                         # and a goalie's letter
     problems, _ = verify.structure(R)
-    assert any(k[0] == 'goalie letter' for k in problems)
+    assert not [k for k in problems if k[0] in ('letters', 'goalie letter')]

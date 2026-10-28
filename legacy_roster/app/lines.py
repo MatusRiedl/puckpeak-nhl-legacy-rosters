@@ -234,11 +234,7 @@ class LinesController:
         with self.lock:
             if self.team is None or who not in self.players:
                 return
-            if letter == 'C':
-                for w, l in list(self.letters.items()):
-                    if l == 'C':
-                        self.letters.pop(w)
-            if letter in ('C', 'A'):
+            if letter in ('C', 'A'):             # any number of either: a team of captains is the player's choice
                 self.letters[who] = letter
             else:
                 self.letters.pop(who, None)
@@ -249,7 +245,8 @@ class LinesController:
     def _problems(self):
         pos = {w: p['pos'] for w, p in self.players.items()}
         name = {w: p['name'] for w, p in self.players.items()}
-        return LN.check_lineup(self.slots, self.letters, pos, name, nhl=self.team in L.NHL_PRIMARY, repeats=True)
+        return LN.check_lineup(self.slots, self.letters, pos, name, nhl=self.team in L.NHL_PRIMARY, repeats=True,
+                               free_letters=True)
 
     def apply(self):
         ed = self.editor
@@ -337,5 +334,4 @@ class LinesController:
                     'problems': problems, 'can_apply': not problems and (self.touched or not mine),
                     'touched': self.touched, 'mine': mine, 'note': self.note or NOTE,
                     'view': self.editor.team_view(self.team),
-                    'letters_rule': ("One captain and two alternates, or no captain and three alternates."
-                                     if self.team in L.NHL_PRIMARY else "One captain at most, three letters at most.")}
+                    'letters_rule': "Any letters you like: none, one captain, a whole team of captains."}

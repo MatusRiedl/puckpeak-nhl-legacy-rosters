@@ -362,7 +362,10 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
         for slot in gamepatch.FARM_SLOTS[30:]:
             R.T.set(slot, 'NYKk', 1)
     prepared = []
-    if kind == L.STOCK:                 # the game's own roster: made updatable first (stock.py)
+    # the game's own roster with edits only (the Roster editor's Save, no update step): it stays the game's 2014 roster,
+    # All-Star teams and birth years as the disc has them; stock.prepare is for an update, which fills Seattle and Vegas
+    as_disc = kind == L.STOCK and not steps and not game_patch and not stock.prepared(R)
+    if kind == L.STOCK and not as_disc:     # the game's own roster: made updatable first (stock.py)
         prepared = stock.prepare(R, data.season_year)
         if prepared:
             say("The game's own roster: making room for today's players")
@@ -396,7 +399,7 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     if rescaled:
         log.append(['ALL', 'summary', "contracts moved to " + ("real dollars" if money == contracts.REAL else
                                                                 "the game's cap"), f"{rescaled} players", ''])
-    identity = b.nhl_identity() if kind == L.STOCK or NHL in steps else 0
+    identity = b.nhl_identity() if (kind == L.STOCK and not as_disc) or NHL in steps else 0
     if identity:
         log.append(['ALL', 'summary', "arena names and colours of the NHL teams", f"{identity} teams", ''])
     farm_arenas = b.ahl_identity() if 'ahl' in steps else 0
@@ -1188,9 +1191,9 @@ def export_sysdata(source_file, steps=ALL_STEPS, name=None, progress=None, offli
     R = Roster(src_bytes)
     L.check_base(R)
     from . import stock
-    if stock.is_stock(R):
-        raise L.LayoutError("This is the game's own roster, which is started from your game disc. Pick the community "
-                            "roster's SYS-DATA instead.")
+    if stock.untouched(R):
+        raise L.LayoutError("This is the game's own roster as it comes on the disc, which is started from your game disc. "
+                            "Pick an updated roster or the community roster's SYS-DATA instead.")
     say(f"Starting from \"{os.path.basename(os.path.dirname(os.path.abspath(source_file))) or 'SYS-DATA'}\" (SYS-DATA file)")
     pack = None
     if data is None:

@@ -3,6 +3,24 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.81.0 (2026-10-28)
+
+Fixes from testers' reports.
+
+- **The Roster editor can save the game's own roster.** Before, saving it stopped with "Seattle Kraken has 0 captain(s)
+  and 0 alternate(s)": the program made a 2026 roster out of it first. Now an edit-only save keeps it the game's own
+  2014 roster (All-Star teams, birth years and all) with just your changes. The 2026 update only runs when you press
+  Update.
+- **Export files to a folder from the game's own roster:** a roster updated from the disc can be picked as the roster
+  file. Only the untouched disc roster is refused, and the message says to pick "New from EU disc" (or NA) in the list.
+- **"'NoneType' object is not subscriptable" while updating:** a player page from NHL.com without a birthdate or a name
+  is now skipped instead of stopping the update. Unexpected errors now say where in the program they happened.
+- On the game's own roster the Roster editor shows slots 30 and 31 as the All-Star teams they are, not as Seattle and Vegas.
+- A team that cannot dress 20 players keeps a captain and two alternates when you move its letter holders away.
+- **Any letters you like.** In the Lines tab a team can have no letters, one captain, or a whole team of captains
+  (even a goalie with a letter). The game played all of these in a test game. The update itself still gives each
+  NHL team three letters; yours are kept on top.
+
 ## 0.80.1 (2026-10-27, Linux; a new name)
 
 **The program is now called Puck Peak Legacy Updater** (`PuckPeakLegacyUpdater.exe` on Windows). Your copy updates

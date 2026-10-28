@@ -24,6 +24,7 @@ from . import edits as my_edits
 from .progress import fraction
 from .roster import Roster
 from .stock import StockError
+from .app.jobs import where as jobs_where
 from .app.texts import photos_will
 from .gui_state import is_current_scan, sync_packed_order
 from .widgets import Banner, Card, Choice, GhostButton, PrimaryButton, RosterRow, SwitchRow, configure_if_changed, flag_image
@@ -1131,9 +1132,9 @@ class App:
         try:
             layout.check_base(Roster(path))
             from . import stock
-            if stock.is_stock(Roster(path)):
-                raise layout.LayoutError("that is the game's own roster, which needs your game disc: pick the community "
-                                         "roster's SYS-DATA")
+            if stock.untouched(Roster(path)):
+                raise layout.LayoutError("that is the game's own roster as it comes on the disc: pick \"New from EU disc\" (or NA) "
+                                         "in the list instead, or a roster that was updated")
             self.export_file, self.export_problem = path, None
             self.settings[EXPORT_FILE] = path
             save_settings(self.settings)

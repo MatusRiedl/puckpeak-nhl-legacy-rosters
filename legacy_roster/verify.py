@@ -197,20 +197,10 @@ def structure(R, full_lineup=FULL_LINEUP, mirrors=None):
             out[('draft', P.get(prow, 'zIBw'))] = (f"{R.name(prow)}: draft year {year}, round {rnd}, pick {overall} "
                                                    "do not fit together")
 
-    # every team: one captain at most, three letters at most, none on a goalie (lines.check_lineup's rule)
-    for t, ents in by_team.items():
-        letters = Counter(U.get(i, 'lcCm') for i in ents)
-        if t >= 32 and (letters[1] > 1 or letters[1] + letters[2] > 3):
-            out[('letters', t)] = f"{_team(R, t)} has {letters[1]} captain(s) and {letters[2]} alternate(s)"
-        for i in ents:
-            if U.get(i, 'lcCm') and P.get(R.p_by_id[pid(i)], 'aljv') == 4:
-                out[('goalie letter', pid(i))] = f"{R.name(R.p_by_id[pid(i)])} ({_team(R, t)}) is a goalie with a letter"
-
-    # NHL teams: three letters (one captain at most), every player under contract
+    # letters: any number of C / A is allowed (the player's own choice; lab round 55 played none, all C, all A and a
+    # goalie's in Play Now). The update's own lines keep three letters per NHL team (builder, lines.check_lineup).
+    # NHL teams: every player under contract
     for t in range(32):
-        letters = Counter(U.get(i, 'lcCm') for i in by_team.get(t, []))
-        if letters[1] + letters[2] != 3 or letters[1] > 1:
-            out[('letters', t)] = f"{_team(R, t)} has {letters[1]} captain(s) and {letters[2]} alternate(s)"
         for i in by_team.get(t, []):
             prow = R.p_by_id[pid(i)]
             if not P.get(prow, 'GDhI') or not P.get(prow, 'dhKk'):

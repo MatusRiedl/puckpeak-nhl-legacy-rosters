@@ -22,6 +22,8 @@ EXPORT_SAVE_NOTE = ("Everything is made into a new folder (named by the date and
                     "A short text in it says where each part goes.")
 EXPORT_PICK = ("Pick a roster of your RPCS3 below, or a roster file (the SYS-DATA of the community roster you downloaded). "
                "The files are made into a new folder.")
+GAME_ROSTER_FILE = ("that is the game's own roster as it comes on the disc. Pick \"New from EU disc\" (or NA) in the list "
+                    "above instead: the export then makes an updated roster from it")
 EXPORT_RPCS3 = ("Optional here: pick RPCS3 to start from your own rosters and to skip roster names you already use. "
                 "Nothing in it is changed.")
 EXPORT_GAME = "Pick your copy of the game (the .iso or its folder): the pictures, the game patch and the game's own roster need it."

@@ -71,13 +71,14 @@ class Snapshot:
         # the game's own roster as the disc has it: birth years in the game's year - 1900 (stock.prepare
         # moves them), or every player would look ten years off and "new to the game" next to the update
         from .. import stock
-        base = 1900 if stock.is_stock(R) and not stock.prepared(R) else 1910
+        base = stock.birth_base(R)
+        own = stock.untouched(R)          # the 2014 roster as it is: slots 30 / 31 are still its All-Star teams
         self.team_names = {t: R.team_name(t) for t in range(T.cur_rec)}
         # slots 30 / 31 keep the game's All-Star names in the table of a roster for the unpatched game, 22 Arizona's; the
         # game names them Utah / Seattle / Vegas from its text file (art/portraits.NHL_NAMES), and so does the window
         self.team_codes = {}
         for t, (old, full, code) in SHOWN_AS.items():
-            if old in self.team_names.get(t, ''):
+            if old in self.team_names.get(t, '') and not (own and t in (30, 31)):
                 self.team_names[t], self.team_codes[t] = full, code
         self.heads = faces.heads(R)       # the heads the game can draw (the Roster editor's Face)
         # by the game's league field, as the game lists them: Coachella Valley and Henderson (custom slots 234 / 235)

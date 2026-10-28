@@ -70,6 +70,10 @@ def test_the_rules_name_what_is_wrong():
     assert any('captain' in p for p in lines.check_lineup(slots, {'f0': 'C', 'f1': 'C', 'f2': 'A'}, pos, name))
     assert any('three letters' in p for p in lines.check_lineup(slots, {'f0': 'C'}, pos, name))
     assert lines.check_lineup(slots, {'f0': 'C'}, pos, name, nhl=False) == []
+    everyone = {w: 'C' for w in pos}                       # the player's own lines (0.81.0): any letters, even a goalie's
+    assert lines.check_lineup(slots, everyone, pos, name, free_letters=True) == []
+    assert lines.check_lineup(slots, {}, pos, name, free_letters=True) == []
+    assert any('not on the team' in p for p in lines.check_lineup(slots, {'zz': 'C'}, pos, name, free_letters=True))
     assert lines.slot_label('pp4_2rd') == 'Power play, 4 skaters, unit 2 RD'
 
 
@@ -152,3 +156,19 @@ def test_the_lines_window_offers_every_place_the_game_has():
     in_groups = sorted(slot for _, names in lines.GROUPS for slot in names)
     in_tabs = sorted(slot for _, _, rows in window.TABS for _, names in rows for slot in names)
     assert len(SLOT_TAG) == 71 and in_groups == in_tabs == sorted(SLOT_TAG)
+
+
+def test_a_team_of_captains_and_a_team_without_letters_save_and_change_nothing_twice(base_bytes, data, built):
+    R = Roster(built.data)
+    slots, _ = lineup(R, TOR)
+    pos, _ = view(R, TOR)
+    everyone = {w: 'C' for w, p in pos.items() if p != 'G'}              # a fantasy roster: every skater the captain
+    teams = {str(TOR): {'lines': {'slots': slots, 'letters': everyone}}}
+    first = pipeline.build(base_bytes, data, team_edits=teams)
+    assert first.ok, first.problems[:5]
+    assert lineup(Roster(first.data), TOR)[1] == everyone
+    assert pipeline.build(first.data, data, team_edits=teams).data == first.data
+    teams = {str(TOR): {'lines': {'slots': slots, 'letters': {}}}}      # and no letters at all
+    bare = pipeline.build(base_bytes, data, team_edits=teams)
+    assert bare.ok, bare.problems[:5]
+    assert lineup(Roster(bare.data), TOR)[1] == {}

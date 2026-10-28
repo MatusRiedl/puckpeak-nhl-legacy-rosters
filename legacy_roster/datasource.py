@@ -169,6 +169,8 @@ def flatten_nhl(teams, extra=()):
         d = teams.get(abbr) or {}
         for g in ('forwards', 'defensemen', 'goalies'):
             for p in d.get(g, []):
+                if not p.get('birthDate') or not (p.get('firstName') or {}).get('default')                         or not (p.get('lastName') or {}).get('default'):
+                    continue            # a page without a birthdate or a name cannot be matched to anyone
                 y, m, dd = (int(x) for x in p['birthDate'].split('-'))
                 out.append({'team': abbr, 'first': p['firstName']['default'], 'last': p['lastName']['default'],
                             'num': p.get('sweaterNumber'), 'pos': p['positionCode'], 'shoots': p.get('shootsCatches'),
@@ -203,6 +205,37 @@ def fetch_nhl_teams(season_year, progress=None, fresh=False):
     return teams
 
 
+def _search_player(name, year, prow):
+    """NHL.com's search and player pages for one player the roster lists leave out: his entry for find_missing, or None
+    (no active namesake born within a year of `year`, not on an NHL team, or a page with no birthdate or name)."""
+    hits = http_json(NHL_SEARCH + urllib.parse.quote(name))
+    best = None
+    for h in hits or ():
+        if norm(h.get('name', '')) != norm(name) or not h.get('active'):
+            continue
+        land = http_json(f"{NHL_API}/player/{h['playerId']}/landing")
+        if not land or not land.get('birthDate'):
+            continue
+        by = int(land['birthDate'][:4])
+        if best is None or abs(by - year) < abs(best[0] - year):
+            best = (by, land)
+        time.sleep(0.05)
+    if best is None or abs(best[0] - year) > 1:
+        return None
+    land = best[1]
+    team = land.get('currentTeamAbbrev')
+    first, last = (land.get('firstName') or {}).get('default'), (land.get('lastName') or {}).get('default')
+    if not land.get('isActive') or team not in L.API_TO_SLOT or not first or not last:
+        return None
+    y, m, d = (int(x) for x in land['birthDate'].split('-'))
+    return {'team': team, 'first': first, 'last': last,
+            'num': land.get('sweaterNumber'), 'pos': land.get('position'),
+            'shoots': land.get('shootsCatches'), 'birth': [y, m, d], 'nhl_id': land['playerId'],
+            'height_in': land.get('heightInInches'), 'weight_lb': land.get('weightInPounds'),
+            'country': land.get('birthCountry'), 'city': (land.get('birthCity') or {}).get('default'),
+            'photo': land.get('headshot'), 'db_row': prow, 'source': 'player search'}
+
+
 def find_missing(R, players, progress=None, fresh=False):
     """Players on the source roster's NHL teams that the roster lists leave out.
 
@@ -230,32 +263,12 @@ def find_missing(R, players, progress=None, fresh=False):
         if k % 10 == 0:
             say(f"NHL: checking players the roster lists leave out ({k + 1}/{len(missing)})")
         year = P.get(prow, 'dnFq') + 1910
-        try:
-            hits = http_json(NHL_SEARCH + urllib.parse.quote(name))
-        except urllib.error.HTTPError:
+        try:                    # a best-effort look-up: a player whose page is odd is left out, never the whole update
+            found_one = _search_player(name, year, prow)
+        except (urllib.error.HTTPError, ValueError, TypeError, KeyError, AttributeError):
             continue
-        best = None
-        for h in hits:
-            if norm(h.get('name', '')) != norm(name) or not h.get('active'):
-                continue
-            land = http_json(f"{NHL_API}/player/{h['playerId']}/landing")
-            by = int(land['birthDate'][:4])
-            if best is None or abs(by - year) < abs(best[0] - year):
-                best = (by, land)
-            time.sleep(0.05)
-        if best is None or abs(best[0] - year) > 1:
-            continue
-        land = best[1]
-        team = land.get('currentTeamAbbrev')
-        if not land.get('isActive') or team not in L.API_TO_SLOT:
-            continue
-        y, m, d = (int(x) for x in land['birthDate'].split('-'))
-        extra.append({'team': team, 'first': land['firstName']['default'], 'last': land['lastName']['default'],
-                      'num': land.get('sweaterNumber'), 'pos': land.get('position'),
-                      'shoots': land.get('shootsCatches'), 'birth': [y, m, d], 'nhl_id': land['playerId'],
-                      'height_in': land.get('heightInInches'), 'weight_lb': land.get('weightInPounds'),
-                      'country': land.get('birthCountry'), 'city': (land.get('birthCity') or {}).get('default'),
-                      'photo': land.get('headshot'), 'db_row': prow, 'source': 'player search'})
+        if found_one:
+            extra.append(found_one)
         time.sleep(0.05)
     _store(f"missing_{key}.json", extra)
     return extra

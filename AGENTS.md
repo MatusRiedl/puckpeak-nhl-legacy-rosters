@@ -62,7 +62,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    copy of the savedata folder, or `tools/window_shot.py` (it makes a fake RPCS3).
 6. **No git commit or push, and nothing published, without the owner's explicit go-ahead.**
    The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-updater (0.6.0
-   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, 0.50.4 to 0.51.2 on 2026-10-24, 0.52.0 on 2026-10-25, 0.80.0 on 2026-10-27, each with the owner's go-ahead). Every further commit,
+   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, 0.50.4 to 0.51.2 on 2026-10-24, 0.52.0 on 2026-10-25, 0.80.0 and 0.80.1 on 2026-10-27, each with the owner's go-ahead). Every further commit,
    push or release needs the go-ahead again. Before pushing, check that no base roster (`work/`),
    picture pack (`private/packs/`, a zip in `legacy_roster/data/`), anything from `private/`, personal path or user name
    goes in, and that `python tools/clean_check.py` finds nothing.
@@ -194,7 +194,21 @@ wording (`progress.py`).
 
 ## Current state
 
-**Version 0.80.1 (2026-10-27, not committed; plan PLAN.md top "LINUX PROGRAM"):** a tester's Linux program opened the
+**Version 0.81.0 (2026-10-28, built, committed locally, not pushed; plan docs/plans/purring-watching-pearl.md, PLAN.md top, lab notes
+docs/notes/lab-round-55.md):** three testers' reports. (1) **The Roster editor saves the game's own roster**: `pipeline.build`
+runs `stock.prepare` only when an update step runs (`as_disc`), so an edit-only save keeps the 2014 roster (All-Star teams, birth
+years from 1900: `stock.untouched` / `birth_base`, used by `edits`); `export_sysdata` refuses only the untouched disc roster.
+(2) **Export / picker**: `UpdateController.use_export_file` refuses only `stock.untouched` files (text `texts.GAME_ROSTER_FILE`);
+a roster updated from the disc is an ordinary roster file. (3) **"NoneType" while updating**: `datasource.flatten_nhl` /
+`find_missing` skip pages without birthDate / names; `jobs.where` puts `file:line in function` into "Something went wrong".
+(4) **Any letters** (lab round 55: none, all C, all A, goalie letters played in Play Now, Edit Lines opens): `lines.check_lineup(
+free_letters=True)` for the player's own lines (`app/lines.py`, `edits._team_lines`), `verify.structure` no longer counts letters,
+`set_letter` no longer clears other captains; the builder's automatic lines keep three letters per NHL team; a letter on a player
+not on the team stays refused. Season mode / Be a GM with such teams: not played. Version in `__init__` 0.81.0, CHANGELOG entry.
+Tests: test_stock_edits (new), test_lines_strategy, test_captains. Not built yet: Exe / Linux builds, window shots, slots 30 / 31
+shown with the All-Star names on a 2014 roster.
+
+**Version 0.80.1 (2026-10-27, released with the owner's go-ahead: commit 16985e2, tag `v0.80.1`, GitHub release with both exe names, the Linux tar.gz and `SHA256SUMS.txt`; plan PLAN.md top "LINUX PROGRAM"):** a tester's Linux program opened the
 classic window (0.80.0's from GitHub needed the system's WebKitGTK). Now: the program is named **PuckPeakLegacyUpdater**
 (owner; `selfupdate.EXE_ASSET`, the release also carries `NHLLegacyRosterUpdater.exe` for older copies' update check;
 the data folder `NHLLegacyRosterUpdater` stays), only the Windows exe and the Linux program ship (no Mac, no cli exe;

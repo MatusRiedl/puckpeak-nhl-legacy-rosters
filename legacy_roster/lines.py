@@ -238,7 +238,7 @@ def lineup(b, team):
     return slots, letters
 
 
-def check_lineup(slots, letters, pos, name, nhl=True, repeats=False):
+def check_lineup(slots, letters, pos, name, nhl=True, repeats=False, free_letters=False):
     """What is wrong with a team's lines as plain sentences ([] when the game can play them).
 
     `slots` {slot name: player}, `letters` {player: 'C' | 'A'}, `pos` {player on the team: 'C' 'L' 'R' 'D' 'G'},
@@ -248,7 +248,9 @@ def check_lineup(slots, letters, pos, name, nhl=True, repeats=False):
     letters only on skaters of the team: one captain at most, and on an NHL team (`nhl`) three letters in all.
     `repeats`: the player's own lines may use one player in several places of a special-team group (power play,
     penalty kill, overtime, shootout, extra attackers); the four lines, three pairs and two goalies still need 20
-    different players, the game dresses 20."""
+    different players, the game dresses 20.
+    `free_letters`: the player's own lines may wear any letters (none, all captains, a goalie's: lab round 55 played
+    them); only a letter on someone who is not on the team is refused. The automatic lines keep the usual rules."""
     problems = []
     for group, names in GROUPS:
         seen = {}
@@ -278,8 +280,10 @@ def check_lineup(slots, letters, pos, name, nhl=True, repeats=False):
     for who, letter in sorted(letters.items(), key=lambda kv: (kv[1], name.get(kv[0], ''))):
         if who not in pos:
             problems.append(f"{name.get(who, 'A player')} wears a letter but is not on the team.")
-        elif pos[who] == 'G':
+        elif pos[who] == 'G' and not free_letters:
             problems.append(f"{name[who]} is a goalie: a goalie cannot wear a letter.")
+    if free_letters:
+        return problems
     c, a = list(letters.values()).count('C'), list(letters.values()).count('A')
     if c > 1:
         problems.append(f"A team has one captain at most (now {c}).")

@@ -1,5 +1,6 @@
 """Work that takes a while runs in a thread of its own; the window stays responsive."""
 import datetime
+import os
 import threading
 import traceback
 
@@ -24,10 +25,21 @@ def log_block(lines=(), err=None):
     return path
 
 
+def where(err):
+    """The last frame of the program's own code in `err`'s traceback as " (file.py:123 in function)", '' when it has
+    none: a player's screenshot of the message then says where it went wrong."""
+    last = None
+    for frame in traceback.extract_tb(err.__traceback__):
+        parts = frame.filename.replace(os.sep, '/').split('/legacy_roster/')
+        if len(parts) > 1:
+            last = (parts[-1], frame.lineno, frame.name)
+    return f" ({last[0]}:{last[1]} in {last[2]})" if last else ''
+
+
 def log_unexpected(err, context=()):
     """Keep the details of an unexpected error for a bug report; returns what to tell the player."""
     path = log_block(context, err)
-    return f"Something went wrong: {err}\nThe details were saved to {path}"
+    return f"Something went wrong: {err}{where(err)}\nThe details were saved to {path}"
 
 
 def run(work, done=None, failed=None, expected=(), context=None):

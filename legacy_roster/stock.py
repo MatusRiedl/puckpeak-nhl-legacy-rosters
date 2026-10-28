@@ -157,6 +157,18 @@ def prepared(R):
     return not any(set(ALL_STAR) & ts and ts & (L.NHL_PRIMARY - set(ALL_STAR)) for ts in teams.values())
 
 
+def untouched(R):
+    """The game's own roster exactly as the disc has it (an update, or a roster saved from one, is not): a roster file that
+    needs the disc to start from."""
+    return is_stock(R) and not prepared(R)
+
+
+def birth_base(R):
+    """The year a record's birth year counts from: 1900 on the game's own roster as the disc has it (stock.prepare has not
+    moved it), 1910 on every other roster."""
+    return 1900 if untouched(R) else 1910
+
+
 def prepare(R, season_year):
     """Make the game's own roster (`R`, a roster.Roster) one the update can work on; see the
     module text. Returns a list of what was done (for the change log), empty when it was prepared

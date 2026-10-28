@@ -92,7 +92,7 @@ class UpdateController:
         self.name_edited = False
         self.export_mode = bool(self.settings.get(S.EXPORT_ONLY))
         picked = self.settings.get(S.EXPORT_FILE)
-        self.export_file = picked if picked and os.path.isfile(picked) else None
+        self.export_file = picked if picked and os.path.isfile(picked) and not self._untouched(picked) else None
         self.export_from_file = self.export_file is not None and bool(self.settings.get(S.EXPORT_FROM_FILE, True))
         self.export_patch = bool(self.settings.get(S.EXPORT_PATCH))     # the export holds the game patch
         self.export_problem = None
@@ -1207,13 +1207,21 @@ class UpdateController:
             return
         self.use_export_file(os.path.normpath(path))
 
+    @staticmethod
+    def _untouched(path):
+        """Is `path` the game's own roster as the disc has it (it cannot start an export: the disc roster is picked instead)?"""
+        from .. import stock
+        try:
+            return stock.untouched(Roster(path))
+        except (layout.LayoutError, ValueError, KeyError, OSError):
+            return False
+
     def use_export_file(self, path):
         try:
             layout.check_base(Roster(path))
             from .. import stock
-            if stock.is_stock(Roster(path)):
-                raise layout.LayoutError("that is the game's own roster, which needs your game disc: pick the community "
-                                         "roster's SYS-DATA")
+            if stock.untouched(Roster(path)):
+                raise layout.LayoutError(X.GAME_ROSTER_FILE)
             problem = None
         except (layout.LayoutError, ValueError, KeyError, OSError) as err:
             problem = "That file cannot be used: " + X.short_reason(str(err))[len("Cannot be used: "):]

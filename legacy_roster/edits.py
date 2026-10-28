@@ -53,7 +53,7 @@ import json
 import os
 from collections import Counter
 
-from . import contracts, custom_kit, datasource, equipment, faces, lines, ratings
+from . import contracts, custom_kit, datasource, equipment, faces, lines, ratings, stock
 from . import layout as L
 from .art.portraits import person_key
 from .schema import LIST_GOALIE, LIST_SKATER, RATING_BASE
@@ -230,7 +230,7 @@ def people_and_copies(b):
             rank.setdefault(prow, 0)
     out, copies = {}, {}
     for prow in sorted(rank, key=lambda r: (rank[r], r)):
-        who = who_of(P, prow)
+        who = who_of(P, prow, stock.birth_base(R))
         if who in out:
             copies.setdefault(who, []).append(prow)
         else:
@@ -271,13 +271,15 @@ def restore(R, edits):
     name back, so the downloaded data still recognises them; `apply()` renames them again at the
     end. Without this a renamed NHL player would look new to the update and be created twice."""
     P = R.P
+    base = stock.birth_base(R)
     index = {}
     for prow in range(P.cur_rec):
-        index.setdefault(who_of(P, prow), []).append(prow)
+        index.setdefault(who_of(P, prow, base), []).append(prow)
     for who in sorted(edits):
         e = edits[who]
         was, now = e.get('was'), e.get('set') or {}
-        if not was or not any(now.get(k) for k in ('first', 'last', 'birth')):
+        if not was or not was.get('birth') or not was.get('first') or not was.get('last') \
+                or not any(now.get(k) for k in ('first', 'last', 'birth')):
             continue
         edited = person_key(now.get('first') or was['first'], now.get('last') or was['last'],
                             now.get('birth') or was['birth'])
@@ -287,7 +289,7 @@ def restore(R, edits):
             P.set(prow, 'PedH', was['first'])
             P.set(prow, 'RMbQ', was['last'])
             y, m, d = was['birth']
-            P.set(prow, 'dnFq', y - 1910)
+            P.set(prow, 'dnFq', y - base)
             P.set(prow, 'pLKJ', m - 1)
             P.set(prow, 'iwsK', d - 1)
 
@@ -439,7 +441,7 @@ def _set_fields(b, prow, fields, changed):
         P.set(prow, 'pkRG', 0 if fields['shoots'] == 'L' else 1)
     if fields.get('birth'):
         y, m, d = fields['birth']
-        P.set(prow, 'dnFq', max(0, y - 1910))
+        P.set(prow, 'dnFq', max(0, y - stock.birth_base(b.R)))
         P.set(prow, 'pLKJ', m - 1)
         P.set(prow, 'iwsK', d - 1)
     if fields.get('country'):
@@ -586,7 +588,7 @@ def team_lineup_view(b, team):
         prow = b.prow_of_entry(e)
         pos[e] = 'CLRDG'[P.get(prow, 'aljv')]
         name[e] = b.R.name(prow)
-        who[e] = who_of(P, prow)
+        who[e] = who_of(P, prow, stock.birth_base(b.R))
     return slots, letters, pos, name, who
 
 
@@ -607,7 +609,7 @@ def _team_lines(b, slot, saved):
         return
     slots = {s: entry[w] for s, w in saved.get('slots', {}).items() if s in lines.S}
     letters = {entry[w]: l for w, l in saved.get('letters', {}).items() if l in ('C', 'A')}
-    problems = lines.check_lineup(slots, letters, pos, name, nhl=slot in L.NHL_PRIMARY, repeats=True)
+    problems = lines.check_lineup(slots, letters, pos, name, nhl=slot in L.NHL_PRIMARY, repeats=True, free_letters=True)
     if problems:
         b.log.append(['edits', 'edit skipped', team, f"your lines: {problems[0]} The update's lines are used", ''])
         return
@@ -742,6 +744,23 @@ def _create(b, who, e):
     return prow
 
 
+def _hand_on_letters(b, team, before):
+    """A team that cannot dress 20 gets no new lines, but its captain and alternates who left must not leave it without
+    letters: `before` ({entry: 'C' / 'A' / None}, what the team had) says how many it had of each; the missing ones go to the
+    best skaters who wear none (an NHL team gets one captain and two alternates)."""
+    U = b.U
+    ents = b.entries_on(team)
+    now = [U.get(e, 'lcCm') for e in ents]
+    want = {1: sum(1 for v in before.values() if v == 'C'), 2: sum(1 for v in before.values() if v == 'A')}
+    if team in L.NHL_PRIMARY:           # the game's NHL teams wear one captain and two alternates
+        want = {1: max(want[1], 1), 2: max(want[2], 2)}
+    free = sorted((e for e in ents if not U.get(e, 'lcCm') and b.cls(e) != 'G'), key=lambda e: (-b.q(e), e))
+    for letter in (1, 2):
+        for _ in range(want[letter] - now.count(letter)):
+            if free:
+                U.set(free.pop(0), 'lcCm', letter)
+
+
 def _relines(b, changed, say):
     """Lines of the teams the edits changed, dealt afresh by rating and position (lines.py): the
     same players always get the same lines, so a later update with the same edits changes nothing.
@@ -762,5 +781,6 @@ def _relines(b, changed, say):
                 letter = b.U.get(e, 'lcCm')
                 b.clear_lines(e)
                 b.U.set(e, 'lcCm', letter)
+            _hand_on_letters(b, team, letters)
     if any(t in L.NHL_PRIMARY for t in changed):
         b.sync_mirrors()

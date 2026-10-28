@@ -744,7 +744,7 @@ def test_the_lines_window_moves_only_the_picked_place_checks_the_rules_and_keeps
     ln.pick_slot('l2lw')
     ln.place(l1)
     ln.set_letter(l2, 'C')
-    assert list(ln.letters.values()).count('C') == 1 and ln.letters[l2] == 'C'
+    assert ln.letters[l2] == 'C'                    # 0.81.0: another captain does not take the letter off the first
     assert ln.snapshot()['can_apply']
     ln.apply()
     idle(ed)
