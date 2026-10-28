@@ -194,6 +194,8 @@ def drive(args, c, work):
                 upd.steps[key] = True
         if not args.disc:                   # the pretend RPCS3 has no game to make pictures from
             upd.photos = False
+            for part in upd.art_on:         # team names too: they need the game's own files
+                upd.art_on[part] = False
         upd.select(os.path.basename(BASE))
         upd.start()
         wait(lambda: upd.busy, 10)
