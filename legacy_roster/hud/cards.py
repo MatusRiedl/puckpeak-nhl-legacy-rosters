@@ -124,10 +124,10 @@ def draw_result(gfx, res, now, s):
         gfx.ring(x0 + num_w / 2, y0 + 122 * s, (30 + 260 * e) * s, 5 * s * (1 - e) + 1, hexcolor('#ffd166', int(230 * (1 - e))))
     b = res.banner(now)
     if b > 0.01:
-        bh2 = 58 * s
-        by2 = oy + lift - bh2 * 0.5 + (b - 1) * 40 * s
+        bh2 = 50 * s                                    # above the card, in its margin: the title line stays readable
+        by2 = oy + lift - bh2 - 4 * s + (b - 1) * 40 * s
         gfx.push(ox + w / 2, by2 + bh2 / 2, 1.0, max(0.01, min(1.0, b)))
         gfx.fill_round(-w / 2, -bh2 / 2, w, bh2, 5 * s, GOLD)
-        gfx.text('RANK UP  •  ' + str(d['rank_up']).upper(), -w / 2, -bh2 / 2 + 8 * s, gfx.font(HEAD, 32 * s, True),
+        gfx.text('RANK UP  •  ' + str(d['rank_up']).upper(), -w / 2, -bh2 / 2 + 6 * s, gfx.font(HEAD, 29 * s, True),
                  hexcolor('#1a1204'), w=w, align=1)
         gfx.pop()
