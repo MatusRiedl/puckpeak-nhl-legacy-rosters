@@ -55,7 +55,8 @@ def _fake_put(self, rpcs3, title, data):
 
 def _fake_installed(self, rpcs3, title):
     data = self.pc.get('online')
-    return None if data is None else {'name': 'Puck Peak Online 2026-10-25', 'folder': 'BLES02153021', 'crc': _crc(data)}
+    return None if data is None else dict({'name': 'Puck Peak Online 2026-10-25', 'folder': 'BLES02153021', 'crc': _crc(data)},
+                                          **self.pc.get('facts', {}))
 
 
 def _controller(tmp_path, monkeypatch, name='HostPlayer', ready=True, patched=True, bring=b'roster of the host'):
@@ -308,6 +309,57 @@ def test_a_guest_joins_with_no_online_save_and_gets_the_hosts_roster(server, tmp
     assert len(launched) == 2                           # not started again for the same lobby
     config = open(launched[0][3]).read()
     assert "PSN status: RPCN" in config and "gosredirector.ea.com=127.0.0.1" in config
+
+
+def test_a_guest_whose_patch_does_not_fit_the_hosts_roster_cannot_press_ready_until_he_patches_again(server, tmp_path, monkeypatch):
+    launched = []
+    monkeypatch.setattr(savedata, 'launch', lambda args, **kw: launched.append(args))
+    host = _controller(tmp_path / 'a', monkeypatch, 'HostPlayer')
+    _look(host)
+    host.create()
+    wait(lambda: host.code)
+    guest = _controller(tmp_path / 'b', monkeypatch, 'GuestPlayer')
+    guest.pc['facts'] = {'patch_roster': True, 'rights': 6}          # the host's roster: patch 0.23 or newer
+    guest.fake_state['rights'] = 5                                   # the guest's game: an older patch's db files
+    _look(guest)
+    guest.join(host.code)
+    wait(lambda: guest.pc.get('online') and not guest.busy and not guest.copying)
+    wait(lambda: guest.snapshot()['guest_problem'])
+    snap = guest.snapshot()
+    assert snap['guest_problem'] == online.GUEST_RIGHTS and snap['hint'] == online.GUEST_RIGHTS
+    guest.ready()
+    assert guest.snapshot()['note']['text'] == online.GUEST_RIGHTS
+    assert not any(m['ready'] for m in guest.snapshot()['lobby']['members'])
+    guest.fake_state['rights'] = 6                                   # Patch again in Game patch
+    _look(guest)
+    assert guest.snapshot()['guest_problem'] is None
+    host.ready()
+    wait(lambda: not host.busy)
+    guest.ready()
+    wait(lambda: len(launched) == 1 and not guest.busy)
+
+
+def test_the_guest_check_compares_the_roster_itself_with_the_game_as_rpcs3_has_it(tmp_path, monkeypatch):
+    guest = _controller(tmp_path, monkeypatch, 'GuestPlayer')
+    guest.account = 'GuestPlayer'
+    guest.lobby = {'code': 'KDMQRS', 'roster': {'crc': 'aabbccdd', 'size': 9},
+                   'members': [{'name': 'HostPlayer', 'role': 'host'}, {'name': 'GuestPlayer', 'role': 'guest'}]}
+
+    def problem(state, **roster):
+        guest.state = dict({'patched': True, 'rights': 6, 'stale': False}, **state)
+        guest.roster = dict({'name': 'x', 'folder': 'y', 'crc': 'AABBCCDD', 'patch_roster': True, 'rights': 6}, **roster)
+        return guest.guest_problem()
+
+    assert problem({}) is None
+    assert problem({'patched': False}) == online.GUEST_UNPATCHED
+    assert problem({}, patch_roster=False, rights=5) == online.GUEST_PATCHED
+    assert problem({'patched': False}, patch_roster=False, rights=5) is None          # a normal roster, a game without the patch
+    assert problem({'rights': None}) == online.GUEST_INCOMPLETE                       # rights not readable: not let through
+    assert problem({'stale': True}) == online.GUEST_STALE
+    assert problem({}, crc='11111111') is None                                        # not the host's roster yet: the copy comes first
+    assert problem({}, patch_roster=None) is None                                     # unreadable: the copy's own check said so
+    guest.lobby['members'] = [{'name': 'GuestPlayer', 'role': 'host'}]
+    assert problem({'patched': False}) is None                                        # the host's own roster: misfit checked it
 
 
 def test_a_guest_who_already_has_the_hosts_roster_downloads_nothing(server, tmp_path, monkeypatch):
@@ -564,12 +616,10 @@ def test_a_start_by_itself_ticks_the_start_entry_for_one_launch_and_unticks_it_a
     host.code, host.title = 'ABCDEF', EU
     host._start_game()
     assert launched and ticks == [([EU], True)] and host.by_itself
-    signed_in = 'RPCS3 v0.0.1\nrpcn: You are now logged in RPCN(HostPlayer | x)'
-    monkeypatch.setattr(onlinecfg, 'read_shared', lambda path: signed_in)
     log = os.path.join(host.rpcs3().folder, 'log', 'RPCS3.log')
     os.makedirs(os.path.dirname(log), exist_ok=True)
     with open(log, 'w') as f:
-        f.write('the last session')
+        f.write('RPCS3 v0.0.1\nrpcn: You are now logged in RPCN(HostPlayer | x)\n')
     os.utime(log, (host.started_at - 3600, host.started_at - 3600))
     host._read_log()                                    # the last session's log: nothing is believed, nothing unticked
     assert ticks == [([EU], True)] and host.by_itself and host.log is None
@@ -625,3 +675,15 @@ def test_a_game_that_stays_signed_in_on_a_menu_gets_the_steps_to_press_by_hand(s
 
 def test_the_games_own_roster_says_what_to_do_instead(tmp_path, monkeypatch):
     assert 'Update tab' in online.OWN_ROSTER and 'Setup' in online.OWN_ROSTER
+
+
+
+def test_the_installed_online_roster_says_what_game_it_was_made_for(tmp_path, base_dir, monkeypatch):
+    with open(os.path.join(base_dir, 'SYS-DATA'), 'rb') as f:
+        data = f.read()
+    sys_data = tmp_path / 'SYS-DATA'
+    sys_data.write_bytes(data)
+    slot = SimpleNamespace(title_id=EU, name='Puck Peak Online', folder='BLES02153021', sys_data=str(sys_data))
+    monkeypatch.setattr(savedata, 'list_rosters', lambda where: [slot])
+    found = online.OnlineController._installed(None, SimpleNamespace(savedata=str(tmp_path)), EU)
+    assert found['crc'] == onlinecfg.roster_crc(data) and found['patch_roster'] is False and found['rights'] == 5

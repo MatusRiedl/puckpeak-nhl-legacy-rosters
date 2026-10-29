@@ -83,11 +83,11 @@ function LobbyCard({ s }) {
       ${lob.members.length < 2 && html`<div class="small-note">Waiting for your friend to join...</div>`}
       <div class="small-note">The match is the game's standard online match: 5 minute periods, NHL rules.</div>
       ${lob.reason && html`<div class="om-why">${lob.reason}</div>`}
-      ${s.hint && html`<div class="om-why">${s.hint}</div>`}
+      ${s.hint && html`<div class="om-why">${s.hint}${s.guest_problem && html` <${Button} small onClick=${() => call('tab', 'patch')}>Open Game patch<//>`}</div>`}
       ${s.build_note && html`<div class="om-why">${s.build_note.text}</div>`}
       ${s.game_note && html`<div class="om-why">${s.game_note.text}</div>`}
       <div class="row on-actions">
-        ${!s.launched && html`<${Button} kind="primary" disabled=${!!s.busy || lob.members.length < 2}
+        ${!s.launched && html`<${Button} kind="primary" disabled=${!!s.busy || lob.members.length < 2 || (!!s.guest_problem && !(mine && mine.ready))}
           onClick=${() => call('online_ready', !(mine && mine.ready))}>${mine && mine.ready ? 'Not ready' : 'Ready'}<//>`}
         <${Button} disabled=${!!s.busy} onClick=${() => call('online_leave')}>Leave<//>
       </div>

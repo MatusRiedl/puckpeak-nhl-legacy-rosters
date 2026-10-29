@@ -17,12 +17,14 @@ The pairing in the game (S1): the host presses Create Game Session, the guest Br
 import datetime
 import os
 import socket
+import struct
 import subprocess
 import threading
 import time
 import urllib.parse
 
-from .. import datasource, lobby, onlinecfg, patchinstall, savedata
+from .. import datasource, gamepatch, lobby, onlinecfg, patchinstall, savedata
+from ..roster import Roster
 from ..stock import StockError
 from . import jobs
 
@@ -47,6 +49,13 @@ GAME_NOTE = "{friend} plays {theirs}, you play {mine}. Different games may lose 
 PATCH_DIFFERS = "Plays with game patch {theirs}; you have {mine}. Update the program to the newest version."
 PATCH_HINT = "You and your friend have different game patch versions. Update the program to the newest version, then press Ready."
 PATCH_NEEDED = "Online play needs the game patch. Press Set up online."
+GUEST_UNPATCHED = "Your friend's roster is for the patched game, and your game is not patched. Patch it in Game patch."
+GUEST_PATCHED = ("Your friend's roster is for the game without the patch, and online play needs the patch. Your friend: update "
+                 "the roster in the program with the game patch in, then make a new lobby.")
+GUEST_RIGHTS = ("Your friend's roster was made for another version of the game patch than yours. Both of you: update the "
+                "program, press Patch again in Game patch, then make a new lobby.")
+GUEST_INCOMPLETE = "Your game patch is missing a part. Press Patch again in Game patch."
+GUEST_STALE = "Your game patch is for another version of the game. Press Patch again in Game patch."
 PATCH_ASK = ["Online play needs the game patch: 32 teams and the year 2026. This puts it into RPCS3 (every version of the game "
              "you have) with the online part.",
              "While it is patched, the game shows rosters made without the patch as damaged. Update a roster in the Update tab "
@@ -93,6 +102,7 @@ class OnlineController:
         self.code = None                # its code
         self.launched = None            # the code the game was started for
         self.log = None                 # onlinecfg.log_state of the running game's log
+        self._tail = None               # onlinecfg.LogTail of this start's log
         self.auto = False               # the game can start by itself into the lobby's search (looked up in refresh)
         self.started_at = 0.0           # time.time() of the launch: only a log written after it says anything about this start
         self.signed_at = None           # time.time() when the log first showed the sign-in of this start
@@ -187,13 +197,20 @@ class OnlineController:
         jobs.run(work, done, failed, expected=(OSError, patchinstall.PatchError))
 
     def _installed(self, rpcs3, title):
+        """The online roster in the save folder: {'name', 'folder', 'crc', 'patch_roster': made for the game patch, 'rights': the
+        bits of its player rights} (None for what cannot be read), or None without one."""
         for slot in savedata.list_rosters(rpcs3.savedata):
             if slot.title_id == title and slot.name.startswith(ROSTER_NAME):
+                found = {'name': slot.name, 'folder': slot.folder, 'crc': None, 'patch_roster': None, 'rights': None}
                 try:
                     with open(slot.sys_data, 'rb') as f:
-                        return {'name': slot.name, 'folder': slot.folder, 'crc': onlinecfg.roster_crc(f.read())}
-                except (OSError, ValueError):
-                    return {'name': slot.name, 'folder': slot.folder, 'crc': None}
+                        data = f.read()
+                    found['crc'] = onlinecfg.roster_crc(data)
+                    R = Roster(data)
+                    found['patch_roster'], found['rights'] = gamepatch.is_patch_roster(R), R.P.field(gamepatch.RIGHTS).bits
+                except (OSError, ValueError, KeyError, IndexError, struct.error, AttributeError):
+                    pass
+                return found
         return None
 
     @staticmethod
@@ -238,6 +255,30 @@ class OnlineController:
         theirs, mine = str((friend or {}).get('version') or ''), self.game_word()
         if theirs and theirs != mine:
             return {'text': GAME_NOTE.format(friend=friend['name'], theirs=theirs, mine=mine), 'tone': 'warn'}
+        return None
+
+    def guest_problem(self):
+        """Why this guest's game cannot load the host's roster copied to this PC, or None (also for the host, and before the copy
+        is here). The lobby only compares patch versions; this compares the roster itself with the game as RPCS3 has it now, so a
+        guest who patches or unpatches in the lobby is checked again. Stricter than UpdateController.misfit: player rights that
+        cannot be read do not pass."""
+        me, theirs, mine = self._member(), (self.lobby or {}).get('roster'), self.roster
+        if me is None or me.get('role') != 'guest' or not theirs or not mine \
+                or str(mine.get('crc') or '').lower() != str(theirs.get('crc') or '').lower() or mine.get('patch_roster') is None:
+            return None
+        if self.state.get('stale'):
+            return GUEST_STALE
+        patched, made = bool(self.state.get('patched')), mine['patch_roster']
+        if made and not patched:
+            return GUEST_UNPATCHED
+        if patched and not made:
+            return GUEST_PATCHED
+        if made:
+            game, own = self.state.get('rights'), mine.get('rights')
+            if not game:
+                return GUEST_INCOMPLETE
+            if game != own:
+                return GUEST_RIGHTS
         return None
 
     def patch_word(self):
@@ -431,6 +472,12 @@ class OnlineController:
     def ready(self, on=True):
         with self.lock:
             code, name = self.code, self.account
+            problem = self.guest_problem() if on else None
+            if problem:
+                self.note = {'text': problem, 'tone': 'bad'}
+        if problem:
+            self.changed()
+            return
         if code:
             self._lobby_call(lambda who: lobby.ready(code, name, on))
 
@@ -487,6 +534,7 @@ class OnlineController:
                 self._arm_list(0.3)
             else:
                 self.lobby, self.code = answer, answer.get('code')
+            self.server = True
         self.changed()
         if answer.get('state') == 'starting':
             self._start_game()
@@ -675,7 +723,16 @@ class OnlineController:
             code, rpcs3, title = self.code, self.rpcs3(), self.title
             if self.launched == code or rpcs3 is None or title is None:
                 return
-            self.launched = code
+            problem = self.guest_problem()
+            if problem:
+                self.note = {'text': problem, 'tone': 'bad'}
+            else:
+                self.launched = code
+        if problem:
+            self.changed()
+            if code:
+                self._lobby_call(lambda who: lobby.ready(code, who[0], False))
+            return
         if savedata.running_rpcs3():
             with self.lock:
                 self.note = {'text': "Your game is open. Press nothing here; we follow it.", 'tone': 'good'}
@@ -688,7 +745,7 @@ class OnlineController:
             self.by_itself = patchinstall.auto_start(rpcs3, title)
             if self.by_itself:      # for this start only; _read_log unticks it as soon as the game has booted
                 patchinstall.set_online_start(rpcs3, [title], True)
-            self.started_at, self.signed_at = time.time(), None
+            self.started_at, self.signed_at, self._tail = time.time(), None, None
             args = onlinecfg.launch_args(rpcs3, title, config)
             if args is None and not rpcs3.command():
                 raise OSError("The program does not know how to start RPCS3. In Setup, pick the RPCS3 program itself (not only its folder).")
@@ -709,11 +766,12 @@ class OnlineController:
             return
         path = onlinecfg.log_path(rpcs3)
         try:
-            fresh = os.path.getmtime(path) >= self.started_at       # the last session's log says nothing about this start
-            log = onlinecfg.log_state(onlinecfg.read_shared(path))
+            if os.path.getmtime(path) < self.started_at:       # the last session's log says nothing about this start
+                return
+            if self._tail is None or self._tail.path != path:
+                self._tail = onlinecfg.LogTail(path)
+            log = self._tail.read()
         except OSError:
-            return
-        if not fresh:
             return
         with self.lock:
             self.log = log
@@ -800,8 +858,12 @@ class OnlineController:
         return None
 
     def hint(self):
-        """What to do when the lobby says the patches differ, or this PC lost its patch (None otherwise)."""
+        """What to do when the lobby says the patches differ, this PC lost its patch, or the host's roster does not fit this game
+        (None otherwise)."""
         me = self._member()
+        problem = self.guest_problem()
+        if problem:
+            return problem
         if me and not self.marks()['patched']:
             return PATCH_NEEDED
         return PATCH_HINT if me and not me.get('patch_ok', True) else None
@@ -814,6 +876,7 @@ class OnlineController:
                     'note': self.note, 'checked': self.checked, 'server': self.server, 'marks': self.marks(),
                     'roster': self.roster['name'] if self.roster else None, 'brought': self.brought,
                     'bring': bring, 'bring_why': bring_why, 'patch': self.patch_word(), 'hint': self.hint(),
+                    'guest_problem': self.guest_problem(),
                     'build': self.build, 'build_note': self.build_note(), 'game_note': self.game_note(), 'build_old': self.build_problem(),
                     'lobby': self.lobby, 'code': self.code, 'role': role, 'steps': self.steps(role) if role else [],
                     'public': self.public, 'open': self.rows(), 'open_error': self.open_error,

@@ -172,9 +172,15 @@ def launch_args(rpcs3, title, config, fullscreen=False):
 def read_shared(path, limit=None):
     """The text of `path` (RPCS3.log) read with full sharing: RPCS3 keeps it open and a plain open fails on Windows.
     `limit`: stop after about that many bytes (the start of the log is enough for the version line)."""
+    return read_shared_bytes(path, limit=limit).decode('utf-8', 'replace')
+
+
+def read_shared_bytes(path, start=0, limit=None):
+    """The bytes of `path` from `start` on, read as read_shared does."""
     if os.name != 'nt':
         with open(path, 'rb') as f:
-            return f.read(limit).decode('utf-8', 'replace')
+            f.seek(start)
+            return f.read(limit)
     import ctypes
     from ctypes import wintypes
     k32 = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -183,10 +189,13 @@ def read_shared(path, limit=None):
                                 wintypes.DWORD, wintypes.HANDLE]
     k32.ReadFile.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
                              wintypes.LPVOID]
+    k32.SetFilePointerEx.argtypes = [wintypes.HANDLE, ctypes.c_longlong, ctypes.c_void_p, wintypes.DWORD]
     handle = k32.CreateFileW(path, 0x80000000, 7, None, 3, 0x80, None)
     if handle in (None, wintypes.HANDLE(-1).value):
         raise OSError(ctypes.get_last_error(), 'cannot open ' + path)
     try:
+        if start and not k32.SetFilePointerEx(handle, start, None, 0):
+            raise OSError(ctypes.get_last_error(), 'cannot read ' + path)
         out, buf, got = [], ctypes.create_string_buffer(1 << 20), wintypes.DWORD()
         while k32.ReadFile(handle, buf, len(buf), ctypes.byref(got), None) and got.value:
             out.append(buf.raw[:got.value])
@@ -194,7 +203,7 @@ def read_shared(path, limit=None):
                 break
     finally:
         k32.CloseHandle(handle)
-    return b''.join(out).decode('utf-8', 'replace')
+    return b''.join(out)
 
 
 _BUILD = re.compile(r'RPCS3 v\d+\.\d+\.\d+-(\d+)-')
@@ -226,9 +235,18 @@ def log_state(text):
      'signaling': False when RPCN's UDP check got no reply (the game then says it is not signed in to the online servers),
      'refused': the line that says the sign-in failed, else None, 'fatal': RPCS3 stopped with a fatal error,
      'old': this RPCS3 is older than the RPCN server (its protocol number is lower than the server's)}."""
+    return log_fold(None, text)
+
+
+def log_fold(state, text):
+    """log_state of a log read in pieces: `state` from the pieces before (None at the start), `text` the next whole lines.
+    A start line in `text` begins the state anew."""
     marks = [m.start() for m in re.finditer(r'RPCS3 v\d', text)]
-    text = text[marks[-1]:] if marks else text
-    state = {'name': None, 'bound': False, 'signaling': True, 'refused': None, 'fatal': False, 'old': False}
+    if marks or state is None:
+        text = text[marks[-1]:] if marks else text
+        state = {'name': None, 'bound': False, 'signaling': True, 'refused': None, 'fatal': False, 'old': False}
+    else:
+        state = dict(state)
     for line in text.splitlines():
         found = _LOGGED_IN.search(line)
         if found:
@@ -247,6 +265,28 @@ def log_state(text):
         elif 'Fatal Error' in line or 'RPCS3: Fatal' in line:
             state['fatal'] = True
     return state
+
+
+class LogTail:
+    """RPCS3.log read a piece at a time: each look reads only what was added since the last one (the log grows to many MB while
+    the game runs). A log that got shorter is a new one (RPCS3 started again): read from its start."""
+
+    def __init__(self, path):
+        self.path, self.pos, self.rest, self.state = path, 0, b'', None
+
+    def read(self):
+        size = os.path.getsize(self.path)
+        if size < self.pos:
+            self.pos, self.rest, self.state = 0, b'', None
+        if size == self.pos and self.state is not None:
+            return self.state
+        new = read_shared_bytes(self.path, self.pos)
+        self.pos += len(new)
+        data = self.rest + new
+        cut = data.rfind(b'\n') + 1                     # a line still being written waits for its end
+        self.rest = data[cut:]
+        self.state = log_fold(self.state, data[:cut].decode('utf-8', 'replace'))
+        return self.state
 
 
 def roster_check(data):

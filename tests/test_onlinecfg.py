@@ -176,3 +176,22 @@ def test_a_friends_roster_is_parsed_before_it_is_used(base_bytes):
     assert onlinecfg.roster_crc(bytes(junk))
     with pytest.raises(ValueError):
         onlinecfg.roster_check(bytes(junk))
+
+
+def test_the_log_is_followed_a_piece_at_a_time_and_a_new_log_starts_over(tmp_path):
+    path = tmp_path / 'RPCS3.log'
+    lines = LOG.split('\n')
+    path.write_bytes(('\n'.join(lines[:4]) + '\n').encode())
+    tail = onlinecfg.LogTail(str(path))
+    assert tail.read() == dict(onlinecfg.log_state(''), bound=True)          # the old boot's sign-in is forgotten
+    with open(path, 'ab') as f:
+        f.write((lines[4] + '\n' + lines[5][:30]).encode())                   # half a line: waits for its end
+    assert tail.read()['name'] is None
+    with open(path, 'ab') as f:
+        f.write((lines[5][30:] + '\n').encode())
+    assert tail.read() == onlinecfg.log_state(LOG) and tail.read()['name'] == 'GuestPlayer'
+    with open(path, 'ab') as f:
+        f.write(b'\xc2\xb7! 1 rpcn: Disconnected\n')
+    assert tail.read()['name'] is None
+    path.write_bytes(b'\xc2\xb7 0 RPCS3 v0.0.34 again\n')                       # RPCS3 started again: a shorter, new log
+    assert tail.read() == onlinecfg.log_state('RPCS3 v0.0.34')
