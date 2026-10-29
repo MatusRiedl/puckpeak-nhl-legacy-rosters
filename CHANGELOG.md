@@ -12,6 +12,37 @@ on one team (the game's file holds 40 per team). If your changes leave a team wi
 Save still works and one gold line says so: the game hangs when you play a game with that team, so add players before
 you play with it.
 
+**Play online: ranks, chat and an overlay.**
+
+- **Ranks and a leaderboard.** Every online match you play through a lobby counts. Both games report the score; when the
+  two reports agree, the match is rated. Your rank shows after five games (Minor League up to Hall of Fame). The You card shows your tier and rating. Ranks has two views: your matches (opponent, teams, score, rating
+  change) and the leaderboard, with a link to the board in your browser. The board shows RPCN names. "Show me on the
+  leaderboard" takes yours off it.
+- **A friend who leaves loses.** If your friend quits or disconnects and their game never reports, the match counts as
+  their loss after an hour.
+- **Chat in the lobby**, with six quick phrases (Good game, Nice one!, ...).
+- **Result window.** After a match it shows the score and your rating before and after.
+- **Over the game (Windows).** Your friend's chat lines and the result card show over the game window. Ctrl+Shift+F1 to F6
+  send the six phrases without leaving the game. Switch it off on the You card ("Show chat and results over the game").
+  To make the overlay visible, the program's online setup runs RPCS3 in borderless fullscreen instead of exclusive
+  fullscreen.
+- **"Roster broken" for the friend who joins.** The program now checks the host's roster against your own game before
+  Ready. A roster for the patched game in an unpatched game (or the other way round) is refused, with a button to the
+  Game patch tab.
+- The You card lists what online play needs (roster, game patch, Puck Peak server, RPCS3 version), each with a button to
+  where you fix it.
+
+**Retired players retire.** Kopitar and other players who ended their careers no longer show up as free agents to sign
+in Be a GM or Be a Pro. Unsigned players of last season aged 38 or more also retire. Careers you already started keep
+whoever they signed.
+
+**Jerseys, centre ice and crests go in with the Roster editor's Save.** Before, they only reached the game with an update.
+Now Save puts in the pictures of the teams you changed (RPCS3 must be closed). Setting a team back to the game's own puts
+the game's pictures back.
+
+**Clubs of your own in slots 222 to 233.** On the game's own roster, the Roster editor, Lines, Strategy and Front office
+treat those slots as the clubs they are, not as copies of NHL teams.
+
 ## 0.85.0 (2026-10-28)
 
 **Linux: the game patch now switches on where RPCS3 looks for it.** On Linux (and Mac) RPCS3 reads its list of switched-on
