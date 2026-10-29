@@ -3,7 +3,7 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## 0.90.0 (not released yet)
+## 0.90.0 (2026-10-29)
 
 **Edit your roster freely.** The Roster editor no longer refuses what the game itself plays. Add yourself, move anyone to
 any team, release players, give a forward a defenceman's player type, fill a team to 40: Save keeps it. The program
