@@ -199,14 +199,21 @@ wording (`progress.py`).
 
 ## Current state
 
-**0.90.0 in progress (2026-10-29; plan docs/plans/transient-marinating-curry.md, PLAN.md top; local commits allowed,
-nothing pushed):** Phase 0 **free editing** done: `verify(free=)` drops `FREE_TEAM_FLAWS` / `FREE_PLAYER_FLAWS`,
+**Version 0.90.0 (2026-10-29, every phase committed locally, nothing pushed or deployed; plan docs/plans/transient-marinating-curry.md,
+PLAN.md top):** Phase 0 **free editing** done: `verify(free=)` drops `FREE_TEAM_FLAWS` / `FREE_PLAYER_FLAWS`,
 `multi_club`, `contract_violations`, `style_problems` (`ratings.FREE_STYLES`), the rating range and contract-edit bounds
 for the player's own edits (`b.free`: True on an edit-only save, else the edited rows / slots); the builder's own output
 still meets every check. `verify.short_teams` -> `info['heads_up']` (gold line in the editor, "Heads up" rows in the
 result); `Builder.players_team` keeps call-ups off teams the player shortened; editor locks `_too_few_without` gone.
 Table of checks with proofs: docs/notes/free-editing.md; lab round 56 played every freed check, unpatched and patched
-(docs/notes/lab-round-56.md). Tests tests/test_free_editing.py. Next: Phase 1 (server report capture). The native PC
+(docs/notes/lab-round-56.md). Tests tests/test_free_editing.py. Phases 1-2 (server repo, not deployed): every match report as JSON lines in `reports/`,
+MatchBook / Elo / board / chat / `/board` page (deploy + Caddy `handle /board*` need the owner's go). Phase 3: the Play online
+tab's guest check (`OnlineController.guest_problem`: the host's roster against the guest's patch), You card, chat with six
+phrases, my matches / leaderboard / hide me, result window; works without the new routes (cards hide). Phase 4: the overlay
+(`legacy_roster/hud/`, row "Online play"). Phase 5: retired players (data pack part `retired` from `tools/retired.json`,
+Kopitar only so far; unsigned last-season players 38+). Phase 6: the editor's Save installs the edited teams' jerseys / ice /
+crests (`pipeline.Pictures(looks_for=)`). Phase 7: no rules card (docs/notes/online-settings.md "Phase 7"). Phase 8: editor /
+edits follow the roster's layout for 222-233 (`layout.copies`, `Snapshot.copies`, `Player.clubs`). The native PC
 port is on the backlog (ROADMAP "Ideas", docs/notes/native-port.md).
 
 **Version 0.85.0 (2026-10-28, built, committed locally (b98e5b0), not pushed; notes docs/notes/tester-reports-2026-10-28b.md, PLAN.md top):**
