@@ -33,7 +33,9 @@ states (the tab they show in brackets):
     prospects-career  the Draft & Pro tab's Be a Pro careers: copies from LEGACY_ROSTER_CAREERS (folders of Be a Pro
                saves) in the pretend RPCS3, the first opened, 250 more Offense XP and Passing + 3 not saved
     online     the Play online tab, not set up yet (online-lobby: a lobby, its host alone; online-ready: two players Ready;
-               online-ingame: the game started, a guest; online-failed: it could not sign in; online-mismatch: a guest without the host's game patch); made-up facts, no network
+               online-ingame: the game started, a guest; online-failed: it could not sign in; online-mismatch: a guest without the host's game patch;
+               online-you: set up, with a rank and matches; online-chat: a lobby of two chatting; online-board: the leaderboard;
+               online-result: the result window after a match); made-up facts, no network
     patched    the Game patch tab: the EU game patched with an older patch (Patch again, Unpatch), a roster tagged "32 teams"
 
 The pretend RPCS3 has the base roster, an earlier update of it, and a copy saved for the NA version, so the
@@ -83,7 +85,8 @@ STATES = ('none', 'setup', 'ready', 'patch', 'updating', 'done', 'details', 'fai
           'uniforms', 'equipment', 'export', 'export-ready', 'export-done', 'patched', 'full', 'lines', 'strategy', 'strategies', 'face',
           'calendar', 'office', 'contract', 'downloading', 'misfit', 'prospects', 'prospects-pro', 'prospects-look',
           'prospects-make', 'prospects-class', 'prospects-import', 'prospects-career', 'online', 'online-lobby',
-          'online-ready', 'online-ingame', 'online-failed', 'online-mismatch', 'online-list', 'export-roster', 'heads-up')
+          'online-ready', 'online-ingame', 'online-failed', 'online-mismatch', 'online-list', 'online-you', 'online-chat',
+          'online-board', 'online-result', 'export-roster', 'heads-up')
 TEAM_STATES = {'roster': 'roster', 'editor': 'roster', 'equipment': 'roster', 'face': 'roster', 'jerseys': 'jerseys',
                'uniforms': 'jerseys', 'lines': 'lines', 'strategy': 'strategy', 'strategies': 'strategy',
                'calendar': 'calendar', 'office': 'office', 'contract': 'office', 'prospects': 'prospects',
@@ -420,7 +423,39 @@ def make_online(c, state):
         on.lobby, on.code = {'code': 'KDMQRS', 'state': 'playing', 'reason': None, 'members': [friend, me], 'roster': mine}, 'KDMQRS'
         on.launched = 'KDMQRS'
         on.log = {'name': 'GuestPlayer', 'bound': True, 'signaling': state == 'online-ingame', 'refused': None, 'fatal': False}
+    if state in ('online-you', 'online-chat', 'online-board', 'online-result'):
+        shot_ranks(on, state)
+        if state == 'online-chat':
+            me['ready'] = True
+            on.lobby, on.code = {'code': 'KDMQRS', 'state': 'open', 'reason': None, 'members': [me, friend], 'roster': mine,
+                                 'chat': [{'seq': 1, 'name': 'Friend_77', 'text': 'Ready when you are', 'at': 0},
+                                          {'seq': 2, 'name': 'GuestPlayer', 'text': 'One sec', 'at': 0},
+                                          {'seq': 3, 'name': 'Friend_77', 'text': 'Rematch after this?', 'at': 0}]}, 'KDMQRS'
     on.changed()
+
+
+def shot_ranks(on, state):
+    """Made-up ranks for the online-you / -chat / -board / -result pictures."""
+    on.ranks_on = True
+    on.card = {'name': 'GuestPlayer', 'rating': 1137, 'tier': 'Pro', 'placing': 0, 'rank': 4, 'of': 23, 'w': 9, 'l': 5,
+               'streak': 2, 'peak': 1150, 'delta7': 21, 'form': 'WWLWW', 'gf': 41, 'ga': 30, 'curve': [], 'opponents': [],
+               'teams': [], 'next_tier': 'Top 6', 'next_at': 1200, 'hidden': False}
+    games = [('Friend_77', 'MTL', 'TOR', 4, 2, 'W', 18, 'confirmed'), ('PuckHunter', 'EDM', 'CGY', 3, 2, 'W', 15, 'confirmed'),
+             ('Friend_77', 'MTL', 'BOS', 1, 3, 'L', -17, 'confirmed'), ('EUplayer', 'DET', 'CHI', 2, 2, None, None, 'waiting'),
+             ('Hidden player', 'NYR', 'NJD', 5, 1, 'W', 22, 'forfeit')]
+    on.history = [{'id': f'B1/{9 - k}', 'at': 0, 'status': st, 'why': None, 'opponent': o, 'team': t, 'opp_team': u, 'for': f,
+                   'against': a, 'result': res, 'delta': d, 'waiting': st == 'waiting'}
+                  for k, (o, t, u, f, a, res, d, st) in enumerate(games)]
+    names = [('IceKing', 1288, 'Top 6'), ('Friend_77', 1201, 'Top 6'), ('Hidden player', 1164, 'Pro'), ('GuestPlayer', 1137, 'Pro'),
+             ('PuckHunter', 1102, 'Pro'), ('EUplayer', 1040, 'Rookie'), ('SlapShot', 1012, 'Rookie'), ('Netminder9', 988, 'Minor League')]
+    on.board = {'players': [{'rank': k + 1, 'name': n, 'rating': r, 'tier': t, 'placing': 0, 'games': 10 + k, 'w': 8 - k // 2,
+                             'l': 3 + k // 2, 'streak': 1, 'peak': r, 'last': None, 'delta7': 0} for k, (n, r, t) in enumerate(names)],
+                'ranked': 23, 'highlights': [{'kind': 'climber', 'title': 'Climber of the week', 'name': 'IceKing', 'value': '+64'},
+                                             {'kind': 'streak', 'title': 'Hot streak', 'name': 'Friend_77', 'value': 'W4'}],
+                'recent': [], 'tiers': [], 'placement': 5, 'updated': 0}
+    on.ranks_tab = 'board' if state == 'online-board' else 'mine'
+    if state == 'online-result':
+        on.result = on.history[0]
 
 
 def make_career(c):

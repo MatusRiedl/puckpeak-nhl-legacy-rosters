@@ -573,3 +573,21 @@ class Api:
     @_safe
     def online_leave(self):
         self._online.leave()
+
+    def online_say(self, text):
+        self._online.say(str(text or ''))
+
+    def online_hide(self, hidden):
+        self._online.set_hidden(bool(hidden))
+
+    def online_ranks(self):
+        self._online.refresh_ranks(board=True)
+
+    def online_ranks_tab(self, tab):
+        self._online.set_ranks_tab(str(tab))
+
+    def online_board(self):
+        self._online.open_board()
+
+    def online_result_seen(self):
+        self._online.result_seen()

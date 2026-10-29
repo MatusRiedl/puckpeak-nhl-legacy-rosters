@@ -687,3 +687,119 @@ def test_the_installed_online_roster_says_what_game_it_was_made_for(tmp_path, ba
     monkeypatch.setattr(savedata, 'list_rosters', lambda where: [slot])
     found = online.OnlineController._installed(None, SimpleNamespace(savedata=str(tmp_path)), EU)
     assert found['crc'] == onlinecfg.roster_crc(data) and found['patch_roster'] is False and found['rights'] == 5
+
+
+def _pair(server, tmp_path, monkeypatch):
+    host = _controller(tmp_path / 'a', monkeypatch, 'HostPlayer')
+    _look(host)
+    host.create()
+    wait(lambda: host.code and not host.busy)
+    guest = _controller(tmp_path / 'b', monkeypatch, 'GuestPlayer')
+    guest.pc['online'] = b'roster of the host'
+    _look(guest)
+    guest.join(host.code)
+    wait(lambda: guest.code and not guest.busy)
+    return host, guest
+
+
+def _ranks(ctl, **kw):
+    ctl.refresh_ranks(**kw)
+    wait(lambda: not ctl._ranks_busy)
+
+
+def test_chat_lines_go_both_ways_and_a_second_line_at_once_only_waits(server, tmp_path, monkeypatch):
+    host, guest = _pair(server, tmp_path, monkeypatch)
+    assert host.snapshot()['chat'] == [] and host.snapshot()['phrases'][0] == "Good game"
+    host.say('  gg  ')
+    wait(lambda: host.snapshot()['chat'])
+    assert host.snapshot()['chat'][0]['mine'] and host.snapshot()['chat_wait']
+    host.say('again at once')                           # the Send button rests: nothing sent, no red line
+    guest.poll_once()
+    lines = guest.snapshot()['chat']
+    assert [(c['name'], c['text'], c['mine']) for c in lines] == [('HostPlayer', 'gg', False)] and host.snapshot()['note'] is None
+
+
+def test_a_server_from_before_the_ranks_hides_chat_and_ranks_and_the_lobby_works_as_before(server, tmp_path, monkeypatch):
+    server.ranks = False
+    host, guest = _pair(server, tmp_path, monkeypatch)
+    _ranks(host, board=True)
+    snap = host.snapshot()
+    assert snap['chat'] is None and snap['ranks'] is None and host.ranks_on is False and snap['note'] is None
+    host.say('gg')                                      # no chat on that server: nothing is sent
+    assert not any(c[1].endswith('/say') for c in server.calls)
+    host.ready()
+    wait(lambda: not host.busy)
+    guest.ready()
+    wait(lambda: guest.snapshot()['lobby']['state'] == 'starting')
+
+
+def test_my_card_matches_and_the_board_come_from_the_server(server, tmp_path, monkeypatch):
+    host = _controller(tmp_path, monkeypatch, 'HostPlayer')
+    _look(host)
+    assert host.snapshot()['ranks'] is None                       # nothing read yet
+    for _ in range(5):
+        server.play('HostPlayer', 'Bo', 3, 1)
+    server.play('Cy', 'Bo', 2, 1)
+    _ranks(host, board=True)
+    view = host.snapshot()['ranks']
+    assert (view['card']['rating'], view['card']['tier'], len(view['history'])) == (1080, 'Rookie', 5)
+    assert [r['name'] for r in view['top']] == ['HostPlayer', 'Bo', 'Cy'] and view['me'] is None
+
+
+def test_the_result_of_the_new_match_shows_once_and_follows_the_second_report(server, tmp_path, monkeypatch):
+    host = _controller(tmp_path, monkeypatch, 'HostPlayer')
+    _look(host)
+    server.play('HostPlayer', 'Bo', 1, 0)                         # an older match: not "the result"
+    host.watching, host.baseline, host.started_at = True, online.PENDING, time.time()
+    _ranks(host)
+    assert host.snapshot()['result'] is None
+    mid = server.play('HostPlayer', 'GuestPlayer', 3, 2, status='waiting')
+    _ranks(host)
+    res = host.snapshot()['result']
+    assert res['line'] == online.RESULT_WAITING.format(opp='GuestPlayer') and res['delta'] is None
+    server.settle('HostPlayer', mid)
+    server.players['hostplayer']['rating'] += 16                  # the stand-in rates it now
+    for row in server.matches['hostplayer']:
+        if row['id'] == mid:
+            row['delta'] = 16
+    _ranks(host)
+    res = host.snapshot()['result']
+    assert (res['line'], res['before'], res['rating'], res['for'], res['against']) == (online.RESULT_WON, 1016, 1032, 3, 2)
+    host.result_seen()
+    _ranks(host)
+    assert host.snapshot()['result'] is None
+
+
+def test_rpcs3_closing_ends_the_game_view_and_the_watch_ends_with_a_final_result(tmp_path, monkeypatch):
+    ctl = _controller(tmp_path, monkeypatch, 'HostPlayer')
+    ctl.account, ctl.launched, ctl.watching = 'HostPlayer', 'KDMQRS', True
+    ctl.lobby = {'code': 'KDMQRS', 'state': 'starting', 'members': [{'name': 'HostPlayer', 'role': 'host'}]}
+    ctl.state = {'patched': True, 'online': True}
+    ctl.started_at = time.time()
+    ctl._watch_game()
+    assert ctl.ended is None and ctl.view() == 'in-game'                     # RPCS3 is still starting
+    ctl.started_at = time.time() - online.START_GRACE_RANKS - 1
+    ctl._watch_game()
+    assert ctl.ended and ctl.view() != 'in-game' and ctl.watching           # the result may still come
+    ctl.result = {'id': 'B1/2', 'status': 'confirmed'}
+    ctl._watch_game()
+    assert not ctl.watching and ctl.launched == 'KDMQRS'                    # still no second start for this lobby
+
+
+def test_hiding_from_the_board_is_kept_and_showing_again_waits_for_a_lobby(server, tmp_path, monkeypatch):
+    host = _controller(tmp_path, monkeypatch, 'HostPlayer')
+    host.update.settings = {}
+    _look(host)
+    server.play('HostPlayer', 'Bo', 3, 1)
+    host.set_hidden(True)
+    wait(lambda: 'hostplayer' in server.hidden and not host._ranks_busy)
+    assert host.update.settings[online.HIDDEN_KEY] is True and host.snapshot()['ranks']['hidden'] is True
+    host.set_hidden(False)
+    wait(lambda: host.snapshot()['note'])
+    assert host.snapshot()['note']['text'] == online.SHOW_LATER and 'hostplayer' in server.hidden
+    host.create()
+    wait(lambda: host.code and not host.busy)
+    _ranks(host)                                                   # with the lobby's token he sees his own card, marked hidden
+    assert host.card['hidden'] is True
+    host.poll_once()
+    wait(lambda: 'hostplayer' not in server.hidden)

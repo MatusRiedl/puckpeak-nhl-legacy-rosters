@@ -27,6 +27,7 @@ from .. import datasource, gamepatch, lobby, onlinecfg, patchinstall, savedata
 from ..roster import Roster
 from ..stock import StockError
 from . import jobs
+from . import settings as S
 
 SLICE = 'online'
 POLL = 2.0                              # seconds between asking the server while a lobby is open
@@ -49,6 +50,27 @@ GAME_NOTE = "{friend} plays {theirs}, you play {mine}. Different games may lose 
 PATCH_DIFFERS = "Plays with game patch {theirs}; you have {mine}. Update the program to the newest version."
 PATCH_HINT = "You and your friend have different game patch versions. Update the program to the newest version, then press Ready."
 PATCH_NEEDED = "Online play needs the game patch. Press Set up online."
+HIDDEN_KEY = 'online_hidden'           # settings: the player keeps his name off the public leaderboard
+CHAT_LENGTH = 140                       # the server keeps 30 lines of at most 140 characters
+CHAT_GAP = 1.0                          # seconds the Send button rests after a line (the server takes one each 0.7 s)
+PHRASES = ["Good game", "Rematch?", "Nice one!", "Unlucky", "One sec", "Ready?"]
+RANKS_POLL = 30.0                       # seconds between reading my card / matches / the board while the tab shows
+WATCH_POLL = 10.0                       # ... while a game started from a lobby runs (matches only; the card when a new one comes)
+WATCH_AFTER = 600                       # seconds after RPCS3 closed that a result still waiting is looked for
+START_GRACE_RANKS = 60                  # seconds after a launch before "RPCS3 is not running" means the game ended
+HISTORY_ROWS = 10
+BOARD_ROWS = 10
+PENDING = object()                      # the line a new result is after: not read yet
+SHOW_LATER = "You show on the leaderboard again the next time you are in a lobby."
+RESULT_WON = "You won. Both reports agree, so it counts."
+RESULT_LOST = "You lost. Both reports agree, so it counts."
+RESULT_WAITING = "Waiting for {opp}'s report. It counts once both reports agree."
+RESULT_LEFT = "{opp} left the game. It counts as your win in an hour, unless their own report says otherwise."
+RESULT_DISPUTED = "The two reports do not agree on the score, so this match does not count."
+RESULT_DESYNC = "The game lost step between the two PCs (desync), so this match counts for nobody."
+RESULT_VOIDED = "This match has no winner, so it counts for nobody."
+RESULT_FORFEIT_WON = "{opp} left the game: it counts as your win."
+RESULT_FORFEIT_LOST = "You left the game: it counts as a loss."
 GUEST_UNPATCHED = "Your friend's roster is for the patched game, and your game is not patched. Patch it in Game patch."
 GUEST_PATCHED = ("Your friend's roster is for the game without the patch, and online play needs the patch. Your friend: update "
                  "the roster in the program with the game patch in, then make a new lobby.")
@@ -113,6 +135,22 @@ class OnlineController:
         self.open_lobbies = []          # the public lobbies waiting for a friend, as the server listed them
         self.open_error = None          # why the list could not be read (None when it could)
         self._list_timer = None
+        self.chat_wait = 0.0            # time.time() until which the Send button rests
+        self.ranks_on = None            # True / False / None: the server has the ranks (0.90) / has not / not asked yet
+        self.card = None                # my rank card from the server (None: no rated game yet)
+        self.history = []               # my matches, newest first
+        self.board = None               # the leaderboard as last read
+        self.ranks_at = 0.0
+        self._ranks_busy = False
+        self._ranks_timer = None
+        self._card_for = None           # (id, status) of my newest match when the card was read
+        self._hide_sent = None          # (name, hidden) last told to the server
+        self.watching = False           # a game started from a lobby runs (or just ended): matches are read often
+        self.ended = None               # time.time() when RPCS3 closed after that start
+        self.baseline = None            # my newest match id before the start (PENDING: not read yet)
+        self.result = None              # the history row of the new match, shown until put away
+        self.results_seen = set()
+        self.ranks_tab = 'mine'         # the Ranks card shows 'mine' (my matches) or 'board'
 
     def changed(self):
         self.host.changed(SLICE)
@@ -123,11 +161,15 @@ class OnlineController:
             self.shown = True
         self.refresh()
         self._arm_list(0.3)
+        self._arm_ranks(0.5)
 
     def hide(self):
         with self.lock:
             self.shown = False
+            watching = self.watching
         self._stop_list_timer()
+        if not watching:
+            self._stop_ranks_timer()
 
     def roster_changed(self):
         pass
@@ -136,6 +178,7 @@ class OnlineController:
         """The window closes: leave an open lobby (best effort) and stop asking the server."""
         self._stop_timer()
         self._stop_list_timer()
+        self._stop_ranks_timer()
         self._clear_start()
         code, who = self.code, self.account
         if code and who:
@@ -538,6 +581,11 @@ class OnlineController:
         self.changed()
         if answer.get('state') == 'starting':
             self._start_game()
+        if self.watching and time.time() - self.ranks_at >= WATCH_POLL:
+            self.refresh_ranks(board=False)
+            self._arm_ranks()
+        if self.hidden() is False and self._hide_sent is None and self.card is not None and self.card.get('hidden'):
+            self._send_hidden()                 # showing again needs the lobby's token: now there is one
         self._sync_roster()
         self._sync_me()
         self._arm()
@@ -716,6 +764,245 @@ class OnlineController:
         if timer is not None:
             timer.cancel()
 
+
+    # --- chat, ranks, my matches, the result of a match (0.90; a server from before 0.90 has none: the cards hide) -------------
+    def say(self, text):
+        """One chat line to the lobby (a phrase button or the box). A second line within a moment only waits: the Send button rests."""
+        text = ' '.join(str(text or '').split())[:CHAT_LENGTH]
+        with self.lock:
+            code, name = self.code, self.account
+            if not code or not name or not text or time.time() < self.chat_wait or self.chat() is None:
+                return
+            self.chat_wait = time.time() + CHAT_GAP
+        self.changed()
+
+        def failed(message, err=None):
+            with self.lock:
+                if not (err is not None and (err.code == 'slow_down' or lobby.missing(err))):
+                    self.note = {'text': message, 'tone': 'bad'}
+            self.changed()
+
+        def work():
+            try:
+                return lobby.say(code, name, text)
+            except lobby.LobbyError as err:
+                failed(str(err), err)
+                return None
+
+        jobs.run(work, lambda answer: answer and self._take(answer), failed, expected=(lobby.LobbyError,))
+
+    def chat(self):
+        """The lobby's chat as the tab shows it: None when the server keeps none (before 0.90), else the lines with `mine`."""
+        if not self.lobby or 'chat' not in self.lobby:
+            return None
+        return [dict(line, mine=line.get('name') == self.account) for line in self.lobby.get('chat') or []]
+
+    def hidden(self):
+        settings = getattr(self.update, 'settings', None)
+        return bool(settings.get(HIDDEN_KEY)) if isinstance(settings, dict) else False
+
+    def set_hidden(self, on):
+        """The "Show me on the leaderboard" switch (off = hidden): kept in settings, told to the server. Showing again needs this
+        player's lobby token (the server's rule: a stranger cannot put anyone back), so it waits for the next lobby."""
+        on, settings = bool(on), getattr(self.update, 'settings', None)
+        if isinstance(settings, dict):
+            settings[HIDDEN_KEY] = on
+            S.save(settings)
+        with self.lock:
+            self._hide_sent = None
+        self.changed()
+        self._send_hidden()
+
+    def _send_hidden(self):
+        with self.lock:
+            name, want = self.account, self.hidden()
+            if not name or self.ranks_on is False or self._hide_sent == (name, want):
+                return
+            if not want and self.card is not None and not self.card.get('hidden'):
+                return                                      # shown already: nothing to tell
+            self._hide_sent = (name, want)
+
+        def work():
+            try:
+                lobby.hide(name, want)
+            except lobby.LobbyError as err:
+                with self.lock:
+                    if lobby.missing(err) and not isinstance(err, lobby.Unreachable):
+                        self.ranks_on = False
+                    elif err.code == 'not_member':
+                        self.note = {'text': SHOW_LATER, 'tone': 'warn'}
+                    self._hide_sent = None                  # not done: tried again at the next look (in a lobby for showing)
+                self.changed()
+                return False
+            return True
+
+        jobs.run(work, lambda ok: ok and self.refresh_ranks(), None, expected=(lobby.LobbyError,))
+
+    def refresh_ranks(self, board=None):
+        """Ask the server for my card and matches (and the board while the tab shows), in the background, quietly: a server without
+        the routes turns the cards off, any other failure keeps what was shown."""
+        with self.lock:
+            name = self.account
+            if not name or self._ranks_busy:
+                return
+            board = self.shown and not self.watching if board is None else board
+            self._ranks_busy, self.ranks_at = True, time.time()
+
+        def work():
+            found = {}
+            try:
+                try:
+                    found['history'] = lobby.history(name, HISTORY_ROWS)
+                except lobby.LobbyError as err:
+                    if err.code != 'unknown':
+                        raise
+                    found['history'] = []
+                newest = (found['history'] or [{}])[0]
+                if not self.watching or self._card_for != (newest.get('id'), newest.get('status')) or self.card is None:
+                    try:
+                        found['card'] = lobby.card(name)
+                    except lobby.LobbyError as err:
+                        if err.code != 'unknown':
+                            raise
+                        found['card'] = None
+                    found['card_for'] = (newest.get('id'), newest.get('status'))
+                if board:
+                    found['board'] = lobby.board()
+            except lobby.LobbyError as err:
+                found['error'] = err
+            return found
+
+        def done(found):
+            with self.lock:
+                self._ranks_busy = False
+                err = found.get('error')
+                if err is not None:
+                    if lobby.missing(err) and not isinstance(err, lobby.Unreachable):
+                        self.ranks_on = False
+                else:
+                    self.ranks_on = True
+                    self.history = found['history']
+                    if 'card' in found:
+                        self.card, self._card_for = found['card'], found['card_for']
+                    if 'board' in found:
+                        self.board = found['board']
+                    self._see_result()
+            self.changed()
+            if err is None and self.hidden() and self.card is not None and not self.card.get('hidden'):
+                self._send_hidden()
+
+        def failed(message):
+            with self.lock:
+                self._ranks_busy = False
+
+        jobs.run(work, done, failed, expected=(lobby.LobbyError,))
+
+    def _see_result(self):
+        """(lock held) A new match of mine after the launch: show its result until it is put away (also while it waits for the
+        other report: it changes as the server hears more). The first history read after the launch is the line it is after."""
+        if not self.watching:
+            return
+        newest = (self.history or [None])[0]
+        if self.baseline is PENDING:
+            self.baseline = newest['id'] if newest else None
+            return
+        if newest and newest['id'] != self.baseline and newest['id'] not in self.results_seen:
+            self.result = newest
+
+    def result_view(self):
+        """The result window's words and numbers (None when there is nothing to show)."""
+        row = self.result
+        if not row:
+            return None
+        card, delta, opp = self.card or {}, row.get('delta'), row.get('opponent') or 'Your friend'
+        status = row.get('status')
+        out = {'id': row['id'], 'status': status, 'opponent': opp, 'team': row.get('team') or '', 'opp_team': row.get('opp_team') or '',
+               'for': row.get('for'), 'against': row.get('against'), 'result': row.get('result'), 'delta': delta,
+               'rating': None, 'before': None, 'tier': card.get('tier'), 'next_tier': card.get('next_tier'),
+               'next_at': card.get('next_at'), 'placing': card.get('placing')}
+        if delta is not None and card.get('rating') is not None:
+            out['rating'], out['before'] = card['rating'], card['rating'] - delta
+        if status == 'waiting':
+            out['line'] = RESULT_LEFT.format(opp=opp) if row.get('why') == 'left' else RESULT_WAITING.format(opp=opp)
+        elif status == 'disputed':
+            out['line'] = RESULT_DISPUTED
+        elif status == 'voided':
+            out['line'] = RESULT_DESYNC if row.get('why') == 'desync' else RESULT_VOIDED
+        elif status == 'forfeit':
+            out['line'] = RESULT_FORFEIT_WON.format(opp=opp) if row.get('result') == 'W' else RESULT_FORFEIT_LOST
+        else:
+            out['line'] = RESULT_WON if row.get('result') == 'W' else RESULT_LOST
+        return out
+
+    def result_seen(self):
+        with self.lock:
+            if self.result:
+                self.results_seen.add(self.result['id'])
+            self.result = None
+        self.changed()
+
+    def set_ranks_tab(self, tab):
+        with self.lock:
+            self.ranks_tab = 'board' if tab == 'board' else 'mine'
+            board = self.ranks_tab == 'board' and self.board is None
+        self.changed()
+        if board:
+            self.refresh_ranks(board=True)
+
+    def open_board(self):
+        """The leaderboard page in the browser (the server's /board)."""
+        url = lobby.api_url()
+        url = url[:-4] if url.endswith('/api') else url
+        self.host.open_url(url + '/board')
+
+    def _ranks_tick(self):
+        with self.lock:
+            self._ranks_timer = None
+            watching = self.watching
+        if watching:
+            self._watch_game()
+        self.refresh_ranks()
+        self._arm_ranks()
+
+    def _watch_game(self):
+        """While a game of a lobby runs: RPCS3 closed (after START_GRACE) ends it; the watch ends once the result is final or
+        WATCH_AFTER seconds after the end."""
+        with self.lock:
+            if self.ended is None and time.time() - self.started_at > START_GRACE_RANKS and not savedata.running_rpcs3():
+                self.ended = time.time()
+            final = self.result and self.result.get('status') not in ('waiting',)
+            if self.ended and (final or time.time() - self.ended > WATCH_AFTER):
+                self.watching = False
+
+    def _arm_ranks(self, delay=None):
+        """The ranks are read every RANKS_POLL seconds while the tab shows, every WATCH_POLL while a game of a lobby runs."""
+        if not self.autopoll:
+            return
+        with self.lock:
+            if self._ranks_timer is not None or not (self.shown or self.watching) or self.ranks_on is False:
+                return
+            wait = delay if delay is not None else (WATCH_POLL if self.watching else RANKS_POLL)
+            self._ranks_timer = threading.Timer(wait, self._ranks_tick)
+            self._ranks_timer.daemon = True
+            self._ranks_timer.start()
+
+    def _stop_ranks_timer(self):
+        with self.lock:
+            timer, self._ranks_timer = self._ranks_timer, None
+        if timer is not None:
+            timer.cancel()
+
+    def ranks_view(self):
+        """My card, my matches and the board as the tab shows them (None: the server has no ranks, or nothing read yet)."""
+        if not self.ranks_on:
+            return None
+        board = self.board or {}
+        rows = board.get('players') or []
+        me = next((r for r in rows if r.get('name') == self.account), None)
+        return {'card': self.card, 'history': self.history or [], 'top': rows[:BOARD_ROWS],
+                'me': me if me and me not in rows[:BOARD_ROWS] else None, 'highlights': board.get('highlights') or [],
+                'placement': board.get('placement') or 5, 'hidden': self.hidden(), 'tab': self.ranks_tab}
+
     # --- the game ----------------------------------------------------------------------------------------------------
     def _start_game(self):
         """Both are Ready: start RPCS3 into the game (not again for the same lobby, and not when a game is open)."""
@@ -746,6 +1033,8 @@ class OnlineController:
             if self.by_itself:      # for this start only; _read_log unticks it as soon as the game has booted
                 patchinstall.set_online_start(rpcs3, [title], True)
             self.started_at, self.signed_at, self._tail = time.time(), None, None
+            with self.lock:
+                self.watching, self.ended, self.baseline, self.result = True, None, PENDING, None
             args = onlinecfg.launch_args(rpcs3, title, config)
             if args is None and not rpcs3.command():
                 raise OSError("The program does not know how to start RPCS3. In Setup, pick the RPCS3 program itself (not only its folder).")
@@ -838,7 +1127,7 @@ class OnlineController:
             return 'ready'
         if self.log and (self.log['refused'] or self.log['fatal'] or self.log['old'] or not self.log['signaling']):
             return 'failed'
-        if self.launched:
+        if self.launched and not self.ended:
             return 'in-game'
         return 'starting' if self.lobby.get('state') == 'starting' else 'in-lobby'
 
@@ -880,4 +1169,6 @@ class OnlineController:
                     'build': self.build, 'build_note': self.build_note(), 'game_note': self.game_note(), 'build_old': self.build_problem(),
                     'lobby': self.lobby, 'code': self.code, 'role': role, 'steps': self.steps(role) if role else [],
                     'public': self.public, 'open': self.rows(), 'open_error': self.open_error,
-                    'progress': PROGRESS, 'why': self.why(), 'no_account': NO_ACCOUNT, 'launched': bool(self.launched)}
+                    'progress': PROGRESS, 'why': self.why(), 'no_account': NO_ACCOUNT, 'launched': bool(self.launched),
+                    'ended': bool(self.ended), 'chat': self.chat(), 'chat_wait': time.time() < self.chat_wait,
+                    'phrases': PHRASES, 'ranks': self.ranks_view(), 'result': self.result_view()}
