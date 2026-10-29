@@ -172,3 +172,58 @@ def test_a_roster_that_unpacks_to_far_more_than_a_roster_is_refused(server):
             lobby.get_roster(code, 'GuestPlayer')
     finally:
         lobby._request = original
+
+
+def test_chat_lines_come_back_in_the_lobby_and_a_second_line_at_once_is_told_to_wait(server):
+    code = lobby.create('A', 'aabbccdd', '0.26', '01.00')['code']
+    lobby.join(code, 'B', 'aabbccdd', '0.26', '01.00')
+    assert lobby.say(code, 'A', '  gg  ')['chat'] == [dict(seq=1, name='A', text='gg', at=lobby.status(code, 'A')['chat'][0]['at'])]
+    with pytest.raises(lobby.LobbyError) as err:
+        lobby.say(code, 'A', 'rematch?')
+    assert err.value.code == 'slow_down' and not lobby.missing(err.value)
+    assert [c['text'] for c in lobby.say(code, 'B', 'Nice one!')['chat']] == ['gg', 'Nice one!']
+    with pytest.raises(lobby.LobbyError) as err:
+        lobby.say(code, 'C', 'hi')                       # not in the lobby
+    assert err.value.code == 'not_member'
+
+
+def test_board_card_and_history_with_the_servers_keys(server):
+    for _ in range(5):
+        server.play('Ann', 'Bo', 3, 1)
+    board = lobby.board()
+    assert [(p['name'], p['rank'], p['tier']) for p in board['players']] == [('Ann', 1, 'Rookie'), ('Bo', 2, 'Minor League')]
+    card = lobby.card('ann')
+    assert (card['rating'], card['w'], card['next_tier'], card['next_at']) == (1080, 5, 'Pro', 1100)
+    rows = lobby.history('Bo', limit=2)
+    assert len(rows) == 2 and rows[0]['opponent'] == 'Ann' and (rows[0]['for'], rows[0]['against'], rows[0]['delta']) == (1, 3, -16)
+    with pytest.raises(lobby.LobbyError) as err:
+        lobby.card('Nobody')
+    assert err.value.code == 'unknown' and not lobby.missing(err.value)
+
+
+def test_anyone_hides_a_name_but_only_its_owner_shows_it_again_and_sees_his_own_card(server):
+    server.play('Ann', 'Bo', 3, 1)
+    assert lobby.hide('Bo', True) == {'name': 'Bo', 'hidden': True}
+    assert [p['name'] for p in lobby.board()['players']] == ['Ann', 'Hidden player']
+    assert lobby.history('Ann')[0]['opponent'] == 'Hidden player'
+    with pytest.raises(lobby.LobbyError):
+        lobby.card('Bo')                                 # a stranger: unknown
+    with pytest.raises(lobby.LobbyError) as err:
+        lobby.hide('Bo', False)
+    assert err.value.code == 'not_member'
+    code = lobby.create('Bo', 'aabbccdd', '0.26', '01.00')['code']   # in a lobby: his token proves it is him
+    assert lobby.card('Bo')['hidden'] is True and lobby.history('Bo')[0]['opponent'] == 'Ann'
+    assert lobby.hide('Bo', False)['hidden'] is False
+    assert lobby.card('Bo')['hidden'] is False and code
+
+
+def test_a_server_from_before_the_ranks_is_missing_them_not_broken(server):
+    server.ranks = False
+    code = lobby.create('A', 'aabbccdd', '0.26', '01.00')['code']
+    assert 'chat' not in lobby.status(code, 'A')
+    for call in (lobby.board, lambda: lobby.card('A'), lambda: lobby.history('A'), lambda: lobby.hide('A', True),
+                 lambda: lobby.say(code, 'A', 'gg')):
+        with pytest.raises(lobby.LobbyError) as err:
+            call()
+        assert err.value.code == 'http404' and lobby.missing(err.value)
+    assert lobby.missing(lobby.Unreachable()) and not lobby.missing(lobby.LobbyError('unknown', 'x'))

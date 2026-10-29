@@ -1,7 +1,8 @@
 """The lobby client of online play (Multiplayer.txt sections 4 D3/D6 and 5 Phase 1): the app's side of the server's small HTTPS API.
-Standard library only. One request per call, no retries (the tab polls every 2 s); the server keeps everything in memory.
+Standard library only. One request per call, no retries (the tab polls every 2 s). The lobbies live in the server's memory; the
+ranks are worked out from the match reports the games send (0.90.0, docs/notes/online-match-reports.md).
 
-The API (the server fork builds it; tests/test_lobby.py has a fake with the same answers):
+The API (the server is Overtime, Overtime.Lobby/LobbyApi.cs; tests/fake_lobby.py answers the same):
 
     POST   <API>/lobby              {name, crc, patch, version, rpcs3, is_public, roster_name} -> a lobby (the caller is its host;
                                     is_public lists it for everybody, roster_name is shown in the list)
@@ -14,10 +15,15 @@ The API (the server fork builds it; tests/test_lobby.py has a fake with the same
     POST   <API>/lobby/<code>/me    {name, crc, patch, version, rpcs3}  -> the lobby (a member's roster / patch changed; his Ready goes)
     PUT    <API>/lobby/<code>/roster?name=  gzip bytes           -> the lobby (the host sends his roster)
     GET    <API>/lobby/<code>/roster?name=                       -> the host's roster (gzip bytes)
+    POST   <API>/lobby/<code>/say   {name, text}                 -> the lobby (0.90: its `chat` gets the line)
+    GET    <API>/board                                           -> {players, ranked, highlights, recent, tiers, placement, updated}
+    GET    <API>/board/player?name=                              -> a player's card (404 unknown; a hidden one only to himself)
+    GET    <API>/history?name=&limit=                            -> his matches, newest first
+    POST   <API>/board/hide     {name, hidden}                   -> {name, hidden} (showing again needs his own token)
 
     a lobby = {code, state: open | starting | playing | expired, reason: why it cannot start (a text) or None,
                members: [{name, role: host | guest, roster_ok, patch_ok, ready, progress, patch, version, rpcs3}],
-               roster: {crc, size} of the host's uploaded roster, or None}
+               roster: {crc, size} of the host's uploaded roster, or None, chat: [{seq, name, text, at}] (0.90 servers)}
     The host is the reference: a guest is roster_ok with the host's roster CRC and patch_ok with the host's patch. patch is the
     patch version ("0.26") or "none"; a host's expired lobby (he left) says state "expired".
     rpcs3 = the member's RPCS3 build number as text, '' when unknown: shown to the friend, never a gate. The game (version, "EU 01.00": the
@@ -27,7 +33,8 @@ The API (the server fork builds it; tests/test_lobby.py has a fake with the same
 The identity is the RPCN name the app reports (trust, as the community servers do), but acting for a member needs his secret: create
 and join answer with a `token`, which this module keeps (never in the lobby it returns) and sends as the header X-Lobby-Token with
 every later request for that lobby and name; a request without it is answered 403 not_member. An error answers with the HTTP status
-4xx and {error, message}; LobbyError carries both. D3 / D6 say who pairs: the host presses Create Game Session in the game,
+4xx and {error, message}; LobbyError carries both. A server from before 0.90 answers the ranks and chat routes 404 with no body
+(code http404): `missing` says so, and the tab then hides what needs them. D3 / D6 say who pairs: the host presses Create Game Session in the game,
 the guest Browse then Join; the server shows the guest only the host's session.
 """
 import gzip
@@ -81,8 +88,18 @@ def _key(code, name):
     return (str(code).upper(), str(name).lower())
 
 
+def _own_token(name):
+    """Any token this app holds for `name` (in any lobby): proof to the ranks routes that the caller is that player."""
+    return next((t for (code, who), t in _tokens.items() if who == str(name).lower() and t), None)
+
+
+def missing(err):
+    """Does `err` mean the server lacks the route (a server from before 0.90) or cannot be reached? Then the part is just not there."""
+    return isinstance(err, Unreachable) or getattr(err, 'code', None) in ('http404', 'http405', 'http501')
+
+
 def _request(method, path, data=None, content_type='application/json', timeout=TIMEOUT, token=None):
-    headers = {'Content-Type': content_type, 'User-Agent': 'NHLLegacyRosterUpdater'}
+    headers = {'Content-Type': content_type, 'User-Agent': 'PuckPeakLegacyUpdater'}
     if token:
         headers['X-Lobby-Token'] = token
     req = urllib.request.Request(api_url() + path, data=data, method=method, headers=headers)
@@ -99,11 +116,11 @@ def _request(method, path, data=None, content_type='application/json', timeout=T
         raise Unreachable() from err
 
 
-def _call(method, path, body=None, member=None):
+def _call(method, path, body=None, member=None, token=None):
     """`member` = (code, name) when the request is that member's: his token goes with it; a token the server hands out is kept."""
     data = None if body is None else json.dumps(body).encode()
     try:
-        found = json.loads(_request(method, path, data, token=_tokens.get(_key(*member)) if member else None) or b'{}')
+        found = json.loads(_request(method, path, data, token=_tokens.get(_key(*member)) if member else token) or b'{}')
     except ValueError as err:
         raise Unreachable() from err
     except LobbyError as err:
@@ -181,3 +198,31 @@ def get_roster(code, name):
         return data
     except (zlib.error, ValueError) as err:
         raise LobbyError('bad_roster', "The roster did not arrive correctly. Try again.") from err
+
+
+def say(code, name, text):
+    """One chat line to the lobby. Returns the lobby (its `chat`); slow_down when the last line was a moment ago."""
+    return _call('POST', f'/lobby/{code}/say', {'name': name, 'text': text}, member=(code, name))
+
+
+def board():
+    """The public leaderboard (see the API above)."""
+    found = _call('GET', '/board')
+    return found if isinstance(found, dict) else {}
+
+
+def card(name):
+    """`name`'s rank card (rating, tier, record, next tier); LobbyError 'unknown' when he has no rated game yet (or hid himself
+    and this app holds no token of his)."""
+    return _call('GET', f'/board/player?name={urllib.parse.quote(name)}', token=_own_token(name))
+
+
+def history(name, limit=20):
+    """`name`'s matches, newest first: [{id, at, status, why, opponent, team, opp_team, for, against, result, delta, waiting}]."""
+    found = _call('GET', f'/history?name={urllib.parse.quote(name)}&limit={int(limit)}', token=_own_token(name))
+    return found if isinstance(found, list) else []
+
+
+def hide(name, hidden):
+    """Take `name` off the public board (anyone may), or put him back (only with his own token: be in a lobby)."""
+    return _call('POST', '/board/hide', {'name': name, 'hidden': bool(hidden)}, token=_own_token(name))
