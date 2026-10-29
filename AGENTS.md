@@ -67,7 +67,7 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    copy of the savedata folder, or `tools/window_shot.py` (it makes a fake RPCS3).
 6. **No git commit or push, and nothing published, without the owner's explicit go-ahead.**
    The project is public at https://github.com/MatusRiedl/puckpeak-nhl-legacy-updater (0.6.0
-   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, 0.50.4 to 0.51.2 on 2026-10-24, 0.52.0 on 2026-10-25, 0.80.0 and 0.80.1 on 2026-10-27, each with the owner's go-ahead). Every further commit,
+   and 0.7.0 released on 2026-10-04, 0.8.0 on 2026-10-05, 0.8.1 on 2026-10-06, 0.50.0 to 0.50.3 on 2026-10-23, 0.50.4 to 0.51.2 on 2026-10-24, 0.52.0 on 2026-10-25, 0.80.0 and 0.80.1 on 2026-10-27, 0.90.0 on 2026-10-29, each with the owner's go-ahead). Every further commit,
    push or release needs the go-ahead again. Before pushing, check that no base roster (`work/`),
    picture pack (`private/packs/`, a zip in `legacy_roster/data/`), anything from `private/`, personal path or user name
    goes in, and that `python tools/clean_check.py` finds nothing.
@@ -202,8 +202,9 @@ wording (`progress.py`).
 
 ## Current state
 
-**Version 0.90.0 (2026-10-29, every phase committed locally, nothing pushed or deployed; plan docs/plans/transient-marinating-curry.md,
-PLAN.md top):** Phase 0 **free editing** done: `verify(free=)` drops `FREE_TEAM_FLAWS` / `FREE_PLAYER_FLAWS`,
+**Version 0.90.0 (2026-10-29, released with the owner's go-ahead: commit 6c8956c, tag `v0.90.0`, GitHub release with
+`PuckPeakLegacyUpdater.exe`, the Linux tar.gz (Ubuntu / Fedora / Arch boxes passed) and `SHA256SUMS.txt`; the game server
+and the data pack were updated the same day; plan docs/plans/transient-marinating-curry.md, PLAN.md top):** Phase 0 **free editing** done: `verify(free=)` drops `FREE_TEAM_FLAWS` / `FREE_PLAYER_FLAWS`,
 `multi_club`, `contract_violations`, `style_problems` (`ratings.FREE_STYLES`), the rating range and contract-edit bounds
 for the player's own edits (`b.free`: True on an edit-only save, else the edited rows / slots); the builder's own output
 still meets every check. `verify.short_teams` -> `info['heads_up']` (gold line in the editor, "Heads up" rows in the
