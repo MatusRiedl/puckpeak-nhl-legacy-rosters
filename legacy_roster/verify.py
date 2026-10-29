@@ -174,8 +174,14 @@ def structure(R, full_lineup=FULL_LINEUP, mirrors=None):
             if sig(prim) != sig(m) or len(by_team.get(prim, [])) != len(by_team.get(m, [])):
                 out[('mirror', m)] = f"{_team(R, m)} (team {m}) is not an exact copy of {_team(R, prim)}"
 
-    # free agents are listed once, are not on NHL teams and carry no contract
-    nhl_pids = {pid(i) for t in range(32) for i in by_team.get(t, [])}
+    # free agents are listed once, are on no club team (national teams, copies and event teams do not count) and carry
+    # no contract
+    # (the game itself saved a tester's Sakic on Colorado and on the list; Builder.unlist_club_players mends that)
+    club_of, copies = {}, {m for ms in (layout_mirrors(R) if mirrors is None else mirrors).values() for m in ms}
+    for t in sorted(by_team):
+        if t not in L.NATIONAL and t not in copies and t not in L.EVENTS:
+            for i in by_team[t]:
+                club_of.setdefault(pid(i), t)
     listed = Counter(R.link_to_pid.get(Q.get(k, 'TWSX')) for k in range(Q.cur_rec))
     for k in range(Q.cur_rec):
         p = R.link_to_pid.get(Q.get(k, 'TWSX'))
@@ -185,8 +191,8 @@ def structure(R, full_lineup=FULL_LINEUP, mirrors=None):
             continue
         if listed[p] > 1:
             out[('fa twice', p)] = f"free agent {R.name(prow)} is on the free-agent list twice"
-        if p in nhl_pids:
-            out[('fa on team', p)] = f"free agent {R.name(prow)} is also on an NHL team"
+        if p in club_of:
+            out[('fa on team', p)] = f"free agent {R.name(prow)} is also on {_team(R, club_of[p])}"
         if any(P.get(prow, f) for f in ('BSXd', 'GDhI', 'dhKk', 'IrlK', 'IzRv')):
             out[('fa contract', p)] = f"free agent {R.name(prow)} still has contract data"
 

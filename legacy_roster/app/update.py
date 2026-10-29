@@ -340,6 +340,10 @@ class UpdateController:
     def selected_slot(self):
         return self.slot_of(self.selected)
 
+    def roster_file(self):
+        """The roster file an export starts from (the team tabs show it), or None."""
+        return self.export_file if self.export_mode and self.export_from_file and self.export_file else None
+
     def slot_of(self, folder):
         found = next((s for s in self.slots if s.folder == folder), None)
         if found is None and self.export_mode and folder:       # the game's own roster of a game the player pointed at
@@ -431,9 +435,9 @@ class UpdateController:
         if path:
             self.set_rpcs3(os.path.normpath(path))
 
-    def set_rpcs3(self, path, quiet=False):
+    def set_rpcs3(self, path, quiet=False, then=None):
         """Find the saves behind `path` (RPCS3 or its folder) and list the rosters, in the background;
-        saves already read (same file, size and time) are not read again."""
+        saves already read (same file, size and time) are not read again. `then()` runs once the list is there."""
         with self.lock:
             self._scan_id += 1
             scan_id = self._scan_id
@@ -483,6 +487,8 @@ class UpdateController:
             running = savedata.running_rpcs3() is not None if found else False
             self._scanned(found, slots, usable, versions, problem, quiet, running, checked, picked, scan_id, patchy, state,
                           rights)
+            if then is not None:
+                then()
 
         jobs.run(scan, failed=lambda message: self._scan_failed(message, scan_id))
 

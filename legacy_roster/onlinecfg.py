@@ -27,16 +27,17 @@ MIN_RPCS3 = 20393                    # the oldest RPCS3 build the online lab pla
 
 
 def account(rpcs3):
-    """The RPCN name (NPID) in RPCS3's config/rpcn.yml, or None (no file, no account yet). Only that line is read."""
-    path = os.path.join(rpcs3.folder, 'config', 'rpcn.yml')
-    try:
-        with open(path, encoding='utf-8-sig', errors='replace') as f:
-            for line in f:
-                key, sep, value = line.rstrip('\r\n').partition(':')
-                if sep and key.strip() == 'NPID':
-                    return value.strip().strip('"\'') or None
-    except OSError:
-        pass
+    """The RPCN name (NPID) in RPCS3's rpcn.yml (config/ on Windows, next to its data on Linux and Mac), or None (no file,
+    no account yet). Only that line is read."""
+    for path in (os.path.join(rpcs3.folder, 'config', 'rpcn.yml'), os.path.join(rpcs3.folder, 'rpcn.yml')):
+        try:
+            with open(path, encoding='utf-8-sig', errors='replace') as f:
+                for line in f:
+                    key, sep, value = line.rstrip('\r\n').partition(':')
+                    if sep and key.strip() == 'NPID':
+                        return value.strip().strip('"\'') or None
+        except OSError:
+            continue
     return None
 
 

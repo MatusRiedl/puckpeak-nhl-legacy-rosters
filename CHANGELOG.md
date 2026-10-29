@@ -3,6 +3,34 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.85.0 (2026-10-28)
+
+**Linux: the game patch now switches on where RPCS3 looks for it.** On Linux (and Mac) RPCS3 reads its list of switched-on
+patches from `~/.config/rpcs3/patch_config.yml`. The program wrote it into a `config` folder inside, which RPCS3 never
+reads there, so after Patch the program thought the game was patched while RPCS3 ran it unpatched, and a 32-team roster
+said "The roster seems to be damaged". If you pressed Patch with 0.80.1 or 0.81.0, the program moves the switches to the
+right place by itself when it starts, so your 32-team rosters load. The Play online tab also finds your RPCN name on
+Linux now.
+
+The Windows program is now one file, `PuckPeakLegacyUpdater.exe` (the second copy under the old name is gone). Copies
+older than 0.80.1 cannot update themselves to it: download it from the release page.
+
+Fixes from a tester's roster with KHL clubs of their own.
+
+- **"Not playable yet: Joe Sakic (COL): a cap hit of $0.000M".** The game itself had saved him on Colorado and on the
+  free-agent list at the same time, and the program then cleared his contract. A player who is on a club now leaves the
+  free-agent list and keeps the contract the game gave him. The List of changes names him ("taken off the free-agent
+  list").
+- **"1 not saved yet" stayed after Save as a new roster.** After that save, Setup picks the new roster and the team tabs
+  open it, so your edits count as saved and the next ones go into it.
+- **Export files to a folder from a roster file:** after "Or pick a roster file" the team tabs (Roster, Lines, ...) show
+  that file, not the roster picked in Setup before (often the game's own 2014-15 roster). They never save into the file:
+  your edits stay in My edits and go into the export.
+- **Clubs of your own in the custom slots of the game's own roster** (a tester's KHL clubs) are treated as clubs. Before,
+  the update moved a player from such a club to an AHL farm club ("Reilly Walsh is on two club teams"), and spare
+  players copied from players you had moved between forward and defence got a wrong player type ("David ZZ has player
+  type 4, which no forward has"). Both stopped the update.
+
 ## 0.81.0 (2026-10-28)
 
 Fixes from testers' reports.

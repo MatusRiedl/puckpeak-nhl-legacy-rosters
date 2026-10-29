@@ -736,6 +736,10 @@ export function StrategyTab({ g }) {
 // --- the Save bar under the team tabs (not the Calendar) -------------------------------------------------------------
 export function SaveBar({ s }) {
   if (!s || !s.roster) return null;
+  if (s.save.file) return html`<div class="savebar card">
+    <${Button} kind=${s.edits_count ? 'gold-line' : 'ghost'} onClick=${() => call('edits_open')}>My edits (${s.edits_count})<//>
+    <span class="sb-roster ambertext" style=${{ whiteSpace: 'normal' }} title=${s.roster.folder}>${s.save.file}</span>
+  </div>`;
   return html`<div class="savebar card">
     <${Button} kind=${s.edits_count ? 'gold-line' : 'ghost'} onClick=${() => call('edits_open')}>My edits (${s.edits_count})<//>
     <span class=${cls('sb-roster', s.unsaved ? 'ambertext' : 'faint')} title=${s.roster.name}>

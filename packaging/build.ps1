@@ -2,9 +2,9 @@
 #   PuckPeakLegacyUpdater.exe           the window (double-click; with arguments it is the command line, as
 #                                       `python -m legacy_roster`); its pictures (photos, logos, this season's jerseys and
 #                                       centre ice) are not inside: it downloads them (legacy_roster\packs.py)
-#   NHLLegacyRosterUpdater.exe          the same file under the name it had until 0.80.0: copies of 0.80.0 and older look
-#                                       for that name in a release (app\selfupdate.OLD_EXE_ASSET), so 0.80.1 carries both
-#   SHA256SUMS.txt                      the checksums of both
+#   SHA256SUMS.txt                      its checksum
+# Since 0.85.0 only this one exe (owner): the copy named NHLLegacyRosterUpdater.exe that 0.80.1 / 0.81.0 carried for the
+# update check of 0.80.0 and older is gone; those copies get "Open the download page" (app\selfupdate.OLD_EXE_ASSET).
 # No command-line exe and no Mac program since 0.80.1 (owner); the Linux program: packaging/build.sh.
 #
 # Uses its own virtual environment (.venv) so nothing is installed into your Python.
@@ -58,7 +58,6 @@ foreach ($old in 'NHLLegacyRosterUpdater-Photos.exe', 'NHLLegacyRosterUpdater-cl
     --collect-all webview --collect-all pythonnet --collect-all clr_loader --collect-all customtkinter `
     --name PuckPeakLegacyUpdater packaging\launcher.py
 if ($LASTEXITCODE -ne 0) { throw "building the window program failed" }
-Copy-Item dist\PuckPeakLegacyUpdater.exe dist\NHLLegacyRosterUpdater.exe
 
 # checksums of the programs, to attach to the release (the update check compares the download with them)
 Get-ChildItem dist\*.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |

@@ -187,6 +187,9 @@ class Builder:
         self.data = data
         self.layout = layout
         self.mirrors = L.mirrors(layout)    # custom copies kept in step with their NHL team
+        # copy -> its NHL team, by the roster's own layout: the game's own roster has no copies, and a player may fill
+        # those slots with clubs of his own (a tester's KHL clubs in 222-227: real clubs, not Blues / Bruins ...)
+        self.mirror_of = {m: p for p, ms in self.mirrors.items() for m in ms}
         # players who leave a team, or are free agents, at this age retire (their records become
         # spare) unless they played in the NHL last season: in the game's own roster from 30
         # (stock.RETIRE_AGE: its 2014 players), in a community roster from FA_RETIRE_AGE
@@ -217,6 +220,7 @@ class Builder:
                           if self.C.get(i, 'BERR') == 1 and self.C.get(i, 'qEfv') == self.C.get(i, 'qFky') >= LINK_LIMIT}
         self.dead_links = []    # (row, link) of retired players' links, handed out again before new ones
         self.fa_links = [self.Q.get(i, 'TWSX') for i in range(self.Q.cur_rec)]
+        self.unlist_club_players()
         self.ovr = {}           # pid -> the list's overall (filled by apply_list_ratings)
         self.api = []
         self.api_rows = set()
@@ -325,7 +329,7 @@ class Builder:
         U, out = self.U, {}
         for i in range(U.cur_rec):
             t = U.get(i, 'BSXd')
-            if i in self.deleted or t in L.NATIONAL or t in L.MIRROR_OF or t in L.EVENTS:
+            if i in self.deleted or t in L.NATIONAL or t in self.mirror_of or t in L.EVENTS:
                 continue
             pid = self.pid_of_entry(i)
             out[pid] = min(out.get(pid, t), t)
@@ -447,6 +451,26 @@ class Builder:
         self.R.link_to_pid[link] = pid
         return link
 
+    def unlist_club_players(self):
+        """Take players who are on a club team (not a national team, a copy of an NHL team or an event team) off the
+        free-agent list. The game itself can save one on both (a tester's roster: Joe Sakic on Colorado and on the list);
+        contracts() would clear the deal of everyone listed, so his club keeps him and his deal as the game saved it."""
+        R, U = self.R, self.U
+        club = {}
+        for i in range(U.cur_rec):
+            t = U.get(i, 'BSXd')
+            if t not in L.NATIONAL and t not in self.mirror_of and t not in L.EVENTS:
+                club.setdefault(R.link_to_pid.get(U.get(i, 'TWSX')), set()).add(t)
+        for link in [l for l in self.fa_links if R.link_to_pid.get(l) in club]:
+            pid = R.link_to_pid[link]
+            self.drop_fa(pid)
+            prow = R.p_by_id.get(pid)
+            if prow is not None:
+                team = min(club[pid])
+                section, self.log.section = self.log.section, FREE_AGENTS
+                self.log.append(['FA', 'taken off the free-agent list', R.name(prow), f"plays for {R.team_name(team)}", ''])
+                self.log.section = section
+
     def drop_fa(self, pid):
         self.fa_links = [l for l in self.fa_links if self.R.link_to_pid.get(l) != pid]
 
@@ -493,7 +517,7 @@ class Builder:
         settle_free_agents(), the NHL step and stock.retire_leftovers() retire players: all run
         before any new player is made, so a second run finds no spare record the first did not."""
         ents = [x for x in self.R.entries_by_pid.get(pid, []) if x not in self.deleted]
-        copies = [x for x in ents if self.U.get(x, 'BSXd') in L.MIRROR_OF]
+        copies = [x for x in ents if self.U.get(x, 'BSXd') in self.mirror_of]
         ents = [x for x in ents if x not in copies]
         if any(self.U.get(x, 'BSXd') not in L.NATIONAL for x in ents) or not (force or self.would_retire(pid)):
             return False
@@ -802,7 +826,7 @@ class Builder:
         for pid, (prow, org) in sorted(held.items()):
             if pid in self.api_pids or prow in self.league_rows or pid in listed:
                 continue                        # a league lists him (by name: its own match may make a record of him)
-            teams = {U.get(x, 'BSXd') for x in live.get(pid, [])} - L.NATIONAL - set(L.MIRROR_OF)
+            teams = {U.get(x, 'BSXd') for x in live.get(pid, [])} - L.NATIONAL - set(self.mirror_of)
             if len(teams) != 1 or teams - L.NHL_PRIMARY:
                 continue
             (stay if teams == {org} else join).append((pid, org))
@@ -850,7 +874,7 @@ class Builder:
             org = L.API_TO_SLOT[d['org']]
             if pid in self.api_pids or prow in self.league_rows or (norm(d['first']), norm(d['last'])) in self.league_names:
                 continue
-            if any(U.get(x, 'BSXd') not in L.NATIONAL and U.get(x, 'BSXd') not in L.MIRROR_OF for x in live.get(pid, [])):
+            if any(U.get(x, 'BSXd') not in L.NATIONAL and U.get(x, 'BSXd') not in self.mirror_of for x in live.get(pid, [])):
                 continue
             places = [(farms.get(org), self.FARM_KEEP_ROOM), (org, self.NHL_KEEP_ROOM)]
             team = next((t for t, room in (places if d.get('two_way') else places[::-1])
@@ -1332,7 +1356,7 @@ class Builder:
         # on no team but national teams and the copies of `team` (a free agent, a former player whose copies stay until
         # sync_mirrors, or a farm player whose only club is the farm: `but`)
         alone = lambda pid, team, but=None: all(x == but or U.get(x, 'BSXd') in L.NATIONAL
-                                                or L.MIRROR_OF.get(U.get(x, 'BSXd')) == team for x in live.get(pid, []))
+                                                or self.mirror_of.get(U.get(x, 'BSXd')) == team for x in live.get(pid, []))
 
         def usable(prow, team):
             pid = P.get(prow, 'zIBw')
@@ -1464,8 +1488,8 @@ class Builder:
         if (A.get(row, 'arenaname') == name and (city is None or A.get(row, 'cityname') == city)
                 and (capacity is None or A.get(row, 'maxattendance') == capacity)):
             return None
-        prime = L.MIRROR_OF.get(slot, slot)
-        family = {prime} | set(L.MIRRORS.get(prime, ()))
+        prime = self.mirror_of.get(slot, slot)
+        family = {prime} | set(self.mirrors.get(prime, ()))
         sharers = [t for t in range(T.cur_rec) if t != slot and T.get(t, 'arenaid') == row]
         if any(t not in family for t in sharers) if alone else any(t < 32 for t in sharers):
             if A.cur_rec >= A.max_rec:
@@ -2808,8 +2832,7 @@ class Builder:
         self.starter_deals = dict(given)
         return dict(given)
 
-    @staticmethod
-    def same_team(t):
+    def same_team(self, t):
         """A team and its mirror copies count as one team."""
-        prim = L.MIRROR_OF.get(t, t)
-        return {prim} | set(L.MIRRORS.get(prim, []))
+        prim = self.mirror_of.get(t, t)
+        return {prim} | set(self.mirrors.get(prim, []))

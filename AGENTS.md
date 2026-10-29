@@ -99,7 +99,7 @@ python -m legacy_roster update --rpcs3 <rpcs3.exe> --dry-run   # build and check
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --for both  # save for the EU and the NA version
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --source disc   # start from the game's own roster (no community roster)
 python -m legacy_roster stock-test --rpcs3 <rpcs3.exe>         # the in-game check of the game's own roster (owner only)
-.venv\Scripts\python tools\window_shot.py <state> out.png      # picture of the window (headless Edge): none|setup|ready|patch|updating|done|details|failed|delete|export|roster|lines|strategy|jerseys|calendar|office|contract|equipment|face|downloading|misfit|prospects|prospects-pro|prospects-make|prospects-class|prospects-import; --tab ID, --size WxH, --scale, --screen-lines, --live, --browser
+.venv\Scripts\python tools\window_shot.py <state> out.png      # picture of the window (headless Edge): none|setup|ready|patch|updating|done|details|failed|delete|export|roster|lines|strategy|jerseys|calendar|office|contract|equipment|face|downloading|misfit|prospects|prospects-pro|prospects-make|prospects-class|prospects-import|export-roster; --tab ID, --size WxH, --scale, --screen-lines, --live, --browser
 python tools\build_datapack.py --refresh ratings,iihf,liiga,extraliga,shl,del,nl,norway,ahl,chl,nhl   # refresh the data pack
 python tools\capacity.py                                       # player records and pool room a full update needs
 python -m legacy_roster update --rpcs3 <rpcs3.exe> --photos    # also install photos and logos (RPCS3 closed)
@@ -193,6 +193,26 @@ progress messages are shown to players too, and the progress bar recognises them
 wording (`progress.py`).
 
 ## Current state
+
+**Version 0.85.0 (2026-10-28, built, not committed; notes docs/notes/tester-reports-2026-10-28b.md, PLAN.md top):**
+(1) **Linux / Mac patch switches**: RPCS3 adds `config/` only on Windows (`fs::get_config_dir(true)`), so on Linux it
+reads `~/.config/rpcs3/patch_config.yml`; we wrote `config/patch_config.yml`, never read there (the game ran unpatched,
+the program believed it patched). `patchinstall.config_file` follows RPCS3; `carry_over` (via `_read_config`, in every
+read of the switches) moves our switches from a `config/patch_config.yml` of 0.80.1 / 0.81.0 into RPCS3's file, so a game
+patched then (patch file and db files in) is patched now; `onlinecfg.account` also reads the top-level `rpcn.yml`.
+Checked in an RPCS3 box on the server (real RPCS3 Linux AppImage, `legacy-linux-rpcs3`): PLAN.md top. (2) One Windows exe:
+`build.ps1` no longer copies `NHLLegacyRosterUpdater.exe` (owner; `selfupdate.OLD_EXE_ASSET` stays for reading old
+releases). (3) Everything below ("After 0.81.0"). Online match reports: docs/notes/online-match-reports.md (the game
+sends them, the server keeps nothing).
+
+**After 0.81.0 (2026-10-28, part of 0.85.0; notes docs/notes/on-a-team-and-free-agent.md):** a
+tester's game-saved 2014 roster with KHL clubs in custom slots. `Builder.unlist_club_players` (a club player on the
+free-agent list leaves it and keeps the game's deal; verify `('fa on team')` covers every club); after Save as new the
+editor opens the new roster (`EditorController._open_saved`, `UpdateController.set_rpcs3(then=)`); in an export from a
+roster file the team tabs show the file, Save off (`UpdateController.roster_file`, `editor.RosterFile`, `SaveBar` `save.file`;
+`tools/window_shot.py export-roster`); `Builder.mirror_of` / `same_team` follow the layout (no copies on the game's own
+roster), `stock.add_spares` skips models whose type is not their position's. The window / edits still treat 222-233 as
+copies on every roster (follow-up). Open: the game's link-0 places (Kukkonen "on every team"), lab first.
 
 **Photo pack (2026-10-28, part of 0.81.0, published with the owner's go):** the owner's folder of 848 player photos replaced 765 portraits of `photos.zip` (new `photos-691d56680e8a.zip` on the server, old pack kept there; notes docs/notes/photo-folder.md, tool `private/photos_folder.py`; long faces scaled so the jaw stays above the shoulder fade).
 

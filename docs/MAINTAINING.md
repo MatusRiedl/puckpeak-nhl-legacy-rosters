@@ -179,8 +179,8 @@ when the pack's layout changes in a way older exes cannot read, raise `PACK_FORM
 2. Data pack refreshed if due (above).
 3. `python -m pytest -q` green with the base roster present (no unexpected skips).
 4. `powershell -ExecutionPolicy Bypass -File packaging\build.ps1` (it refuses a zip in `legacy_roster\data` and any
-   `tools\clean_check.py` hit). The window exe is about 26 MB; `dist\NHLLegacyRosterUpdater.exe` is the same file
-   under the old name (0.80.0 and older look for that name when they update themselves).
+   `tools\clean_check.py` hit). The window exe is about 26 MB. Since 0.85.0 there is no copy under the old name
+   `NHLLegacyRosterUpdater.exe` (owner): copies of 0.80.0 and older get "Open the download page".
    The Linux program: "The Linux program" below.
 5. **Smoke test** the exe (the command line from source, `python -m legacy_roster`):
    - `python -m legacy_roster list --rpcs3 <rpcs3.exe>`: lists the rosters, community rosters "ok";
@@ -201,12 +201,12 @@ when the pack's layout changes in a way older exes cannot read, raise `PACK_FORM
    CHANGELOG.md (the release text is made from it) and keep the README's "What it updates" table
    in step.
 8. Publish (only with the owner's go-ahead): commit, tag `vX.Y.Z`, push, then a GitHub Release
-   with `PuckPeakLegacyUpdater.exe`, `NHLLegacyRosterUpdater.exe` (the same file, for copies of 0.80.0 and older),
+   with `PuckPeakLegacyUpdater.exe` (only this exe since 0.85.0; 0.80.1 / 0.81.0 also carried `NHLLegacyRosterUpdater.exe`),
    `PuckPeakLegacyUpdater-<version>-linux.tar.gz` and `SHA256SUMS.txt` (made by `build.ps1` in `dist\`; add the
    tar.gz's line to it). The data pack and the
    picture packs go to the file server (`tools/publish_packs.py`), not into the release. **The exe's own update check
-   (`app/selfupdate.py`) needs the exact asset names `PuckPeakLegacyUpdater.exe` (0.80.1 and newer) or
-   `NHLLegacyRosterUpdater.exe` (older copies) and `SHA256SUMS.txt` (or GitHub's own `digest` of the exe), and a tag like `v0.11.0` (a draft or prerelease is ignored).
+   (`app/selfupdate.py`) needs the exact asset name `PuckPeakLegacyUpdater.exe` (copies of 0.80.0 and older look for
+   `NHLLegacyRosterUpdater.exe`, which releases since 0.85.0 no longer carry) and `SHA256SUMS.txt` (or GitHub's own `digest` of the exe), and a tag like `v0.11.0` (a draft or prerelease is ignored).
    Programs before 0.32.0 still download the data pack from `releases/latest/download/datapack.json.gz` and refuse
    format 2: leave that asset out.** There is no `gh` on the
    owner's PC: the release is made through GitHub's REST API with git's stored login (`git

@@ -38,6 +38,8 @@ FREE_AGENTS_VIEW = {'id': model.FREE_AGENTS, 'code': 'FA', 'name': "Free agents"
                     'league': "Free agents"}
 PORTRAIT = (512, 256)
 NO_ROSTER = "Pick RPCS3 and a roster in Setup first."
+ROSTER_FILE = ("These tabs show the roster file the export starts from. Your edits are kept in My edits and go into the "
+               "export (Update tab); the file itself is not changed.")
 PHOTO_PICKED = "Press Apply to keep the photo. It goes into the game when you press Save."
 NO_FACE = "No face found in this picture: pick a photo with the face near the top."
 PRO_TEAM = ("Be a Pro can pick him only on an NHL team (Be a NHL Pro) or a CHL club (Be a CHL Pro): put your pro on "
@@ -64,6 +66,17 @@ LOOK_ROWS = [{'key': key, 'label': faces.LOOK_WORDS[key], 'choices': [[n, word] 
              for key, (_tag, choices) in faces.LOOK.items()]
 
 
+class RosterFile:
+    """The roster file (SYS-DATA) an export starts from, shown by the team tabs like a roster save; never saved to."""
+    file, disc = True, False
+
+    def __init__(self, path):
+        self.folder = self.sys_data = path
+        self.name = f"Roster file {os.path.basename(os.path.dirname(path)) or path}"
+        self.region = 'file'
+        self.title_id = savedata.title_of('EU')
+
+
 class EditorController:
     def __init__(self, host, update):
         self.host, self.update = host, update
@@ -78,7 +91,7 @@ class EditorController:
         self.season = pack.get('season')
         self.pending_photo = None       # a picture chosen for the player on the card, not applied yet
         self.source = None              # (savedata folder, roster folder, file stamp) the view was made from
-        self.slot = None                # that roster (savedata.Slot or DiscSlot)
+        self.slot = None                # that roster (savedata.Slot, DiscSlot, or RosterFile in an export from a file)
         self.raw = None                 # Snapshot of the save as it is
         self.raw_source = None
         self.raw_bytes = None           # its SYS-DATA, as read (an update in place checks it is still that)
@@ -181,14 +194,15 @@ class EditorController:
         """The tab came into view: (re)load if the chosen roster changed."""
         with self.lock:
             upd = self.update
-            slot = upd.selected_slot()
-            if slot is None or upd.rpcs3 is None:
+            path = upd.roster_file()        # an export from a roster file: the tabs show that file (a tester saw 2014-15)
+            slot = RosterFile(path) if path else upd.selected_slot()
+            if slot is None or (upd.rpcs3 is None and path is None):
                 self.slot = None
                 if not self.busy:
                     self.view, self.source = None, None
                     self.set_status(NO_ROSTER)
                 return
-            source = (upd.rpcs3.savedata, slot.folder, self._stamp(slot))
+            source = (upd.rpcs3.savedata if upd.rpcs3 else None, slot.folder, self._stamp(slot))
             self.slot = slot
             if source != self.source:       # another roster, or the file changed (an update, the game, a save here)
                 self.source, self.view, self.pictures = source, None, None
@@ -242,9 +256,12 @@ class EditorController:
         jobs.run(job, finished, failed)
 
     def _with_edits(self, raw_bytes):
-        """The roster with the edits made since it was opened (the earlier ones are in it already)."""
+        """The roster with the edits made since it was opened (the earlier ones are in it already). A roster file an
+        export starts from gets every edit of My edits, as the export applies them."""
         mine = {k: v for k, v in self.edits.items() if k in self.session}
         teams = {k: v for k, v in self.teams.items() if k in self.session_teams}
+        if getattr(self.slot, 'file', False) and self.update.use_edits:
+            mine, teams = dict(self.edits), dict(self.teams)
         return model.apply_edits(raw_bytes, mine, teams, self.season)
 
     def load(self):
@@ -311,6 +328,8 @@ class EditorController:
                                                             if self.session or self.session_teams else "")
                             + ". Pick a team, then a player.")
         self._show_teams()
+        if getattr(self.slot, 'file', False) and not built.problems and not note:
+            self.set_status(ROSTER_FILE)
         if self.new_who is not None and self.player is None and self.card_open:
             p = snap.by_who.get(self.new_who)       # the player just added: show him as the roster has him
             if p is not None:
@@ -766,7 +785,7 @@ class EditorController:
         if rpcs3 is None or self.source is None:
             return None
         from ..editor.pictures import Pictures
-        title_id = self.source[1][:9]
+        title_id = self.slot.title_id if getattr(self.slot, 'file', False) else self.source[1][:9]
         if self.pictures is None or self.pictures.title_id != title_id or self.pictures.rpcs3 is not rpcs3:
             self.pictures = Pictures(rpcs3, title_id)
         return self.pictures
@@ -1318,6 +1337,9 @@ class EditorController:
                     self.after_busy = lambda: self.save(applied=True)      # when the roster is rebuilt with it
                     return
             built = view[0]
+            if getattr(self.slot, 'file', False):
+                self.set_status(ROSTER_FILE, 'warn')
+                return
             if self.raw_bytes is not None and gamepatch.is_patch_roster(Roster(self.raw_bytes)):
                 self._save_patch_roster()
                 return
@@ -1416,7 +1438,7 @@ class EditorController:
                 self.set_status(f"Saved as \"{slots[0].name}\" ({where}). In the game: Customize > Save/Load/Delete > "
                                 "Load > Rosters.", 'good')
                 self._picture_status(art, later)
-                self.after_busy = lambda: self._rescan(reopen=False)
+                self._open_saved(slots[0].folder)
             self._work("Saving...", job, done)
 
     def _save_patch_roster(self):
@@ -1465,8 +1487,9 @@ class EditorController:
             else:
                 self.set_status(f"Saved as \"{r.slot.name}\" ({r.saved_where()}). In the game: Customize > "
                                 "Save/Load/Delete > Load > Rosters.", 'good')
-                self.after_busy = lambda: self._rescan(reopen=False)
             self._picture_status(r.art if r.own_pictures else None)
+            if not in_place:
+                self._open_saved(r.slot.folder)
         self._work("Saving...", job, done)
 
     def _picture_edits(self):
@@ -1499,13 +1522,25 @@ class EditorController:
                 text, tone = text + f" {failed} of your pictures could not be made: pick another photo.", 'warn'
         self.set_status(text + later, tone if not later else 'warn')
 
-    def _rescan(self, reopen=True):
-        """The Update tab lists the rosters again (a new one, a new time); the editor reads the saved one again."""
+    def _open_saved(self, folder):
+        """After "Save as a new roster" (under the lock): Setup picks the new roster and the team tabs open it, so this
+        visit's edits count as saved and the next ones go into it (before, the old roster stayed open and its Save bar said
+        "1 not saved yet" for good: a tester, 2026-10-28)."""
+        self.session, self.session_teams, self.source = set(), set(), None
+        self.name_touched = False
+        self.next_note = self.status        # "Saved as ..." stays on the line when the new roster shows
+        self.after_busy = lambda: self._rescan(pick=folder)
+
+    def _rescan(self, pick=None):
+        """The Update tab lists the rosters again (a new one, a new time); the editor reads the saved one again, or
+        `pick` (a roster folder) once Setup has picked it."""
         upd = self.update
+        if pick is not None and upd.rpcs3 is not None:      # the new roster is listed once the scan is done
+            upd.set_rpcs3(upd.rpcs3.where, quiet=True, then=lambda: (upd.select(pick), self.opened()))
+            return
         if upd.rpcs3 is not None:
             upd.set_rpcs3(upd.rpcs3.where, quiet=True)
-        if reopen:
-            self.opened()
+        self.opened()
 
     def closing(self):
         """May the window close now? Not while a roster is being saved, and not before the player has answered
@@ -1518,7 +1553,7 @@ class EditorController:
                                                 "done."], [("OK", 'ok', 'primary')], {})
                 return False
             n = len(self.session) + len(self.session_teams)
-            if not n or self.view is None or self.busy:
+            if not n or self.view is None or self.busy or getattr(self.slot, 'file', False):
                 return True
             what = "1 edit is" if n == 1 else f"{n} edits are"
             self.update.ask(UNSAVED_TITLE, [UNSAVED_LINES[0].format(n=what, them="it" if n == 1 else "them"),
@@ -1548,6 +1583,7 @@ class EditorController:
             snap, upd = self.snap, self.update
             slot = self.slot
             in_place = upd.in_place(slot) if slot is not None else False
+            from_file = getattr(slot, 'file', False)
             ready = snap is not None and not self.busy
             built = self.view[0] if self.view else None
             team_slot = self.team if isinstance(self.team, int) else None
@@ -1577,13 +1613,13 @@ class EditorController:
                             'positions': list(C.POSITIONS), 'styles': STYLE_CHOICES,
                             'skins': list(faces.SKINS), 'eyes': list(faces.EYES), 'look_rows': LOOK_ROWS},
                 'edits_count': len(self.edits) + len(self.teams),
-                'unsaved': len(self.session) + len(self.session_teams),
+                'unsaved': 0 if from_file else len(self.session) + len(self.session_teams),
                 'team_tools': {'team': team_slot is not None and snap is not None,
                                'uniforms': uniforms_why is None, 'uniforms_why': uniforms_why or ''},
-                'save': {'mode': S.IN_PLACE if in_place else S.AS_NEW,
+                'save': {'mode': S.IN_PLACE if in_place else S.AS_NEW, 'file': ROSTER_FILE if from_file else '',
                          'mode_enabled': ready and slot is not None and not getattr(slot, 'disc', False) and not upd.busy,
                          'name': self.name,
                          'button': {'text': "Save to this roster" if in_place else "Save as new roster",
-                                    'enabled': ready and built is not None and not upd.busy}},
+                                    'enabled': ready and built is not None and not upd.busy and not from_file}},
                 'modal': modal,
             }

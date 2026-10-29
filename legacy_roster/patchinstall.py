@@ -10,7 +10,8 @@
 A patched game needs three things together (docs/GAME_PATCH.md):
   * RPCS3's patch file patches/<TITLEID>_patch.yml (gamepatch.player_patch_text: one entry with the year and the 32 teams,
     the intro, login and news entries, for the game's 1.00 and for update 1.01, whichever RPCS3 runs: game_version) and
-    the switches in config/patch_config.yml (RPCS3's list of ticked entries; the news entry is ticked with the 32 teams,
+    the switches in config/patch_config.yml (RPCS3's list of ticked entries, at the top of its folder on Linux / Mac:
+    config_file, carry_over; the news entry is ticked with the 32 teams,
     the intro and login entries are the window's two switches);
   * the game's database description and database for 32 teams, db/nhlng-meta.xml and db/nhlng.db, as loose files in the
     game's folder (dev_hdd0/game/<TITLEID>/USRDIR), made from the player's own disc (no file of the game's is shipped); the
@@ -52,10 +53,59 @@ class PatchError(RuntimeError):
 
 
 def config_file(rpcs3):
-    """RPCS3's list of ticked patches: config/patch_config.yml (RPCS3 since 2023), else next to its data (older ones)."""
-    folder = os.path.join(rpcs3.folder, 'config')
+    """RPCS3's list of ticked patches. On Windows config/patch_config.yml (RPCS3 since 2023), else next to its data (older
+    ones). On Linux and Mac always next to its data (~/.config/rpcs3/patch_config.yml): RPCS3 adds the config/ folder only
+    on Windows (fs::get_config_dir(true)), so a config/patch_config.yml there is never read (a Linux tester's damaged roster:
+    the program believed the game patched)."""
     old = os.path.join(rpcs3.folder, 'patch_config.yml')
+    if not savedata.WINDOWS:
+        return old
+    folder = os.path.join(rpcs3.folder, 'config')
     return old if os.path.isfile(old) and not os.path.isdir(folder) else os.path.join(folder, 'patch_config.yml')
+
+
+def carry_over(rpcs3):
+    """Linux / Mac: our switches in the config/patch_config.yml that programs before 0.85.0 wrote (RPCS3 never reads it
+    there, config_file) moved into RPCS3's own file and out of the old one, so a game patched then is patched now: its
+    patch file and db files are in already. Done also while RPCS3 runs (it reads the file when a game starts); the old
+    file's other lines stay, the file goes when nothing is left. Returns True when something moved."""
+    if savedata.WINDOWS or rpcs3 is None or rpcs3.plain:
+        return False
+    stray = os.path.join(rpcs3.folder, 'config', 'patch_config.yml')
+    old = _read(stray)
+    found = {(t, v): ticked(old, t, v) for t in gamepatch.HASHES for v in gamepatch.VERSIONS}
+    if not any(found.values()):
+        return False
+    path = config_file(rpcs3)
+    before = text = _read(path)
+    saved = _load_saved()
+    saved.pop(os.path.abspath(stray), None)     # what the old file had before us: nothing RPCS3 ever read
+    mine = _kept(saved, path)
+    for (title, version), names in found.items():
+        old = config_with(old, title, set(), version)
+        if names:
+            hash_ = gamepatch.hash_of(title, version)
+            if hash_ not in mine:
+                mine[hash_] = entries_before(before, hash_)
+            text = config_with(text, title, ticked(text, title, version) | names, version)
+    _store_saved(saved)
+    if text != before:
+        _write_config(rpcs3, text)
+    if old.strip():
+        with open(stray + '.tmp', 'w', encoding='utf-8', newline='') as f:
+            f.write(old)
+        os.replace(stray + '.tmp', stray)
+    else:
+        os.remove(stray)
+        if not os.listdir(os.path.dirname(stray)):
+            os.rmdir(os.path.dirname(stray))
+    return True
+
+
+def _read_config(rpcs3):
+    """RPCS3's patch_config.yml as text (after carry_over)."""
+    carry_over(rpcs3)
+    return _read(config_file(rpcs3))
 
 
 def patches_dir(rpcs3):
@@ -368,7 +418,7 @@ def install_patch(rpcs3, titles, roster=None, intro=True, login=False, say=print
     finally:
         writer.save()
     wanted = _wanted(intro, login)
-    before = text = _read(config_file(rpcs3))
+    before = text = _read_config(rpcs3)
     saved = _load_saved()
     mine = _kept(saved, config_file(rpcs3))
     for title in titles:
@@ -398,7 +448,7 @@ def set_switches(rpcs3, titles, intro, login):
         raise PatchError("Close RPCS3 first: the game patch can only be changed while RPCS3 is closed.")
     patched = [t for t in patched_titles(rpcs3) if t in titles]
     wanted = _wanted(intro, login)
-    before = text = _read(config_file(rpcs3))
+    before = text = _read_config(rpcs3)
     for title in patched:
         for version in covered(_read(patch_file(rpcs3, title)), title):
             text = config_with(text, title, wanted | _online_on(text, title, version), version)
@@ -434,7 +484,7 @@ def set_online(rpcs3, titles, on, say=print):
         finally:
             writer.save()
     set_screens(rpcs3, titles, on, say=say)
-    before = text = _read(config_file(rpcs3))
+    before = text = _read_config(rpcs3)
     saved = _load_saved()
     mine = _kept(saved, config_file(rpcs3))
     for title in titles:
@@ -501,7 +551,7 @@ def auto_start(rpcs3, title):
         return False
     version = game_version(rpcs3, title)
     return (f"  {gamepatch.ONLINE_START_ENTRY}:" in _read(patch_file(rpcs3, title)) and screens_in(rpcs3, title)
-            and {gamepatch.ONLINE_ENTRY, gamepatch.INTRO_ENTRY} <= ticked(_read(config_file(rpcs3)), title, version))
+            and {gamepatch.ONLINE_ENTRY, gamepatch.INTRO_ENTRY} <= ticked(_read_config(rpcs3), title, version))
 
 
 def set_online_start(rpcs3, titles, on):
@@ -511,7 +561,7 @@ def set_online_start(rpcs3, titles, on):
     patch file at the game's start). Returns the titles changed."""
     if on and savedata.running_rpcs3():
         raise PatchError("Close RPCS3 first: the game patch can only be changed while RPCS3 is closed.")
-    before = text = _read(config_file(rpcs3))
+    before = text = _read_config(rpcs3)
     done = []
     for title in (t for t in gamepatch.HASHES if t in titles):
         version = game_version(rpcs3, title)
@@ -621,7 +671,7 @@ def state(rpcs3):
     versions of the game."""
     out = {}
     real = rpcs3 is not None and not rpcs3.plain
-    text = _read(config_file(rpcs3)) if real else ''
+    text = _read_config(rpcs3) if real else ''
     for title in gamepatch.HASHES:
         game = game_version(rpcs3, title) if real else gamepatch.VERSIONS[0]
         body = _read(patch_file(rpcs3, title)) if real else ''
@@ -652,7 +702,7 @@ def installed_rights(rpcs3, title):
 
 def installed(rpcs3):
     """Is anything of the patch in (a switch, our patch file, a db file): what Unpatch would take out."""
-    text = _read(config_file(rpcs3)) if rpcs3 is not None and not rpcs3.plain else ''
+    text = _read_config(rpcs3) if rpcs3 is not None and not rpcs3.plain else ''
     if any(ticked(text, t, v) for t in gamepatch.HASHES for v in gamepatch.VERSIONS):
         return True
     if any(install.load_manifest(STORE)['games'].values()):
@@ -666,7 +716,7 @@ def remove(rpcs3, say=print):
     files that were there before back). Returns how many files were handled."""
     if savedata.running_rpcs3():
         raise PatchError("Close RPCS3 first: the game patch can only be put in or taken out while RPCS3 is closed.")
-    before = text = _read(config_file(rpcs3))
+    before = text = _read_config(rpcs3)
     saved = _load_saved()
     mine = _kept(saved, config_file(rpcs3))
     saved.pop(os.path.abspath(config_file(rpcs3)))

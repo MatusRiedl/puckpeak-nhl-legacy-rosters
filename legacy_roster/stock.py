@@ -31,6 +31,7 @@ import os
 from collections import Counter
 
 from . import layout as L
+from . import ratings
 from . import tdb
 from .art.disc import EbArchive, IsoImage
 
@@ -209,7 +210,10 @@ def add_spares(R):
         pid = P.get(i, 'zIBw')
         pos = P.get(i, 'aljv')
         tables = (goalies, g_gear) if pos == 4 else (skaters, s_gear)
-        if all(pid in row_of[t.name] for t in tables):
+        # never a model whose player type is not his position's (a tester's roster had players moved between forward
+        # and defence in the game: their copies were refused, "David ZZ has player type 4, which no forward has")
+        if all(pid in row_of[t.name] for t in tables) and tables[0].get(row_of[tables[0].name][pid], 'sFgQ') \
+                in ratings.STYLE_CHOICES[ratings.style_class(pos)]:
             by_pos.setdefault(pos, []).append(i)
     wanted = Counter()
     total = sum(SPARE_RECORDS.values())

@@ -334,8 +334,8 @@ Creates `.venv` if needed, installs PyInstaller, pywebview, CustomTkinter, Pillo
 obvious"), and writes
 `dist\PuckPeakLegacyUpdater.exe` (window: `legacy_roster\web` added as data, `--collect-all` webview, pythonnet,
 clr_loader and customtkinter; about 26 MB: no picture pack goes inside, `build.ps1` refuses a zip in
-`legacy_roster\data` and any `tools\clean_check.py` hit), and a copy `dist\NHLLegacyRosterUpdater.exe` under the
-old name for the update check of 0.80.0 and older copies. No command-line exe since 0.80.1. It carries Pillow for
+`legacy_roster\data` and any `tools\clean_check.py` hit); since 0.85.0 no copy under the old name
+`NHLLegacyRosterUpdater.exe`. No command-line exe since 0.80.1. It carries Pillow for
 "Photos and logos";
 its image readers are named with `--hidden-import` because Pillow loads them by name.
 Close a running copy first: Windows does not let a running exe be replaced (the script stops

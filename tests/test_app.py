@@ -191,11 +191,50 @@ def test_a_card_typed_on_but_not_applied_is_applied_on_save_as_new(app):
     row = ed.snapshot()['rows'][0]
     ed.pick_player(row['id'])
     values = ed.snapshot()['card']['values']
-    before = len(savedata.list_rosters(sd))
+    old = upd.selected
+    before = {s.folder for s in savedata.list_rosters(sd)}
     ed.save(dict(values, first='Changed'))
-    wait(lambda: len(savedata.list_rosters(sd)) == before + 1 and not ed.busy)
+    wait(lambda: len(savedata.list_rosters(sd)) == len(before) + 1 and not ed.busy)
     assert ed.status[1] == 'good' and ed.status[0].startswith("Saved as")
     assert any(e['set'].get('first') == 'Changed' for e in ed.edits.values())
+    # Setup and the team tabs go on with the new roster, so the edit counts as saved (a tester: "1 not saved yet" stayed)
+    new = ({s.folder for s in savedata.list_rosters(sd)} - before).pop()
+    wait(lambda: upd.selected == new and ed.slot is not None and ed.slot.folder == new and ed.view is not None
+         and not upd.scanning)
+    idle(ed)
+    assert old != new and ed.snapshot()['unsaved'] == 0 and ed.status[0].startswith("Saved as")
+    assert any(p.first == 'Changed' for p in ed.raw.players.values())
+
+
+def test_an_export_from_a_roster_file_shows_that_file_in_the_team_tabs(app, tmp_path):
+    """A tester picked an updated roster file for the export and the Roster tab still showed the roster of Setup (the
+    game's own, 2014-15): the team tabs show the file now, never save into it, and say the edits go into the export."""
+    from legacy_roster.app.editor import ROSTER_FILE
+    from legacy_roster.editor import model
+    _host, upd, ed, _uni, _sd = app
+    raw = open(upd.selected_slot().sys_data, 'rb').read()
+    snap = model.Snapshot(raw)
+    first = snap.players[snap.rosters[0][0]]
+    made = model.apply_edits(raw, {first.who: {'label': first.name, 'set': {'first': 'Picked'}}}, {}, 2026)
+    assert not made.problems
+    path = tmp_path / 'file' / 'SYS-DATA'
+    path.parent.mkdir()
+    path.write_bytes(made.data)
+    upd.set_export_only(True)
+    wait(lambda: not upd.scanning)
+    upd.use_export_file(str(path))
+    assert upd.roster_file() == str(path)
+    ed.show_tab('roster')
+    idle(ed)
+    assert getattr(ed.slot, 'file', False) and any(p.first == 'Picked' for p in ed.raw.players.values())
+    s = ed.snapshot()
+    assert s['save']['file'] == ROSTER_FILE and not s['save']['button']['enabled'] and s['unsaved'] == 0
+    ed.save()
+    assert ed.status[0] == ROSTER_FILE and path.read_bytes() == made.data
+    upd.select(upd.slots[0].folder)                 # a roster of RPCS3 picked again: the tabs show it
+    ed.show_tab('roster')
+    idle(ed)
+    assert not getattr(ed.slot, 'file', False) and not any(p.first == 'Picked' for p in ed.raw.players.values())
 
 
 def test_a_bad_card_is_named_when_another_player_is_picked(app):
@@ -1316,7 +1355,8 @@ def test_the_editors_save_puts_the_players_own_photo_into_the_game(app, tmp_path
 
     # RPCS3 running: the roster is saved, the pictures wait for a save with it closed
     monkeypatch.setattr(savedata, 'running_rpcs3', lambda: 'rpcs3.exe')
-    wait(lambda: not ed.busy)
+    wait(lambda: not ed.busy and not upd.scanning and ed.source is not None)    # the new roster is open (_open_saved)
+    assert ed.slot.folder == new.folder
     before = set(s.folder for s in savedata.list_rosters(sd))
     ed.save()
     wait(lambda: len(savedata.list_rosters(sd)) == len(before) + 1 and not ed.busy and ed.status[0] != "Saving...")

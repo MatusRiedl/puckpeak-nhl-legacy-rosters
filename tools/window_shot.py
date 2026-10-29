@@ -83,12 +83,12 @@ STATES = ('none', 'setup', 'ready', 'patch', 'updating', 'done', 'details', 'fai
           'uniforms', 'equipment', 'export', 'export-ready', 'export-done', 'patched', 'full', 'lines', 'strategy', 'strategies', 'face',
           'calendar', 'office', 'contract', 'downloading', 'misfit', 'prospects', 'prospects-pro', 'prospects-look',
           'prospects-make', 'prospects-class', 'prospects-import', 'prospects-career', 'online', 'online-lobby',
-          'online-ready', 'online-ingame', 'online-failed', 'online-mismatch', 'online-list')
+          'online-ready', 'online-ingame', 'online-failed', 'online-mismatch', 'online-list', 'export-roster')
 TEAM_STATES = {'roster': 'roster', 'editor': 'roster', 'equipment': 'roster', 'face': 'roster', 'jerseys': 'jerseys',
                'uniforms': 'jerseys', 'lines': 'lines', 'strategy': 'strategy', 'strategies': 'strategy',
                'calendar': 'calendar', 'office': 'office', 'contract': 'office', 'prospects': 'prospects',
                'prospects-pro': 'prospects', 'prospects-look': 'prospects', 'prospects-make': 'prospects', 'prospects-class': 'prospects',
-               'prospects-import': 'prospects', 'prospects-career': 'prospects'}
+               'prospects-import': 'prospects', 'prospects-career': 'prospects', 'export-roster': 'roster'}
 # made-up players for the Draft & Pro pictures (no real person's name)
 SHOT_PROSPECTS = (('Aron', 'Halvik', 'C', 'SWE', 1), ('Jonah', 'Vale', 'D', 'CAN', 3), ('Marek', 'Doubrava', 'LW', 'CZE', 5))
 SCREEN_LINES, TASKBAR = 1080, 48    # the screen pretended (in the window's units) and its taskbar
@@ -203,7 +203,12 @@ def drive(args, c, work):
         details = state == 'details'
     elif state in TEAM_STATES:
         tab = TEAM_STATES[state]
-        upd.select(os.path.basename(BASE))
+        if state == 'export-roster':        # an export from a roster file: the team tabs show the file
+            upd.set_export_only(True)
+            wait(lambda: not upd.scanning)
+            upd.use_export_file(os.path.join(BASE, 'SYS-DATA'))
+        else:
+            upd.select(os.path.basename(BASE))
         ed.show_tab('roster')               # the team tabs read the roster picked in Setup
         wait(lambda: ed.view is not None and not ed.busy and ed.after_busy is None)
         team = args.team if args.team is not None else L.API_TO_SLOT['EDM']

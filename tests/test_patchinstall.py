@@ -147,6 +147,47 @@ def test_patch_this_game_and_unpatch_leave_rpcs3_as_it_was(tmp_path, monkeypatch
     assert [n for n in kept if n.endswith('_patch_config.yml')]                  # RPCS3's own file, kept for good
 
 
+def test_on_linux_and_mac_the_switches_go_where_rpcs3_reads_them(tmp_path, monkeypatch):
+    # RPCS3 adds config/ only on Windows (fs::get_config_dir(true)); on Linux it reads ~/.config/rpcs3/patch_config.yml.
+    # A Linux tester's ~/.config/rpcs3 had config.yml, rpcn.yml, patches/ and no config/ folder; before, the program wrote
+    # config/patch_config.yml there, read its own switches back, believed the game patched and made 32-team rosters.
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'local'))
+    monkeypatch.setattr(savedata, 'running_rpcs3', lambda: None)
+    monkeypatch.setattr(savedata, 'WINDOWS', False)
+    monkeypatch.setattr(patchinstall, 'db_files', lambda disc, roster: (b'META', b'DB'))
+    rpcs3 = _fake_rpcs3(tmp_path)
+    _write(os.path.join(rpcs3.folder, 'config.yml'), b'Core:\n')
+    _write(os.path.join(rpcs3.folder, 'rpcn.yml'), b'NPID: friend\n')
+    top = os.path.join(rpcs3.folder, 'patch_config.yml')
+    assert patchinstall.config_file(rpcs3) == top
+    patchinstall.install_patch(rpcs3, [EU], b'roster', say=lambda m: None)
+    assert os.path.isfile(top) and patchinstall.state(rpcs3)[EU]['patched']
+    assert os.path.isfile(patchinstall.patch_file(rpcs3, EU))                     # ~/.config/rpcs3/patches/
+    assert not os.path.exists(os.path.join(rpcs3.folder, 'config'))
+    patchinstall.remove(rpcs3, say=lambda m: None)
+    assert not patchinstall.state(rpcs3)[EU]['patched']
+
+    # a game patched by 0.80.1 / 0.81.0: patch file and db files in, the switches in config/patch_config.yml (never
+    # read). Carried into RPCS3's file, the game is patched as its 32-team roster expects; Unpatch then takes them out.
+    patchinstall.install_patch(rpcs3, [EU], b'roster', say=lambda m: None)
+    stray = os.path.join(rpcs3.folder, 'config', 'patch_config.yml')
+    os.makedirs(os.path.dirname(stray))
+    os.replace(top, stray)
+    other = "PPU-0123456789abcdef0123456789abcdef01234567:\n  SomeoneElses:\n    Game:\n      BLES00001:\n        01.00:\n          Enabled: true\n"
+    _write(top, other.encode())
+    state = patchinstall.state(rpcs3)[EU]
+    assert state['patched'] and state['news'] and state['intro']
+    assert not os.path.exists(stray) and not os.path.exists(os.path.dirname(stray))
+    assert _read(top).decode().startswith(other)                                 # RPCS3's own lines stay
+    patchinstall.remove(rpcs3, say=lambda m: None)
+    assert _read(top).decode() == other
+    assert not any(t['patched'] or t['stale'] for t in patchinstall.state(rpcs3).values())
+
+    from legacy_roster import onlinecfg
+    assert onlinecfg.account(rpcs3) == 'friend'
+
+
 def test_entries_of_our_names_that_were_ticked_before_come_back_where_they_were(tmp_path, monkeypatch):
     # the lab (or a player by hand) ticked patches named like our intro entries, between other entries
     entry = lambda name: [f"  {name}:", "    NHL Legacy:", "      BLUS31540:", "        01.00:", "          Enabled: true"]
