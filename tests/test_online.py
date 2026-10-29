@@ -455,6 +455,7 @@ def test_an_open_game_is_not_started_a_second_time(server, tmp_path, monkeypatch
     launched = []
     monkeypatch.setattr(savedata, 'launch', lambda args, **kw: launched.append(args))
     host = _controller(tmp_path, monkeypatch)
+    made = _with_overlay(host, monkeypatch)
     _look(host)
     host.create()
     wait(lambda: host.code)
@@ -465,6 +466,8 @@ def test_an_open_game_is_not_started_a_second_time(server, tmp_path, monkeypatch
     host.ready()
     wait(lambda: host.snapshot()['state'] == 'in-game')
     assert launched == [] and 'Your game is open' in host.snapshot()['note']['text'] and other['members']
+    assert host.watching and host.started_at and host.ended is None      # followed all the same: result window, overlay
+    assert made and made[0].started
 
 
 def test_a_lobby_the_server_forgot_is_dropped_with_a_word(server, tmp_path, monkeypatch):

@@ -67,11 +67,12 @@ def emulator_rect():
             if image(pid.value) == 'rpcs3.exe':
                 title = ctypes.create_unicode_buffer(512)
                 user32.GetWindowTextW(hwnd, title, 512)
-                r = wt.RECT()
-                user32.GetWindowRect(hwnd, ctypes.byref(r))
+                r, corner = wt.RECT(), wt.POINT(0, 0)          # the picture only: no title bar or border when windowed
+                user32.GetClientRect(hwnd, ctypes.byref(r))
+                user32.ClientToScreen(hwnd, ctypes.byref(corner))
                 area = (r.right - r.left) * (r.bottom - r.top)
                 if is_game_title(title.value) and area > 640 * 360:
-                    found.append((area, (r.left, r.top, r.right, r.bottom)))
+                    found.append((area, (corner.x, corner.y, corner.x + r.right, corner.y + r.bottom)))
         return True
     user32.EnumWindows(each, 0)
     return max(found)[1] if found else None
@@ -95,6 +96,7 @@ class Hud:
         self.find_rect = find_rect or screen_rect
         self.on_hotkey, self.hotkeys = on_hotkey, tuple(hotkeys)     # on_hotkey(index) runs on the HUD thread
         self.keys_on = False
+        self.keys_taken = set()                         # phrase numbers whose hotkey another program holds
         self.clock = clock
         self.q = queue.Queue()
         self.thread = None
@@ -131,9 +133,12 @@ class Hud:
         self.keys_on = want
         for i, vk in enumerate(self.hotkeys):
             if want:
-                native.register_hotkey(i, CTRL_SHIFT, vk)
+                if not native.register_hotkey(i, CTRL_SHIFT, vk):
+                    self.keys_taken.add(i)             # another program holds it: that phrase has no key this game
             else:
                 native.unregister_hotkey(i)
+        if not want:
+            self.keys_taken.clear()
 
     def _run(self):
         try:

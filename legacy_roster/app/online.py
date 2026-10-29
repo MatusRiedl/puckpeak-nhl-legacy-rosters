@@ -1107,10 +1107,13 @@ class OnlineController:
             if code:
                 self._lobby_call(lambda who: lobby.ready(code, who[0], False))
             return
-        if savedata.running_rpcs3():
+        if savedata.running_rpcs3():          # started by the player: follow it all the same (result window, overlay)
+            self.started_at, self.signed_at, self._tail = time.time(), None, None
             with self.lock:
+                self.watching, self.ended, self.baseline, self.result = True, None, PENDING, None
                 self.note = {'text': "Your game is open. Press nothing here; we follow it.", 'tone': 'good'}
             self.changed()
+            self._hud_start()
             return
         try:
             if self.roster:
