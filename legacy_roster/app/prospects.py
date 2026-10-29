@@ -152,7 +152,7 @@ class ProspectsController:
     def _clubs(self, key, e):
         p = self._player(key)
         if p is not None:
-            return model.club(p.teams)
+            return p.clubs
         team = e.get('team')
         return [team] if isinstance(team, int) else []
 
@@ -219,7 +219,7 @@ class ProspectsController:
             p = self._saved(key)
             if not e.get('pro') or p is None:
                 continue
-            for team in model.club(p.teams):
+            for team in p.clubs:
                 kind = 'NHL' if team in L.NHL_PRIMARY else 'CHL' if team in L.CHL else None
                 if kind:
                     return PRO_WHERE.format(kind=kind, team=snap.team_name(team))
@@ -471,7 +471,7 @@ class ProspectsController:
             # names of players outside the NHL only (a famous surname would make the player look like a real one's
             # relative); never a full name the roster or My edits has
             names = [(p.first, p.last, p.country) for p in snap.by_who.values()
-                     if not any(t in L.NHL_ALL for t in p.teams)]
+                     if not any(t in L.NHL_PRIMARY or t in snap.copies for t in p.teams)]
             taken = [p.name for p in snap.by_who.values()] + [e.get('label') or '' for e in ed.edits.values()]
             try:
                 made = draftclass.make(year, m['count'], names, self._draft_clubs(snap), m['seed'], m['strength'], taken)

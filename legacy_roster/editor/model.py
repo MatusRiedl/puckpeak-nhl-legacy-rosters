@@ -36,7 +36,7 @@ GOALIE_ATTRIBUTES = _labels(LIST_GOALIE)
 
 class Player:
     __slots__ = ('who', 'prow', 'pid', 'first', 'last', 'pos', 'num', 'birth', 'country', 'shoots', 'height_in',
-                 'weight_lb', 'teams', 'ovr', 'ratings', 'artid', 'hasportrait', 'equipment', 'style', 'face', 'created',
+                 'weight_lb', 'teams', 'clubs', 'ovr', 'ratings', 'artid', 'hasportrait', 'equipment', 'style', 'face', 'created',
                  'look')
 
     @property
@@ -81,6 +81,7 @@ class Snapshot:
             if old in self.team_names.get(t, '') and not (own and t in (30, 31)):
                 self.team_names[t], self.team_codes[t] = full, code
         self.heads = faces.heads(R)       # the heads the game can draw (the Roster editor's Face)
+        self.copies = L.copies(R)         # {copy slot: its NHL team}, by the roster's own layout (none on the game's own)
         # by the game's league field, as the game lists them: Coachella Valley and Henderson (custom slots 234 / 235)
         # under the AHL in a roster for the game patch (gamepatch.league_fit), also when it is read the update's way
         # (`farm_ahl`: unleagued), else under Custom (owner, 2026-10-19)
@@ -121,6 +122,7 @@ class Snapshot:
             p.height_in = P.get(prow, 'QBpy') + 54
             p.weight_lb = P.get(prow, 'WZNs') + 120
             p.teams = sorted(teams_of.get(pid, []))
+            p.clubs = club(p.teams, self.copies)      # his own teams: no national team, no copy of an NHL team
             p.artid, p.hasportrait = P.get(prow, 'artid'), P.get(prow, 'hasportrait')     # his menu photo
             p.ratings, p.ovr, p.style = {}, None, None
             p.face = faces.read(P, prow)
@@ -183,8 +185,10 @@ def apply_edits(raw, my_edits, team_edits, season_year, art=None):
                           team_edits=team_edits or None, game_patch=gamepatch.is_patch_roster(Roster(raw)), art=art)
 
 
-def club(teams):
-    return [t for t in teams if t not in L.NATIONAL and t not in L.MIRROR_OF]
+def club(teams, copies=None):
+    """`teams` without national teams and copies of NHL teams (`copies`: Snapshot.copies; None: the community's)."""
+    copies = L.MIRROR_OF if copies is None else copies
+    return [t for t in teams if t not in L.NATIONAL and t not in copies]
 
 
 def compare(before, after, team, renamed=None):
@@ -207,7 +211,7 @@ def compare(before, after, team, renamed=None):
         old = before.by_who.get(old_key(p.who))
         if old_key(p.who) not in was:
             out['joined'][p.who] = ('new to the game' if old is None else
-                                    ', '.join(before.team_name(t) for t in club(old.teams)) or 'free agent')
+                                    ', '.join(before.team_name(t) for t in old.clubs) or 'free agent')
         elif old is not None:
             a, b = old.values(), p.values()
             diff = [k for k in b if a[k] != b[k]]

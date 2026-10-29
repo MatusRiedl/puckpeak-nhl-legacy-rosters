@@ -429,7 +429,7 @@ class OfficeController:
             return 'club'
         if team in L.NATIONAL:
             return 'national'
-        if team in L.MIRROR_OF:
+        if team in self._snap().copies:
             return 'copy'
         if team in L.CONTRACT_CLUB and is_pool(index.R, team):
             return 'pool'
@@ -468,16 +468,16 @@ class OfficeController:
             link = {'team': team_view(self.editor, parent), 'text': f"Farm club of {snap.team_name(parent)}",
                     'button': f"{snap.team_name(parent)}'s front office"}
         elif kind == 'copy':
-            link = {'team': team_view(self.editor, L.MIRROR_OF[team]),
-                    'text': f"A copy of {snap.team_name(L.MIRROR_OF[team])}",
-                    'button': f"{snap.team_name(L.MIRROR_OF[team])}'s front office"}
+            link = {'team': team_view(self.editor, snap.copies[team]),
+                    'text': f"A copy of {snap.team_name(snap.copies[team])}",
+                    'button': f"{snap.team_name(snap.copies[team])}'s front office"}
         about = {
             'club': None,
             'pool': f"{name} is a prospect pool, not a club: a player with an NHL team's rights signs with that team, "
                     f"anyone else with a club (he moves there).",
             'national': f"{name} is a national team: each player's contract is with his club.",
             'copy': f"The game uses this copy in some modes: its players' contracts are "
-                    f"{snap.team_name(L.MIRROR_OF.get(team, team))}'s.",
+                    f"{snap.team_name(snap.copies.get(team, team))}'s.",
             'event': f"{name} plays in events only: each player's contract is with his club.",
         }[kind]
         tiles = [{'label': "Players", 'value': str(len(rows))},

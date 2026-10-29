@@ -43,7 +43,7 @@ class StrategyController:
             if not isinstance(team, int) or snap is None:
                 ed.set_status("Pick a team first.", 'warn')
                 return
-            if team in L.MIRROR_OF:
+            if team in snap.copies:
                 ed.set_status("This team is a copy of another one: change the strategies of the team itself.", 'warn')
                 return
             base = ST.read(snap.R, team)
@@ -81,7 +81,7 @@ class StrategyController:
                 self.why = "Reading the roster..." if ed.busy else NO_ROSTER
             elif not isinstance(team, int):
                 self.why = "Free agents have no strategies. Pick a team in the list."
-            elif team in L.MIRROR_OF:
+            elif team in snap.copies:
                 self.why = "This team is a copy of another one: change the strategies of the team itself."
             else:
                 base = ST.read(snap.R, team)

@@ -597,7 +597,7 @@ def _team_lines(b, slot, saved):
     "letters": {person key: "C" | "A"}}. Lines that no longer fit the team (a player left, a rule is broken) are
     left out for this run and named in the List of changes: the team keeps the lines the update gave it."""
     team = b.R.team_name(slot)
-    if slot in L.MIRROR_OF:
+    if slot in b.mirror_of:
         return
     _, _, pos, name, who = team_lineup_view(b, slot)
     entry = {w: e for e, w in sorted(who.items())}
@@ -634,7 +634,7 @@ def _move(b, prow, target, changed, wins=True):
     R, U, P = b.R, b.U, b.P
     pid = P.get(prow, 'zIBw')
     live = b.live_entries()
-    clubs = [e for e in live.get(pid, []) if U.get(e, 'BSXd') not in L.NATIONAL and U.get(e, 'BSXd') not in L.MIRROR_OF]
+    clubs = [e for e in live.get(pid, []) if U.get(e, 'BSXd') not in L.NATIONAL and U.get(e, 'BSXd') not in b.mirror_of]
     if target != 'FA' and any(U.get(e, 'BSXd') == int(target) for e in clubs):
         return []
     if target == 'FA':
@@ -644,7 +644,7 @@ def _move(b, prow, target, changed, wins=True):
         P.set(prow, 'BSXd', 0)
         return []
     target = int(target)
-    if target in L.MIRROR_OF or not 0 <= target < R.T.cur_rec:
+    if target in b.mirror_of or not 0 <= target < R.T.cur_rec:
         return [f"team {target} cannot be chosen"]
     if any(U.get(e, 'BSXd') == target for e in clubs):
         return []
@@ -741,7 +741,7 @@ def _relines(b, changed, say):
     same players always get the same lines, so a later update with the same edits changes nothing.
     (Copying the team's previous line pattern would not: the pattern itself moves between runs.)"""
     from .leagues.clubs import _letters
-    for team in sorted(t for t in changed if t not in L.MIRROR_OF):
+    for team in sorted(t for t in changed if t not in b.mirror_of):
         if not b.entries_on(team):
             continue
         # the captain and alternates who are still there keep their letters; a missing one is

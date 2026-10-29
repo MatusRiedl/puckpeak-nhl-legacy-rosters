@@ -76,7 +76,7 @@ class LinesController:
             if not isinstance(team, int) or snap is None:
                 ed.set_status("Pick a team first.", 'warn')
                 return
-            if team in L.MIRROR_OF:
+            if team in snap.copies:
                 ed.set_status("This team is a copy of another one: change the lines of the team itself.", 'warn')
                 return
             read = self._read(snap, team)
@@ -143,7 +143,7 @@ class LinesController:
                 self.why = "Reading the roster..." if ed.busy else NO_ROSTER
             elif not isinstance(team, int):
                 self.why = "Free agents have no lines. Pick a team in the list."
-            elif team in L.MIRROR_OF:
+            elif team in snap.copies:
                 self.why = "This team is a copy of another one: change the lines of the team itself."
             else:
                 read = self._read(snap, team)

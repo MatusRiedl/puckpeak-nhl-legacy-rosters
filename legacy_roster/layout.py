@@ -229,6 +229,17 @@ def mirrors(kind):
     return MIRRORS if kind == COMMUNITY else {}
 
 
+def copies(R):
+    """{copy slot: its NHL team} of the custom copies `R`'s own layout keeps (mirrors): none on the game's own roster,
+    where slots 222-233 may hold clubs of the player's own (a tester's KHL clubs); a roster of no known layout is
+    taken as the community's."""
+    try:
+        kind = check_base(R)
+    except LayoutError:
+        kind = COMMUNITY
+    return {m: p for p, ms in mirrors(kind).items() for m in ms}
+
+
 def team_leagues(R):
     return [R.T.get(t, 'jjMx') for t in range(R.T.cur_rec)]
 

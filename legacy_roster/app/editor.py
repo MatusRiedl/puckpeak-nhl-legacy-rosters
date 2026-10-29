@@ -176,7 +176,7 @@ class EditorController:
         out = {model.FREE_AGENTS: "Free agents"}
         if snap is not None:
             for t in range(len(snap.team_names)):
-                if t in L.MIRROR_OF or not snap.team_names[t].strip():
+                if t in snap.copies or not snap.team_names[t].strip():
                     continue
                 out[t] = f"{snap.team_league[t]} · {snap.team_names[t]}"
         return out
@@ -382,13 +382,13 @@ class EditorController:
                 tag, note = 'changed', C.change_note(self.raw.by_who.get(renamed.get(p.who, p.who)), p,
                                                      diff['changed'][p.who])
             if team is None:
-                note = ", ".join(snap.team_name(t) for t in model.club(p.teams)) or "free agent"
+                note = ", ".join(snap.team_name(t) for t in p.clubs) or "free agent"
             if p.who in edited:
                 tag, note = 'edited', ("your edit; " + note).rstrip('; ')
             rows.append((p, tag, note))
         for p in diff['left']:
             now = snap.by_who.get(p.who)
-            where = ", ".join(snap.team_name(t) for t in model.club(now.teams)) if now else ''
+            where = ", ".join(snap.team_name(t) for t in now.clubs) if now else ''
             rows.append((p, 'left', f"left: now {where or 'free agent'}" if now else "left"))
         self.row_players = {}
         self.rows = []
@@ -656,7 +656,7 @@ class EditorController:
                     'undo': False, 'photo_pending': bool(self.pending_photo),
                     'teams': self._pro_choices(team) if self._is_pro(None) else None}
         key = self.edit_key(p)
-        teams = model.club(p.teams)
+        teams = p.clubs
         return {'key': self.card_key, 'new': False, 'title': p.name, 'who': p.who,
                 'note': (", ".join(snap.team_name(t) for t in teams) or "Free agent")
                         + (f"   ·   OVR {p.ovr} (the game works out its own from the ratings and the type)" if p.ovr else "")
@@ -1026,7 +1026,7 @@ class EditorController:
             found.sort(key=lambda p: (p.face['head'] >= faces.GENERIC, p.name))
             self.modal = dict(modal, query=text, found=[
                 {'who': p.who, 'name': p.name, 'pos': p.pos,
-                 'team': ", ".join(snap.team_name(t) for t in model.club(p.teams)) or "Free agent",
+                 'team': ", ".join(snap.team_name(t) for t in p.clubs) or "Free agent",
                  'face': ("generic head" if p.face['head'] >= faces.GENERIC else "his own head"),
                  **p.face} for p in found])
             self.changed()
@@ -1247,7 +1247,7 @@ class EditorController:
         with self.lock:
             snap, tab = self.snap, self.tab
             p = snap.by_who.get(key) if snap is not None else None
-            clubs = sorted(model.club(p.teams), key=lambda t: (t not in L.NHL_PRIMARY, t)) if p is not None else []
+            clubs = sorted(p.clubs, key=lambda t: (t not in L.NHL_PRIMARY, t)) if p is not None else []
             club = clubs[0] if clubs else None
         if club is not None and getattr(office, 'team', None) != club:
             office.follow(club)

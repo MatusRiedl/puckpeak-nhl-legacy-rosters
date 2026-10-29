@@ -239,7 +239,7 @@ class EquipmentController:
 
     def _team_slot(self):
         p = self._player()
-        teams = model.club(p.teams) if p is not None else []
+        teams = p.clubs if p is not None else []
         return teams[0] if teams else None
 
     def apply_team(self):

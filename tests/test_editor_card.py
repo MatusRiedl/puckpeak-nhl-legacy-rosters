@@ -19,7 +19,7 @@ def player():
     p = model.Player()
     p.who, p.first, p.last, p.num, p.pos, p.shoots = 'jacob|trouba|1994-02-26', 'Jacob', 'Trouba', 65, 'D', 'R'
     p.birth, p.country, p.height_in, p.weight_lb = (1994, 2, 26), 'USA', 75, 216
-    p.teams, p.ratings, p.ovr = [3], {'Faceoffs': 35, 'Shot power': 88}, 81
+    p.teams, p.clubs, p.ratings, p.ovr = [3], [3], {'Faceoffs': 35, 'Shot power': 88}, 81
     p.style, p.face = 4, {'head': 1234, 'skin': 1, 'eyes': 2}
     return p
 

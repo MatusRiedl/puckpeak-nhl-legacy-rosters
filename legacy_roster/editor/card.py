@@ -190,7 +190,7 @@ def player_edit(p, values, edit=None, photo=None):
     rated = {a: v for a, v in values['ratings'].items() if p.ratings.get(a) != v}
     if rated:
         e['ratings'] = dict(e.get('ratings') or {}, **rated)
-    teams = model.club(p.teams)
+    teams = p.clubs
     team_changed = values['team'] != (teams[0] if teams else model.FREE_AGENTS)
     if team_changed:
         e['team'] = values['team']

@@ -277,15 +277,15 @@ def names(b):
         if T.get(slot, 'league') == CUSTOM_LEAGUE and not L.is_city_key(T.get(slot, 'shortname')):
             # a city the game cannot find a text for ("NhlCityName_13" on the Kings copy, a roster made
             # by version 0.4): a key in the game's style; a copy takes its NHL team's city (LOS_ANGELES)
-            city = T.get(L.MIRROR_OF[slot], 'shortname') if slot in L.MIRROR_OF else T.get(slot, 'shortname')
+            city = T.get(b.mirror_of[slot], 'shortname') if slot in b.mirror_of else T.get(slot, 'shortname')
             L.set_city(T, slot, city or T.get(slot, 'fullname'))
         art = T.get(slot, 'artabbr')
         full, city, abbr = T.get(slot, 'fullname'), T.get(slot, 'shortname'), T.get(slot, 'abbrname')
         if T.get(slot, 'league') == CUSTOM_LEAGUE:
             if L.is_city_key(city):
                 name = full
-                if slot in L.MIRROR_OF:         # the game has texts for the copies' cities; a fallback only
-                    primary = T.get(L.MIRROR_OF[slot], 'shortname')
+                if slot in b.mirror_of:         # the game has texts for the copies' cities; a fallback only
+                    primary = T.get(b.mirror_of[slot], 'shortname')
                     name = primary if L.city_key(primary) == city else city.replace('_', ' ').title()
                 cities[city] = (name or city.replace('_', ' ').title()).replace('®', '').strip()
             if slot in L.AHL:
@@ -293,7 +293,7 @@ def names(b):
                 # their art code (gamepatch stage Y); the unpatched one by the key above
                 town = city.replace('_', ' ').title() if L.is_city_key(city) else city
                 teams.append((art, full, town, _nick(full, town), abbr))
-            elif slot in b.team_names and slot not in L.MIRROR_OF:
+            elif slot in b.team_names and slot not in b.mirror_of:
                 teams.append((art, full, city, _nick(full, city), abbr))
         elif slot in NHL_NAMES or slot in clubs or slot in b.team_names:
             teams.append((art, full, city, _nick(full, city), abbr))
