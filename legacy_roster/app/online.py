@@ -971,8 +971,6 @@ class OnlineController:
         with self.lock:
             self.ranks_tab = tab if tab in RANKS_TABS else 'mine'
             board = self.ranks_tab == 'board' and self.board is None
-            if self.ranks_tab == 'box' and self.box_id is None and self.history:
-                self.box_id = self.history[0]['id']
         self.changed()
         if board:
             self.refresh_ranks(board=True)
@@ -989,7 +987,7 @@ class OnlineController:
     def _read_box(self):
         """Read the box score that shows, once per status of its match (a waiting match is read again when the other report came)."""
         with self.lock:
-            mid = self.box_id
+            mid = self.box_id = self._box_match()
             row = next((r for r in self.history if r['id'] == mid), None)
             status = row.get('status') if row else None
             if not mid or not self.box_on or self.box_busy == mid or (mid in self.boxes and self.boxes[mid][0] == status):
@@ -1079,6 +1077,11 @@ class OnlineController:
                 'placement': board.get('placement') or 5, 'hidden': self.hidden(), 'tab': self.ranks_tab,
                 'stats': stats_view(self.card), 'box': self.box_view()}
 
+    def _box_match(self):
+        """The match the Box score shows: the one picked while it is among my matches, else the newest."""
+        ids = [r['id'] for r in self.history or []]
+        return self.box_id if self.box_id in ids else (ids[0] if ids else None)
+
     def box_view(self):
         """The Box score view: the match picked among my matches, its two sides (mine first) and its lines."""
         if not self.box_on:
@@ -1086,7 +1089,7 @@ class OnlineController:
         ids = [r['id'] for r in self.history]
         if not ids:
             return {'on': True, 'id': None, 'note': "No matches yet."}
-        mid = self.box_id if self.box_id in ids else ids[0]
+        mid = self._box_match()
         k = ids.index(mid)
         row = self.history[k]
         at = datetime.datetime.fromtimestamp(row['at']).strftime('%d %b, %H:%M') if row.get('at') else ''

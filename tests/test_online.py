@@ -795,8 +795,21 @@ def test_a_box_score_shows_my_side_first_and_its_lines(server, tmp_path, monkeyp
     reads = sum(1 for c in server.calls if '/match' in c[1])
     host.open_box(first)                                        # read once per status
     assert sum(1 for c in server.calls if '/match' in c[1]) == reads
-    host.open_box('B9/9')                                       # not one of my matches: the newest shows
-    assert host.snapshot()['ranks']['box']['id'] == newest
+    reads = sum(1 for c in server.calls if '/match' in c[1])
+    host.open_box('B9/9')                                       # not one of my matches: the newest shows, read before
+    assert host.snapshot()['ranks']['box']['id'] == newest and sum(1 for c in server.calls if '/match' in c[1]) == reads
+
+
+def test_the_box_score_picked_before_my_matches_came_is_read_when_they_come(server, tmp_path, monkeypatch):
+    host = _controller(tmp_path, monkeypatch, 'HostPlayer')
+    _look(host)
+    host.set_ranks_tab('box')
+    assert host.box_view()['id'] is None
+    mid = server.play('HostPlayer', 'Bo', 3, 1)
+    _ranks(host)
+    wait(lambda: mid in host.boxes)
+    box = host.box_view()
+    assert box['id'] == mid and not box['loading'] and box['sides'][0]['name'] == 'HostPlayer'
 
 
 def test_a_server_without_box_scores_keeps_the_rest_of_the_ranks(server, tmp_path, monkeypatch):
