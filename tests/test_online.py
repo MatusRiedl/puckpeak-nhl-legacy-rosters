@@ -773,6 +773,58 @@ def test_the_result_of_the_new_match_shows_once_and_follows_the_second_report(se
     assert host.snapshot()['result'] is None
 
 
+def test_a_box_score_shows_my_side_first_and_its_lines(server, tmp_path, monkeypatch):
+    host = _controller(tmp_path, monkeypatch, 'HostPlayer')
+    _look(host)
+    first = server.play('Bo', 'HostPlayer', 4, 2, team_a='BOS', team_b='TOR')
+    newest = server.play('HostPlayer', 'Bo', 3, 1, stats={'HostPlayer': {'SHTS': 31, 'TOA': 754, 'PPG': 1, 'PPO': 4},
+                                                          'Bo': {'SHTS': 22, 'HITS': 9}})
+    _ranks(host)
+    host.set_ranks_tab('box')                                   # the newest match by default
+    wait(lambda: newest in host.boxes)
+    box = host.snapshot()['ranks']['box']
+    assert box['id'] == newest and box['newer'] is None and box['older'] == first and box['title'].startswith('vs Bo')
+    assert [(x['name'], x['team'], x['score']) for x in box['sides']] == [('HostPlayer', 'MTL', 3), ('Bo', 'TOR', 1)]
+    assert [(r['label'], r['me'], r['them']) for r in box['rows']] == [
+        ('Shots', '31', '22'), ('Hits', '0', '9'), ('Power play', '1/4', '0/0'), ('Time on attack', '12:34', '0:00')]
+    host.open_box(first)                                        # the older match: I was the away side
+    wait(lambda: first in host.boxes)
+    box = host.snapshot()['ranks']['box']
+    assert [x['name'] for x in box['sides']] == ['HostPlayer', 'Bo'] and box['sides'][0]['score'] == 2
+    assert box['rows'] == [] and box['note'] == online.BOX_EMPTY
+    reads = sum(1 for c in server.calls if '/match' in c[1])
+    host.open_box(first)                                        # read once per status
+    assert sum(1 for c in server.calls if '/match' in c[1]) == reads
+    host.open_box('B9/9')                                       # not one of my matches: the newest shows
+    assert host.snapshot()['ranks']['box']['id'] == newest
+
+
+def test_a_server_without_box_scores_keeps_the_rest_of_the_ranks(server, tmp_path, monkeypatch):
+    server.box_route = False
+    host = _controller(tmp_path, monkeypatch, 'HostPlayer')
+    _look(host)
+    mid = server.play('HostPlayer', 'Bo', 3, 1)
+    _ranks(host)
+    host.open_box(mid)
+    wait(lambda: not host.box_on)
+    view = host.snapshot()['ranks']
+    assert host.ranks_on and len(view['history']) == 1 and view['box'] == {'on': False, 'note': online.BOX_LATER}
+
+
+def test_box_lines_and_my_stats():
+    assert online.box_lines({}, {}) == []
+    assert online.box_lines({'TOA': 65, 'BAG': 0, 'BAO': 2}, {'FO': 7}) == [
+        {'label': 'Faceoffs won', 'me': '0', 'them': '7'}, {'label': 'Time on attack', 'me': '1:05', 'them': '0:00'},
+        {'label': 'Breakaways', 'me': '0/2', 'them': '0/0'}]
+    assert online.stats_view(None) == {'note': online.STATS_NONE}
+    st = online.stats_view({'w': 7, 'l': 3, 'streak': -2, 'rating': 1040, 'peak': 1072, 'gf': 30, 'ga': 21, 'delta7': -12,
+                            'form': 'WWL', 'curve': [[1, 1000], [2, 1016], 'bad'], 'teams': [{'name': 'MTL', 'w': 7, 'l': 3}]})
+    assert [(t['label'], t['value'], t['sub']) for t in st['tiles']] == [
+        ('Record', '7-3', '70 % won'), ('Streak', 'L2', 'in a row'), ('Best rating', '1072', 'now 1040'),
+        ('Goals', '30-21', '+9 difference'), ('Last 7 days', '-12', 'rating')]
+    assert st['form'] == ['W', 'W', 'L'] and st['curve'] == [1000, 1016] and st['opponents'] == [] and st['teams'][0]['w'] == 7
+
+
 def test_rpcs3_closing_ends_the_game_view_and_the_watch_ends_with_a_final_result(tmp_path, monkeypatch):
     ctl = _controller(tmp_path, monkeypatch, 'HostPlayer')
     ctl.account, ctl.launched, ctl.watching = 'HostPlayer', 'KDMQRS', True

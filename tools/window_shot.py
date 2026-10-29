@@ -34,7 +34,7 @@ states (the tab they show in brackets):
                saves) in the pretend RPCS3, the first opened, 250 more Offense XP and Passing + 3 not saved
     online     the Play online tab, not set up yet (online-lobby: a lobby, its host alone; online-ready: two players Ready;
                online-ingame: the game started, a guest; online-failed: it could not sign in; online-mismatch: a guest without the host's game patch;
-               online-you: set up, with a rank and matches; online-chat: a lobby of two chatting; online-board: the leaderboard;
+               online-you: set up, with a rank and matches; online-chat: a lobby of two chatting; online-board: the leaderboard; online-stats: My stats; online-box: a box score;
                online-result: the result window after a match); made-up facts, no network
     patched    the Game patch tab: the EU game patched with an older patch (Patch again, Unpatch), a roster tagged "32 teams"
 
@@ -86,7 +86,7 @@ STATES = ('none', 'setup', 'ready', 'patch', 'updating', 'done', 'details', 'fai
           'calendar', 'office', 'contract', 'downloading', 'misfit', 'prospects', 'prospects-pro', 'prospects-look',
           'prospects-make', 'prospects-class', 'prospects-import', 'prospects-career', 'online', 'online-lobby',
           'online-ready', 'online-ingame', 'online-failed', 'online-mismatch', 'online-list', 'online-you', 'online-chat',
-          'online-board', 'online-result', 'export-roster', 'heads-up')
+          'online-board', 'online-result', 'online-stats', 'online-box', 'export-roster', 'heads-up')
 TEAM_STATES = {'roster': 'roster', 'editor': 'roster', 'equipment': 'roster', 'face': 'roster', 'jerseys': 'jerseys',
                'uniforms': 'jerseys', 'lines': 'lines', 'strategy': 'strategy', 'strategies': 'strategy',
                'calendar': 'calendar', 'office': 'office', 'contract': 'office', 'prospects': 'prospects',
@@ -423,7 +423,7 @@ def make_online(c, state):
         on.lobby, on.code = {'code': 'KDMQRS', 'state': 'playing', 'reason': None, 'members': [friend, me], 'roster': mine}, 'KDMQRS'
         on.launched = 'KDMQRS'
         on.log = {'name': 'GuestPlayer', 'bound': True, 'signaling': state == 'online-ingame', 'refused': None, 'fatal': False}
-    if state in ('online-you', 'online-chat', 'online-board', 'online-result'):
+    if state in ('online-you', 'online-chat', 'online-board', 'online-result', 'online-stats', 'online-box'):
         shot_ranks(on, state)
         if state == 'online-chat':
             me['ready'] = True
@@ -438,8 +438,13 @@ def shot_ranks(on, state):
     """Made-up ranks for the online-you / -chat / -board / -result pictures."""
     on.ranks_on = True
     on.card = {'name': 'GuestPlayer', 'rating': 1137, 'tier': 'Pro', 'placing': 0, 'rank': 4, 'of': 23, 'w': 9, 'l': 5,
-               'streak': 2, 'peak': 1150, 'delta7': 21, 'form': 'WWLWW', 'gf': 41, 'ga': 30, 'curve': [], 'opponents': [],
-               'teams': [], 'next_tier': 'Top 6', 'next_at': 1200, 'hidden': False}
+               'streak': 2, 'peak': 1150, 'delta7': 21, 'form': 'WWLWWLWWWL', 'gf': 41, 'ga': 30,
+               'curve': [[k, r] for k, r in enumerate((1000, 1016, 1031, 1015, 1032, 1050, 1066, 1049, 1067, 1084, 1101, 1086, 1104,
+                                                        1120, 1150, 1133, 1119, 1137))],
+               'opponents': [{'name': 'Friend_77', 'w': 4, 'l': 2}, {'name': 'PuckHunter', 'w': 2, 'l': 1},
+                             {'name': 'EUplayer', 'w': 1, 'l': 1}],
+               'teams': [{'name': 'Montreal Canadiens', 'w': 5, 'l': 3}, {'name': 'Edmonton Oilers', 'w': 3, 'l': 1}],
+               'next_tier': 'Top 6', 'next_at': 1200, 'hidden': False}
     games = [('Friend_77', 'MTL', 'TOR', 4, 2, 'W', 18, 'confirmed'), ('PuckHunter', 'EDM', 'CGY', 3, 2, 'W', 15, 'confirmed'),
              ('Friend_77', 'MTL', 'BOS', 1, 3, 'L', -17, 'confirmed'), ('EUplayer', 'DET', 'CHI', 2, 2, None, None, 'waiting'),
              ('Hidden player', 'NYR', 'NJD', 5, 1, 'W', 22, 'forfeit')]
@@ -453,7 +458,15 @@ def shot_ranks(on, state):
                 'ranked': 23, 'highlights': [{'kind': 'climber', 'title': 'Climber of the week', 'name': 'IceKing', 'value': '+64'},
                                              {'kind': 'streak', 'title': 'Hot streak', 'name': 'Friend_77', 'value': 'W4'}],
                 'recent': [], 'tiers': [], 'placement': 5, 'updated': 0}
-    on.ranks_tab = 'board' if state == 'online-board' else 'mine'
+    on.ranks_tab = {'online-board': 'board', 'online-stats': 'stats', 'online-box': 'box'}.get(state, 'mine')
+    on.boxes = {'B1/9': ('confirmed', {'id': 'B1/9', 'at': 0, 'status': 'confirmed', 'why': None, 'sides': [
+        {'name': 'GuestPlayer', 'team': 'Montreal Canadiens', 'score': 4, 'home': True,
+         'stats': {'SHTS': 31, 'HITS': 14, 'FO': 27, 'PIMS': 4, 'PPG': 1, 'PPO': 3, 'SHG': 0, 'PSSC': 188, 'PSSA': 231, 'TOA': 512,
+                   'BS': 6, 'BAG': 1, 'BAO': 2}},
+        {'name': 'Friend_77', 'team': 'Toronto Maple Leafs', 'score': 2, 'home': False,
+         'stats': {'SHTS': 24, 'HITS': 19, 'FO': 22, 'PIMS': 8, 'PPG': 0, 'PPO': 2, 'SHG': 0, 'PSSC': 160, 'PSSA': 214, 'TOA': 431,
+                   'BS': 9, 'BAG': 0, 'BAO': 1}}]})}
+    on.box_id = 'B1/9'
     if state == 'online-result':
         on.result = on.history[0]
 

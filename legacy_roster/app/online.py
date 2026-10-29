@@ -61,6 +61,16 @@ WATCH_AFTER = 600                       # seconds after RPCS3 closed that a resu
 START_GRACE_RANKS = 60                  # seconds after a launch before "RPCS3 is not running" means the game ended
 HISTORY_ROWS = 10
 BOARD_ROWS = 10
+RANKS_TABS = ('mine', 'stats', 'box', 'board')      # the Ranks card's views: my matches, my stats, a box score, the leaderboard
+# The box score's lines: the game's versus stats (CPRT). The names come from the game's own field table (NHL 19 has the same);
+# no real match has filled them in the lab yet (idle play sent zeros). A line shows when either side has it.
+BOX_LINES = (('Shots', 'SHTS'), ('Hits', 'HITS'), ('Faceoffs won', 'FO'), ('Penalty minutes', 'PIMS'),
+             ('Power play', ('PPG', 'PPO')), ('Short-handed goals', 'SHG'), ('Passes', ('PSSC', 'PSSA')),
+             ('Time on attack', 'TOA'), ('Blocked shots', 'BS'), ('Breakaways', ('BAG', 'BAO')), ('Penalty shots', ('PSG', 'PSA')))
+BOX_EMPTY = "The game sent no stats for this match (a match that ends early sends none)."
+BOX_LATER = "Box scores come with the next server update."
+BOX_NONE = "The server has no box score for this match."
+STATS_NONE = "Your stats show after your first rated match."
 PENDING = object()                      # the line a new result is after: not read yet
 SHOW_LATER = "You show on the leaderboard again the next time you are in a lobby."
 RESULT_WON = "You won. Both reports agree, so it counts."
@@ -157,7 +167,11 @@ class OnlineController:
         self.baseline = None            # my newest match id before the start (PENDING: not read yet)
         self.result = None              # the history row of the new match, shown until put away
         self.results_seen = set()
-        self.ranks_tab = 'mine'         # the Ranks card shows 'mine' (my matches) or 'board'
+        self.ranks_tab = 'mine'         # the Ranks card's view (RANKS_TABS)
+        self.box_id = None              # the match whose box score shows
+        self.boxes = {}                 # match id -> (its status when read, the box score or None when the server has none)
+        self.box_busy = None            # the match id being read
+        self.box_on = True              # False: the server has no box scores (before the update that adds /match)
 
     def changed(self):
         self.host.changed(SLICE)
@@ -897,6 +911,8 @@ class OnlineController:
                         self.board = found['board']
                     self._see_result()
             self.changed()
+            if err is None and self.ranks_tab == 'box':
+                self._read_box()                        # a match that was waiting may have its other report now
             if err is None and self.hidden() and self.card is not None and not self.card.get('hidden'):
                 self._send_hidden()
 
@@ -953,11 +969,57 @@ class OnlineController:
 
     def set_ranks_tab(self, tab):
         with self.lock:
-            self.ranks_tab = 'board' if tab == 'board' else 'mine'
+            self.ranks_tab = tab if tab in RANKS_TABS else 'mine'
             board = self.ranks_tab == 'board' and self.board is None
+            if self.ranks_tab == 'box' and self.box_id is None and self.history:
+                self.box_id = self.history[0]['id']
         self.changed()
         if board:
             self.refresh_ranks(board=True)
+        if self.ranks_tab == 'box':
+            self._read_box()
+
+    def open_box(self, mid):
+        """The box score of match `mid` (a row of My matches pressed, or the arrows of the Box score view)."""
+        with self.lock:
+            self.ranks_tab, self.box_id = 'box', mid
+        self.changed()
+        self._read_box()
+
+    def _read_box(self):
+        """Read the box score that shows, once per status of its match (a waiting match is read again when the other report came)."""
+        with self.lock:
+            mid = self.box_id
+            row = next((r for r in self.history if r['id'] == mid), None)
+            status = row.get('status') if row else None
+            if not mid or not self.box_on or self.box_busy == mid or (mid in self.boxes and self.boxes[mid][0] == status):
+                return
+            self.box_busy = mid
+
+        def work():
+            try:
+                return {'box': lobby.match(mid)}
+            except lobby.LobbyError as err:
+                return {'error': err}
+
+        def done(found):
+            with self.lock:
+                self.box_busy = None
+                err = found.get('error')
+                if err is None:
+                    self.boxes[mid] = (status, found['box'])
+                elif getattr(err, 'code', None) == 'unknown':
+                    self.boxes[mid] = (status, None)
+                elif lobby.missing(err) and not isinstance(err, lobby.Unreachable):
+                    self.box_on = False
+            self.changed()
+
+        def failed(message):
+            with self.lock:
+                self.box_busy = None
+            self.changed()
+
+        jobs.run(work, done, failed, expected=(lobby.LobbyError,))
 
     def open_board(self):
         """The leaderboard page in the browser (the server's /board)."""
@@ -1014,7 +1076,38 @@ class OnlineController:
         me = next((r for r in rows if r.get('name') == self.account), None)
         return {'card': self.card, 'history': self.history or [], 'top': rows[:BOARD_ROWS],
                 'me': me if me and me not in rows[:BOARD_ROWS] else None, 'highlights': board.get('highlights') or [],
-                'placement': board.get('placement') or 5, 'hidden': self.hidden(), 'tab': self.ranks_tab}
+                'placement': board.get('placement') or 5, 'hidden': self.hidden(), 'tab': self.ranks_tab,
+                'stats': stats_view(self.card), 'box': self.box_view()}
+
+    def box_view(self):
+        """The Box score view: the match picked among my matches, its two sides (mine first) and its lines."""
+        if not self.box_on:
+            return {'on': False, 'note': BOX_LATER}
+        ids = [r['id'] for r in self.history]
+        if not ids:
+            return {'on': True, 'id': None, 'note': "No matches yet."}
+        mid = self.box_id if self.box_id in ids else ids[0]
+        k = ids.index(mid)
+        row = self.history[k]
+        at = datetime.datetime.fromtimestamp(row['at']).strftime('%d %b, %H:%M') if row.get('at') else ''
+        out = {'on': True, 'id': mid, 'title': f"vs {row.get('opponent') or 'your friend'}" + (f" · {at}" if at else ''),
+               'newer': ids[k - 1] if k > 0 else None, 'older': ids[k + 1] if k + 1 < len(ids) else None,
+               'loading': mid not in self.boxes, 'sides': None, 'rows': [], 'note': None}
+        box = self.boxes.get(mid, (None, None))[1]
+        if mid in self.boxes and not box:
+            out['note'] = BOX_NONE
+        if not box or len(box.get('sides') or []) != 2:
+            return out
+        sides = box['sides']
+        mine = next((n for n, s in enumerate(sides) if (s.get('name') or '').lower() == (self.account or '').lower()), None)
+        if mine is None:                                # I am hidden: the side that is not the opponent
+            mine = next((n for n, s in enumerate(sides) if s.get('name') != row.get('opponent')), 0)
+        me, them = sides[mine], sides[1 - mine]
+        out['sides'] = [{'name': s.get('name') or '', 'team': s.get('team') or '', 'score': s.get('score')} for s in (me, them)]
+        out['rows'] = box_lines(me.get('stats') or {}, them.get('stats') or {})
+        if not out['rows']:
+            out['note'] = BOX_EMPTY
+        return out
 
     # --- the overlay over the game (Windows; legacy_roster/hud) -------------------------------------------------------------
     def overlay(self):
@@ -1264,6 +1357,46 @@ class OnlineController:
                     'ended': bool(self.ended), 'chat': self.chat(), 'chat_wait': time.time() < self.chat_wait,
                     'phrases': PHRASES, 'ranks': self.ranks_view(), 'result': self.result_view(),
                     'overlay': {'can': hud.available(), 'on': self.overlay()}}
+
+
+def box_lines(mine, theirs):
+    """The box score's lines [{label, me, them}] from two sides' stats ({tag: number}); a line where both sides have nothing is left out."""
+    def text(stats, tags):
+        if isinstance(tags, tuple):
+            made, tries = (int(stats.get(t) or 0) for t in tags)
+            return f"{made}/{tries}" if made or tries else None
+        value = int(stats.get(tags) or 0)
+        if not value:
+            return None
+        return f"{value // 60}:{value % 60:02d}" if tags == 'TOA' else str(value)
+    rows = []
+    for label, tags in BOX_LINES:
+        a, b = text(mine, tags), text(theirs, tags)
+        if a is not None or b is not None:
+            zero = '0:00' if tags == 'TOA' else '0/0' if isinstance(tags, tuple) else '0'
+            rows.append({'label': label, 'me': a or zero, 'them': b or zero})
+    return rows
+
+
+def signed(n):
+    return f"+{n}" if n > 0 else str(n)
+
+
+def stats_view(card):
+    """The My stats view from my rank card (None before a rated match): tiles, form, the rating line, opponents and teams."""
+    if not card:
+        return {'note': STATS_NONE}
+    w, l = card.get('w') or 0, card.get('l') or 0
+    streak = card.get('streak') or 0
+    gf, ga = card.get('gf') or 0, card.get('ga') or 0
+    tiles = [{'label': 'Record', 'value': f"{w}-{l}", 'sub': f"{round(100 * w / (w + l))} % won" if w + l else ''},
+             {'label': 'Streak', 'value': (f"W{streak}" if streak > 0 else f"L{-streak}") if streak else '-', 'sub': 'in a row'},
+             {'label': 'Best rating', 'value': str(card.get('peak') or card.get('rating') or '-'), 'sub': f"now {card.get('rating')}"},
+             {'label': 'Goals', 'value': f"{gf}-{ga}", 'sub': f"{signed(gf - ga)} difference"},
+             {'label': 'Last 7 days', 'value': signed(card.get('delta7') or 0), 'sub': 'rating'}]
+    curve = [int(p[1]) for p in card.get('curve') or [] if isinstance(p, (list, tuple)) and len(p) == 2]
+    return {'note': None, 'tiles': tiles, 'form': list(card.get('form') or ''), 'curve': curve,
+            'opponents': card.get('opponents') or [], 'teams': card.get('teams') or []}
 
 
 def hud_card(view, tiers=None, placement=5):

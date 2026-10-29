@@ -52,7 +52,7 @@ function signed(n) { return n == null ? '' : (n > 0 ? '+' : '') + n; }
 const STATUS = { waiting: 'waiting', disputed: 'reports differ', voided: 'no result', forfeit: 'left early' };
 
 function MatchRow({ m }) {
-  return html`<div class="om-match">
+  return html`<div class="om-match pick" title="Box score" onClick=${() => call('online_box', m.id)}>
     <span class=${cls('res', m.result === 'W' ? 'w' : m.result === 'L' ? 'l' : '')}>${m.result || '-'}</span>
     <span class="who" title=${m.opponent}>${m.opponent}</span>
     <span class="score">${m.team} ${m.for == null ? '-' : m.for}-${m.against == null ? '-' : m.against} ${m.opp_team}</span>
@@ -68,20 +68,74 @@ function BoardRow({ p, me, placement }) {
   </div>`;
 }
 
+// The rating over the last matches: one line, the newest value labelled; each point's value on hover.
+function Sparkline({ values }) {
+  if (values.length < 2) return null;
+  const W = 300, H = 56, P = 6;
+  const lo = Math.min(...values), hi = Math.max(...values), span = Math.max(hi - lo, 1);
+  const pts = values.map((v, k) => [P + (k * (W - 2 * P)) / (values.length - 1), P + ((hi - v) * (H - 2 * P)) / span]);
+  const last = pts[pts.length - 1];
+  return html`<div class="om-spark"><div class="lab">Rating, last ${values.length} rated matches</div>
+    <svg viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label=${`Rating from ${values[0]} to ${values[values.length - 1]}`}>
+      <polyline points=${pts.map((p) => p.join(',')).join(' ')} fill="none" vector-effect="non-scaling-stroke"/>
+      ${pts.map((p, k) => html`<circle key=${k} cx=${p[0]} cy=${p[1]} r="7" class="hit"><title>${values[k]}</title></circle>`)}
+      <path d=${`M${last[0]} ${last[1]}h0`} class="dot" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="ends"><span>${lo === hi ? '' : `low ${lo}`}</span><span>${lo === hi ? values[0] : `high ${hi}`}</span></div></div>`;
+}
+
+function Records({ title, rows }) {
+  if (!rows.length) return null;
+  return html`<div class="om-records"><div class="lab">${title}</div>
+    ${rows.map((x) => html`<div class="om-rec" key=${x.name}><span class="who" title=${x.name}>${x.name}</span>
+      <span class="wl">${x.w}-${x.l}</span></div>`)}</div>`;
+}
+
+function StatsView({ st }) {
+  if (st.note) return html`<div class="small-note">${st.note}</div>`;
+  return html`<div class="om-tiles">${st.tiles.map((t) => html`<div class="om-tile" key=${t.label}>
+      <div class="lab">${t.label}</div><div class="val">${t.value}</div>${t.sub && html`<div class="sub">${t.sub}</div>`}</div>`)}</div>
+    ${st.form.length > 0 && html`<div class="om-form"><span class="lab">Form</span>
+      ${st.form.map((f, k) => html`<span key=${k} class=${cls('res', f === 'W' ? 'w' : 'l')}>${f}</span>`)}</div>`}
+    <${Sparkline} values=${st.curve}/>
+    <div class="om-recs"><${Records} title="Against" rows=${st.opponents}/><${Records} title="With" rows=${st.teams}/></div>`;
+}
+
+function BoxView({ b }) {
+  if (!b.on || !b.id) return html`<div class="small-note">${b.note}</div>`;
+  return html`<div class="om-box-pick">
+      <${Button} small disabled=${!b.older} onClick=${() => call('online_box', b.older)}>‹ Older<//>
+      <span class="title" title=${b.title}>${b.title}</span>
+      <${Button} small disabled=${!b.newer} onClick=${() => call('online_box', b.newer)}>Newer ›<//></div>
+    ${b.sides && html`<div class="om-box">
+      <div class="head"><span></span>${b.sides.map((x, k) => html`<span key=${k} class=${cls('side', k === 0 && 'me')}>
+        <b title=${x.team}>${x.team || '-'}</b><small title=${x.name}>${x.name}</small></span>`)}</div>
+      <div class="line goals"><span>Goals</span>${b.sides.map((x, k) => html`<span key=${k}>${x.score == null ? '-' : x.score}</span>`)}</div>
+      ${b.rows.map((x) => html`<div class="line" key=${x.label}><span>${x.label}</span><span>${x.me}</span><span>${x.them}</span></div>`)}
+    </div>`}
+    ${b.loading && !b.note && html`<div class="small-note">Reading the box score...</div>`}
+    ${b.note && html`<div class="small-note">${b.note}</div>`}`;
+}
+
+const VIEWS = [{ value: 'mine', label: 'Matches' }, { value: 'stats', label: 'My stats' }, { value: 'box', label: 'Box score' },
+  { value: 'board', label: 'Leaderboard' }];
+
 function RanksCard({ s }) {
   const r = s.ranks;
   if (!r) return null;
   const view = r.tab;
-  return html`<${Card} title="Ranks" grow style=${{ '--i': 1 }}>
+  const aside = html`<${Button} small onClick=${() => call('online_ranks')}>Refresh<//>
+    <${Button} small onClick=${() => call('online_board')}>Open in browser<//>`;
+  return html`<${Card} title="Ranks" aside=${aside} grow className="om-ranks" style=${{ '--i': 1 }}>
     <div class="card-body fill">
-      <div class="row"><${Segmented} options=${[{ value: 'mine', label: 'My matches' }, { value: 'board', label: 'Leaderboard' }]}
-        value=${view} onChange=${(v) => call('online_ranks_tab', v)}/>
-        <${Button} small onClick=${() => call('online_ranks')}>Refresh<//>
-        <${Button} small onClick=${() => call('online_board')}>Open in browser<//></div>
+      <div class="row"><${Segmented} options=${VIEWS} value=${view} onChange=${(v) => call('online_ranks_tab', v)}/>
+        ${view === 'mine' && r.history.length > 0 && html`<span class="small-note">Press a match for its box score.</span>`}</div>
       <div class="scroll">
         ${view === 'mine'
           ? (r.history.length ? r.history.map((m) => html`<${MatchRow} key=${m.id} m=${m}/>`)
             : html`<div class="small-note">No matches yet. A versus match from a lobby counts when both reports agree.</div>`)
+          : view === 'stats' ? html`<${StatsView} st=${r.stats}/>`
+          : view === 'box' ? html`<${BoxView} b=${r.box}/>`
           : html`${r.highlights.map((h) => html`<div class="om-hl" key=${h.kind}><b>${h.title}</b> ${h.name} <span>${h.value}</span></div>`)}
               ${r.top.map((p) => html`<${BoardRow} key=${p.name + p.rank} p=${p} me=${p.name === s.account} placement=${r.placement}/>`)}
               ${r.me && html`<${BoardRow} p=${r.me} me=${true} placement=${r.placement}/>`}

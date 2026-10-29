@@ -589,6 +589,9 @@ class Api:
     def online_ranks_tab(self, tab):
         self._online.set_ranks_tab(str(tab))
 
+    def online_box(self, mid):
+        self._online.open_box(str(mid))
+
     def online_board(self):
         self._online.open_board()
 

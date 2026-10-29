@@ -223,6 +223,13 @@ def history(name, limit=20):
     return found if isinstance(found, list) else []
 
 
+def match(mid):
+    """One match's box score: {id, at, status, why, sides: [{name, team, score, home, stats: {tag: number}}]}, home first; the stats
+    are the game's versus stats (CPRT) as each player's game reported them. LobbyError 'unknown' for an id the server lacks."""
+    found = _call('GET', f'/match?id={urllib.parse.quote(str(mid), safe="")}')
+    return found if isinstance(found, dict) else {}
+
+
 def hide(name, hidden):
     """Take `name` off the public board (anyone may), or put him back (only with his own token: be in a lobby)."""
     return _call('POST', '/board/hide', {'name': name, 'hidden': bool(hidden)}, token=_own_token(name))

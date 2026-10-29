@@ -480,6 +480,39 @@ table.mini tr.mine td { background: var(--row-sel); }
 .online .om-match .res.w, .online .up { color: var(--good); font-weight: 700; }
 .online .om-match .res.l, .online .down { color: var(--amber); font-weight: 700; }
 .online .om-match .delta { white-space: nowrap; font-size: 12px; }
+.online .om-match.pick { cursor: pointer; } .online .om-match.pick:hover { background: var(--row); }
+.online .lab { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.online .om-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; margin: 4px 0 10px; }
+.online .om-tile { background: var(--row); padding: 7px 9px; min-width: 0; }
+.online .om-tile .val { font-size: 20px; font-weight: 800; color: var(--text); white-space: nowrap; }
+.online .om-tile .sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.online .om-form { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+.online .om-form .lab { margin-right: 6px; }
+.online .om-form .res { width: 20px; text-align: center; font-size: 12px; padding: 2px 0; background: var(--row); }
+.online .om-form .res.w { color: var(--good); font-weight: 700; } .online .om-form .res.l { color: var(--amber); font-weight: 700; }
+.online .om-spark { margin-bottom: 10px; }
+.online .om-spark svg { display: block; width: 100%; height: 56px; overflow: visible; }
+.online .om-spark polyline { stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.online .om-spark .hit { fill: transparent; } .online .om-spark .dot { stroke: var(--accent); stroke-width: 9; stroke-linecap: round; }
+.online .om-ranks .card-head .aside { display: flex; gap: 6px; }
+.online .om-ranks.card.grow { min-height: 330px; }            /* a short window scrolls the column rather than squash the ranks */
+.columns.online > .col:first-child { overflow-y: auto; padding-right: 2px; }
+.online .om-spark .ends { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+.online .om-recs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.online .om-rec { display: flex; gap: 8px; font-size: 13px; padding: 3px 0; border-bottom: 1px solid var(--panel-bd); }
+.online .om-rec .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.online .om-rec .wl { color: var(--muted); white-space: nowrap; }
+.online .om-box-pick { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.online .om-box-pick .title { flex: 1; min-width: 0; text-align: center; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.online .om-box .head, .online .om-box .line { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px;
+  align-items: baseline; padding: 5px 8px; font-size: 13px; border-bottom: 1px solid var(--panel-bd); }
+.online .om-box .line span:not(:first-child), .online .om-box .head .side { text-align: center; font-variant-numeric: tabular-nums; }
+.online .om-box .line span:first-child { color: var(--muted); }
+.online .om-box .head .side { display: flex; flex-direction: column; min-width: 0; }
+.online .om-box .head b, .online .om-box .head small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.online .om-box .head small { color: var(--muted); font-size: 11.5px; }
+.online .om-box .head .side.me b { color: var(--gold-hi); }
+.online .om-box .line.goals span:not(:first-child) { font-size: 18px; font-weight: 800; color: var(--text); }
 .online .om-hl { font-size: 12.5px; padding: 3px 8px; color: var(--muted); } .online .om-hl b { color: var(--text); } .online .om-hl span { color: var(--gold-hi); }
 .online .om-chat { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .online .om-chat .log { max-height: 132px; overflow-y: auto; padding: 6px 8px; background: var(--row); font-size: 13px; line-height: 1.45; }

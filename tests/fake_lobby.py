@@ -27,6 +27,8 @@ class FakeServer:
         self.players = {}              # name (lower) -> {name, rating, games, w, l, streak, peak, gf, ga}
         self.matches = {}              # name (lower) -> [history rows, newest first]
         self.hidden = set()
+        self.boxes = {}                # match id -> its box score (GET /api/match?id=)
+        self.box_route = True          # False: a server of 0.90 before box scores
         self.said = {}                 # (code, name) -> time of the last chat line
         self.chat_gap = 0.7
 
@@ -40,7 +42,7 @@ class FakeServer:
             return 'Unranked'
         return [n for n, low in self.TIERS if p['rating'] >= low][-1]
 
-    def play(self, a, b, score_a, score_b, status='confirmed', team_a='MTL', team_b='TOR', at=None):
+    def play(self, a, b, score_a, score_b, status='confirmed', team_a='MTL', team_b='TOR', at=None, stats=None):
         """A match between `a` and `b` as the board would show it; waiting / disputed / voided rate nobody. Returns its id."""
         at = int(at or time.time())
         mid = f'B1/{sum(len(v) for v in self.matches.values()) // 2 + 1}'
@@ -58,6 +60,9 @@ class FakeServer:
                 'id': mid, 'at': at, 'status': status, 'why': None, 'opponent': other, 'team': team, 'opp_team': opp,
                 'for': f, 'against': g, 'result': ('W' if won else 'L') if status != 'voided' else None, 'delta': delta,
                 'waiting': status == 'waiting'})
+        self.boxes[mid] = {'id': mid, 'at': at, 'status': status, 'why': None, 'sides': [
+            {'name': name, 'team': team, 'score': f, 'home': home, 'stats': dict((stats or {}).get(name) or {})}
+            for name, team, f, home in ((a, team_a, score_a, True), (b, team_b, score_b, False))]}
         return mid
 
     def settle(self, name, mid, status='confirmed'):
@@ -109,6 +114,11 @@ class FakeServer:
                 return 404, {'error': 'unknown', 'message': 'No matches yet.'}
             rows = [dict(r, opponent=self.shown(r['opponent'])) for r in self.matches[name.lower()]]
             return 200, rows[:int(query.get('limit', ['20'])[0])]
+        if parts == ['match'] and method == 'GET' and self.box_route:
+            box = self.boxes.get(query.get('id', [''])[0])
+            if box is None:
+                return 404, {'error': 'unknown', 'message': 'No match has that id.'}
+            return 200, dict(box, sides=[dict(s, name=self.shown(s['name'])) for s in box['sides']])
         if parts == ['board', 'hide'] and method == 'POST':
             name = (body or {}).get('name') or ''
             if not 1 <= len(name) <= 64:
@@ -160,7 +170,7 @@ class FakeServer:
         and join hand one out, every later request of a member must carry his."""
         self.calls.append((method, path))
         parts = [p for p in path.split('?')[0].split('/') if p][1:]       # the first part is /api
-        if parts[:1] in (['board'], ['history']):
+        if parts[:1] in (['board'], ['history'], ['match']):
             if not self.ranks:
                 return 404, b''
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)

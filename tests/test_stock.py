@@ -96,10 +96,11 @@ def test_retired_stars_go_and_unsigned_veterans_stay(stock_built):
     res, _ = stock_built
     R = Roster(res.data)
     fa = {R.link_to_pid.get(R.Q.get(k, 'TWSX')) for k in range(R.Q.cur_rec)}
-    for first, last in (('Pavel', 'Datsyuk'), ('Carey', 'Price'), ('Tuukka', 'Rask')):
+    for first, last in (('Pavel', 'Datsyuk'), ('Carey', 'Price'), ('Tuukka', 'Rask'),
+                        ('Jonathan', 'Toews'), ('Jonathan', 'Quick')):      # unsigned at 38+ (0.90.0)
         for r in _rows(R, first, last):
             assert R.P.get(r, 'game_id') not in fa and not R.teams_of(r), last
-    for first, last in (('James', 'Reimer'), ('Jonathan', 'Toews'), ('Jonathan', 'Quick')):
+    for first, last in (('James', 'Reimer'),):
         assert any(R.P.get(r, 'game_id') in fa or R.teams_of(r) for r in _rows(R, first, last)), last     # not retired (a club may have signed him since)
 
 

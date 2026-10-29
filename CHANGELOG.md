@@ -15,8 +15,10 @@ you play with it.
 **Play online: ranks, chat and an overlay.**
 
 - **Ranks and a leaderboard.** Every online match you play through a lobby counts. Both games report the score; when the
-  two reports agree, the match is rated. Your rank shows after five games (Minor League up to Hall of Fame). The You card shows your tier and rating. Ranks has two views: your matches (opponent, teams, score, rating
-  change) and the leaderboard, with a link to the board in your browser. The board shows RPCN names. "Show me on the
+  two reports agree, the match is rated. Your rank shows after five games (Minor League up to Hall of Fame). The You card shows your tier and rating. Ranks has four views: your matches (opponent, teams, score, rating
+  change), **My stats** (record, streak, best rating, goals, the last 7 days, your form, your rating over the last
+  matches, and how you did against each friend and with each team), **Box score** (press a match: shots, hits,
+  faceoffs, power play and more for both sides, as the games reported them) and the leaderboard, with a link to the board in your browser. The board shows RPCN names. "Show me on the
   leaderboard" takes yours off it.
 - **A friend who leaves loses.** If your friend quits or disconnects and their game never reports, the match counts as
   their loss after an hour.
