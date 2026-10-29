@@ -83,12 +83,13 @@ STATES = ('none', 'setup', 'ready', 'patch', 'updating', 'done', 'details', 'fai
           'uniforms', 'equipment', 'export', 'export-ready', 'export-done', 'patched', 'full', 'lines', 'strategy', 'strategies', 'face',
           'calendar', 'office', 'contract', 'downloading', 'misfit', 'prospects', 'prospects-pro', 'prospects-look',
           'prospects-make', 'prospects-class', 'prospects-import', 'prospects-career', 'online', 'online-lobby',
-          'online-ready', 'online-ingame', 'online-failed', 'online-mismatch', 'online-list', 'export-roster')
+          'online-ready', 'online-ingame', 'online-failed', 'online-mismatch', 'online-list', 'export-roster', 'heads-up')
 TEAM_STATES = {'roster': 'roster', 'editor': 'roster', 'equipment': 'roster', 'face': 'roster', 'jerseys': 'jerseys',
                'uniforms': 'jerseys', 'lines': 'lines', 'strategy': 'strategy', 'strategies': 'strategy',
                'calendar': 'calendar', 'office': 'office', 'contract': 'office', 'prospects': 'prospects',
                'prospects-pro': 'prospects', 'prospects-look': 'prospects', 'prospects-make': 'prospects', 'prospects-class': 'prospects',
-               'prospects-import': 'prospects', 'prospects-career': 'prospects', 'export-roster': 'roster'}
+               'prospects-import': 'prospects', 'prospects-career': 'prospects', 'export-roster': 'roster',
+               'heads-up': 'roster'}
 # made-up players for the Draft & Pro pictures (no real person's name)
 SHOT_PROSPECTS = (('Aron', 'Halvik', 'C', 'SWE', 1), ('Jonah', 'Vale', 'D', 'CAN', 3), ('Marek', 'Doubrava', 'LW', 'CZE', 5))
 SCREEN_LINES, TASKBAR = 1080, 48    # the screen pretended (in the window's units) and its taskbar
@@ -223,6 +224,12 @@ def drive(args, c, work):
             if uni.team_kit is None:            # a custom team's form has the game's pictures once it is loaded
                 wanted = len(uni.versions) + 1 if uni.pictures is not None and args.disc else 0
                 wait(lambda: len(uni.thumbs) >= wanted, 120)
+        if state == 'heads-up':         # free editing: a goalie moved off the team, the gold line under the list
+            goalie = next(r for r in ed.snapshot()['rows'] if r['pos'] == 'G')
+            ed.pick_player(goalie['id'])
+            other = next(t for t in ed.snap.teams_in('NHL') if t != team)
+            ed.apply(dict(ed.snapshot()['card']['values'], team=str(other)))
+            wait(lambda: not ed.busy and ed.after_busy is None)
         if state == 'equipment':
             ed.equipment.open()
             wait(lambda: ed.equipment.loaded, 120)

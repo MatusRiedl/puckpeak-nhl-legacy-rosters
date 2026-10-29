@@ -85,7 +85,8 @@ def test_the_type_is_one_of_his_positions_and_a_face_one_the_game_has():
     p = player()
     values, problem = C.read(typed(style='2'), LABELS, False, CHOICES, p.ratings, HEADS)
     assert problem is None and C.player_edit(p, values)[0]['set'] == {'style': 2}
-    assert C.read(typed(style='7'), LABELS, False, CHOICES, p.ratings, HEADS)[1] == "Pick the player type from the list."
+    assert C.read(typed(style='7'), LABELS, False, CHOICES, p.ratings, HEADS)[1] is None      # free editing: any skater type
+    assert C.read(typed(style='11'), LABELS, False, CHOICES, p.ratings, HEADS)[1] == "Pick the player type from the list."
     assert C.read(typed(style='7', pos='C'), LABELS, False, CHOICES, p.ratings, HEADS)[1] is None
     assert C.read(typed(style=''), LABELS, False, CHOICES, p.ratings, HEADS)[0]['style'] is None
     assert C.read(typed(head='77'), LABELS, False, CHOICES, p.ratings, HEADS)[1].startswith("The game has no face 77")
@@ -97,11 +98,11 @@ def test_the_type_is_one_of_his_positions_and_a_face_one_the_game_has():
     assert C.what_changed(edit) == ['face']
 
 
-def test_a_type_of_the_position_he_left_is_dropped():
+def test_a_type_of_the_position_he_left_stays_free_editing():
     p = player()
     values, _ = C.read(typed(pos='C', style=''), LABELS, False, CHOICES, p.ratings, HEADS)
     edit, _ = C.player_edit(p, values, {'label': p.name, 'set': {'style': 2}})
-    assert edit['set'] == {'pos': 'C'}
+    assert edit['set'] == {'pos': 'C', 'style': 2}          # a defence type on a forward is the player's choice
     assert C.what_changed({'set': {'style': 7, 'head': 60001, 'eyes': 1}}) == ['type', 'face']
 
 

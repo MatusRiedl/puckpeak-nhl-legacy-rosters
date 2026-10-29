@@ -442,6 +442,11 @@ What each answer means:
   like a wrong birth year) applied after the feeds.
 - Linux and Steam Deck: RPCS3's folders there (`~/.config/rpcs3`), a build per system.
 - The window in other languages (French, German, Swedish, Finnish, Czech).
+- **Backlog (owner, 2026-10-29: not a priority): the native PC port of the game** (US 1.01, a Windows program made by
+  static recompilation). Setup would ask "Which NHL Legacy?" RPCS3 / Native; Native keeps its saves in the same
+  savedata folders as RPCS3 and reads loose files from its own mods (`mods/<name>/USRDIR`), so rosters, the editor,
+  careers and pictures (as a "Puck Peak" mod) can work; the game patch almost certainly cannot (its code is already
+  translated into the program); no online play. Probe, folder map and the planned steps: docs/notes/native-port.md.
 
 
 ## Checks after the tester fixes (2026-10-11)

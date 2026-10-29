@@ -51,7 +51,7 @@ LOOK_NOT_HERE = ("A created look is only for a player made in this program: the 
                  "places. Pick a generic head or another player's face with Face of a player... instead.")
 COUNTRIES = sorted(L.NAT_CODE)
 STYLE_CHOICES = {kind: [[n, ratings.style_choice(n, kind == 'G')] for n in numbers]
-                 for kind, numbers in ratings.STYLE_CHOICES.items()}
+                 for kind, numbers in ratings.FREE_STYLES.items()}
 FACE_FOUND = 60                 # players listed in the Face of a player window
 FACE_PICS = 'face_pics'         # slice: {head (str): data: link}, the game's own pictures of the generic heads
 # the game's Create Player menu has a picture of a head under its head id (211 of the 213 generic heads; docs/notes/faces.md)
@@ -75,6 +75,16 @@ class RosterFile:
         self.name = f"Roster file {os.path.basename(os.path.dirname(path)) or path}"
         self.region = 'file'
         self.title_id = savedata.title_of('EU')
+
+
+def heads_up(built, lead=""):
+    """'Heads up: Ottawa has 1 goalie and 20 skaters: the game hangs ...' for a team the player's edits left short
+    (verify's info['heads_up']; free editing saves it anyway), or ''."""
+    lines = ((getattr(built, 'info', None) or {}).get('heads_up') or []) if built is not None else []
+    if not lines:
+        return ""
+    more = f" (and {len(lines) - 1} more team{'s' if len(lines) > 2 else ''})" if len(lines) > 1 else ""
+    return f"{lead}Heads up: {lines[0]}{more}."
 
 
 class EditorController:
@@ -323,6 +333,8 @@ class EditorController:
             self.set_status(f"Not playable yet: {built.problems[0]}{more}", 'bad')
         elif note:
             self.set_status(*note)
+        elif heads_up(built) and (self.session or self.session_teams):
+            self.set_status(heads_up(built), 'warn')
         else:
             self.set_status("Showing the roster as it is" + (f", with your {len(self.session)} edits not saved yet"
                                                             if self.session or self.session_teams else "")
@@ -698,11 +710,6 @@ class EditorController:
             else:
                 key = self.edit_key(p)
                 edit, real = C.player_edit(p, values, self.edits.get(key), self.pending_photo)
-                if 'team' in edit and self.edits.get(key, {}).get('team') != edit['team']:
-                    short = self.too_few_without(p, edit['team'])
-                    if short:
-                        self.set_status(short, 'bad')
-                        return 'error'
                 if not real and (quiet or ('team' not in edit and key not in self.edits)):
                     if not quiet:
                         self.set_status("Nothing changed.")
@@ -714,25 +721,6 @@ class EditorController:
             self.refresh()
             self.changed()
             return 'applied'
-
-    def too_few_without(self, p, target):
-        """A plain sentence when moving `p` to `target` leaves the team he is on without 2 goalies or 18 skaters
-        (a team that cannot dress 20 loses its lines and letters, and the roster could not be saved)."""
-        for team in model.club(p.teams):
-            if team == target:
-                continue
-            others = [q for q in self.snap.roster(team) if q is not p]
-            goalies = sum(1 for q in others if q.pos == 'G')
-            skaters = len(others) - goalies
-            now = self.snap.roster(team)
-            if sum(1 for q in now if q.pos == 'G') < 2 or len(now) - sum(1 for q in now if q.pos == 'G') < 18:
-                continue                      # it could not dress 20 before either
-            name = self.snap.team_name(team)
-            if goalies < 2:
-                return f"{name} would have only {goalies} goalie. A team needs 2 goalies and 18 skaters."
-            if skaters < 18:
-                return f"{name} would have only {skaters} skaters. A team needs 2 goalies and 18 skaters."
-        return None
 
     def undo(self):
         with self.lock:
@@ -1410,12 +1398,13 @@ class EditorController:
 
                 def done(r):
                     (slot, backup, changed), _report, art = r
+                    later_ = later + heads_up(built, " ")
                     self.set_status((f"Updated \"{slot.name}\" ({slot.folder}, {slot.region})"
                                      + (f"; the old roster is kept in {backup}" if backup else "")
                                      + ". In the game: start it; if it is not the roster in use, Customize > Save/Load/Delete > "
                                      "Load > Rosters.") if changed else "Nothing to save: the roster is the same.",
                                     'good')
-                    self._picture_status(art, later)
+                    self._picture_status(art, later_)
                     self.session, self.session_teams, self.source = set(), set(), None       # read it again
                     self.name_touched = False
                     self.after_busy = self._rescan
@@ -1437,7 +1426,7 @@ class EditorController:
                 where = " and ".join(f"{s.folder}, {s.region}" for s in slots)
                 self.set_status(f"Saved as \"{slots[0].name}\" ({where}). In the game: Customize > Save/Load/Delete > "
                                 "Load > Rosters.", 'good')
-                self._picture_status(art, later)
+                self._picture_status(art, later + heads_up(built, " "))
                 self._open_saved(slots[0].folder)
             self._work("Saving...", job, done)
 
@@ -1487,7 +1476,7 @@ class EditorController:
             else:
                 self.set_status(f"Saved as \"{r.slot.name}\" ({r.saved_where()}). In the game: Customize > "
                                 "Save/Load/Delete > Load > Rosters.", 'good')
-            self._picture_status(r.art if r.own_pictures else None)
+            self._picture_status(r.art if r.own_pictures else None, heads_up(r.build, " "))
             if not in_place:
                 self._open_saved(r.slot.folder)
         self._work("Saving...", job, done)

@@ -240,6 +240,8 @@ class BuildResult:
         kept = getattr(self.builder, 'calendars_kept', None)
         if kept:
             out.append(("League calendars", "kept as they were: " + ", ".join(kept)))
+        for line in (self.info or {}).get('heads_up') or []:       # free editing: saved, but the game hangs with it
+            out.append(("Heads up", line))
         return out
 
     def rating_sources(self):
@@ -496,6 +498,11 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
     if steps:                           # an update, not only the Roster editor's edits
         b.club_gear()                   # helmets and gloves in colours the club does not wear
     b.goalie_gear(mend=bool(steps))     # mend: also gear the game cannot draw and colours the club does not wear
+    # free editing (verify's `free`, Builder.players_team): an edit-only save is all the player's; an update with edits
+    # frees what they changed (the rows set grows with the contract edits below)
+    b.free = True if not steps else ((getattr(b, 'edited', (set(), set()))[1],
+                                      {int(k) for k in (team_edits or {}) if str(k).isdigit()})
+                                     if my_edits or team_edits else None)
     log.section = SECTION_CONTRACTS
     b.contracts()
     if NHL in steps and b.data.contracts:
@@ -588,7 +595,7 @@ def build(source, data, steps=ALL_STEPS, progress=None, check=True, art_registry
                                 calendar_source=calendar_from, depth=b.joined_depth, money=money,
                                 deals=b.data.contracts if NHL in steps else None,
                                 crests={s: R.T.get(s, 'artid') for s in b.crest_pictures}, contract_edits=contract_edits,
-                                prospects=b.prospects, league_calendars=b.league_calendars)
+                                prospects=b.prospects, league_calendars=b.league_calendars, free=b.free)
     result = BuildResult(out, sorted(b.log, key=lambda r: (str(r[0]), str(r[1]), str(r[2]))), problems, info, b)
     result.art = art            # ({portrait id: photo link}, {team art id: (logo link, colours)}, team names) or None
     result.turned_back = turned_back
@@ -623,7 +630,8 @@ def patch_roster(result, source, pack, season):
     problems = gamepatch.check_years(Roster(data), season)
     problems += verify(data, Roster(source), calendar=result.builder.calendar, farm_patch=True,
                        money=contracts.REAL, prospects=getattr(result.builder, 'prospects', None),
-                       league_calendars=getattr(result.builder, 'league_calendars', None))[0]
+                       league_calendars=getattr(result.builder, 'league_calendars', None),
+                       free=getattr(result.builder, 'free', None))[0]
     return data, problems, farm_count
 
 

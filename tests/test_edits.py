@@ -215,18 +215,21 @@ def test_goalie_equipment_and_a_mask_picture_get_a_mask_number_nobody_wears(base
     assert again.ok and again.data == first.data
 
 
-def test_a_team_left_short_of_players_keeps_its_letters(base_bytes, data, built):
-    """Moving a goalie off a team that then cannot dress 20 must not strip its captain and alternates
-    (the safety check refused to save such a roster: 'has 0 captain(s) and 0 alternate(s)')."""
+def test_a_goalie_moved_off_a_team_leaves_it_short_with_a_heads_up(base_bytes, data, built):
+    """Free editing (2026-10-29): a move that leaves a team without 2 goalies goes through (it was refused); the team
+    keeps its letters and the result says the game hangs a game played with it."""
     R = Roster(built.data)
     team = L.API_TO_SLOT['SEA']
     goalies = [p for _, p, *_ in R.team_roster(team) if R.P.get(p, 'aljv') == 4]
     mine = {key_of(R, goalies[0]): {'label': 'goalie', 'team': L.API_TO_SLOT['EDM']}}
     res = pipeline.build(built.data, data, my_edits=mine)
     assert res.ok, res.problems[:5]
-    skipped = [r for r in res.log if r[1] == 'edit skipped']
-    assert skipped and 'would have only 1 goalie' in skipped[0][3]
-    assert club_teams(Roster(res.data), goalies[0]) == [team]
+    assert not [r for r in res.log if r[1] == 'edit skipped']
+    R2 = Roster(res.data)
+    assert club_teams(R2, goalies[0]) == [L.API_TO_SLOT['EDM']]
+    letters = [R2.U.get(e, 'lcCm') for e in range(R2.U.cur_rec) if R2.U.get(e, 'BSXd') == team]
+    assert letters.count(1) == 1
+    assert any(verify._team(R2, team) in line and '1 goalie' in line for line in res.info['heads_up']), res.info['heads_up']
 
 
 def _style(R, prow):
@@ -251,9 +254,9 @@ def test_type_and_face_edits_reach_the_player_and_his_copies_and_change_nothing_
             assert _style(A, prow) == style
             assert all(A.U.get(e, 'sFgQ') == style for e, _ in A.teams_of(prow))
     assert faces.read(A.P, find(A, 'Connor McDavid')) == face
-    assert _style(A, find(A, 'Leon Draisaitl')) == _style(R, drai)       # a defence type on a forward: skipped
+    assert _style(A, find(A, 'Leon Draisaitl')) == 2                    # a defence type on a forward: free editing
     assert faces.read(A.P, find(A, 'Leon Draisaitl')) == faces.read(R.P, drai)   # no head 77 in the game
-    assert sum(1 for r in first.log if r[1] == 'edit skipped' and r[2] == 'Leon Draisaitl') == 2
+    assert sum(1 for r in first.log if r[1] == 'edit skipped' and r[2] == 'Leon Draisaitl') == 1
     again = pipeline.build(first.data, data, my_edits=mine)
     assert again.data == first.data
 

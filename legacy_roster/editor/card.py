@@ -8,7 +8,7 @@
 
 The card's `values` are what the page sends: texts as typed ('first', 'last', 'num', 'pos', 'shoots', 'birth',
 'country', 'height', 'weight', 'ovr'), 'team' (a slot number or 'FA'), 'ratings' (label -> text), the player type
-'style' (a number of ratings.STYLE_CHOICES, '' for the usual one of his position), the face 'head', 'skin', 'eyes'
+'style' (a number of ratings.FREE_STYLES, '' for the usual one of his position), the face 'head', 'skin', 'eyes'
 (numbers, '' to leave it as it is; faces.py) and 'look' (a created look, {part: number} of faces.LOOK, or null: a player
 made here wears one instead of a head, skin and eyes).
 """
@@ -109,7 +109,7 @@ def read(values, labels, new, choices, current=None, heads=None):
         out['style'] = _number(values, 'style')
     except ValueError:
         out['style'] = -1
-    if out['style'] is not None and out['style'] not in ratings.STYLE_CHOICES[ratings.style_class(
+    if out['style'] is not None and out['style'] not in ratings.FREE_STYLES[ratings.style_class(
             POSITIONS.index(out['pos']))]:
         return None, "Pick the player type from the list."
     try:
@@ -185,7 +185,7 @@ def player_edit(p, values, edit=None, photo=None):
         e['was'] = {'first': p.first, 'last': p.last, 'birth': list(p.birth)}
     e['set'] = dict(e.get('set') or {}, **changes)
     kind = ratings.style_class(POSITIONS.index(values['pos']))
-    if e['set'].get('style') is not None and e['set']['style'] not in ratings.STYLE_CHOICES[kind]:
+    if e['set'].get('style') is not None and e['set']['style'] not in ratings.FREE_STYLES[kind]:
         del e['set']['style']           # an earlier type of the position he left: he gets his new position's usual
     rated = {a: v for a, v in values['ratings'].items() if p.ratings.get(a) != v}
     if rated:

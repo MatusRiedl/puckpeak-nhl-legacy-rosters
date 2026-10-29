@@ -54,8 +54,13 @@ The window carries the look and logo of **Puck Peak**, the owner's other NHL pro
    patch's stage Y lists and names them there). Reading a patch roster puts Custom's fields back (`unleague`, so the
    builder works as before), and the unpatched game keeps them under Custom (`unpatch_roster`). `verify` allows exactly
    this pair, nothing else.
-3. **Nothing is saved unless `verify()` reports no problem.** If you teach the builder something
-   new about the game's rules, teach `verify.py` first.
+3. **Nothing is saved while `verify()` reports a problem that stops the roster loading. The player's own edits are
+   free otherwise** (owner, 2026-10-29: "allow everything possible that will not really break the roster from loading").
+   What the builder's update steps make is still held to every check (a problem there is our bug); what the player's
+   edits did is only held to the checks that stop loading or crash the game (`verify(free=)`, `FREE_TEAM_FLAWS` /
+   `FREE_PLAYER_FLAWS`, docs/notes/free-editing.md has the table and the proof of each). A team the edits leave under
+   2 goalies / 18 skaters gets one heads-up line and is saved. If you teach the builder something new about the
+   game's rules, teach `verify.py` first.
 4. **A build on its own output must be byte-identical** (tests check it). New steps must be
    deterministic.
 5. **Never write test output into the owner's real RPCS3 folder.** Use the tests, `--dry-run`, a
@@ -194,7 +199,17 @@ wording (`progress.py`).
 
 ## Current state
 
-**Version 0.85.0 (2026-10-28, built, not committed; notes docs/notes/tester-reports-2026-10-28b.md, PLAN.md top):**
+**0.90.0 in progress (2026-10-29; plan docs/plans/transient-marinating-curry.md, PLAN.md top; local commits allowed,
+nothing pushed):** Phase 0 **free editing** done: `verify(free=)` drops `FREE_TEAM_FLAWS` / `FREE_PLAYER_FLAWS`,
+`multi_club`, `contract_violations`, `style_problems` (`ratings.FREE_STYLES`), the rating range and contract-edit bounds
+for the player's own edits (`b.free`: True on an edit-only save, else the edited rows / slots); the builder's own output
+still meets every check. `verify.short_teams` -> `info['heads_up']` (gold line in the editor, "Heads up" rows in the
+result); `Builder.players_team` keeps call-ups off teams the player shortened; editor locks `_too_few_without` gone.
+Table of checks with proofs: docs/notes/free-editing.md; lab round 56 played every freed check, unpatched and patched
+(docs/notes/lab-round-56.md). Tests tests/test_free_editing.py. Next: Phase 1 (server report capture). The native PC
+port is on the backlog (ROADMAP "Ideas", docs/notes/native-port.md).
+
+**Version 0.85.0 (2026-10-28, built, committed locally (b98e5b0), not pushed; notes docs/notes/tester-reports-2026-10-28b.md, PLAN.md top):**
 (1) **Linux / Mac patch switches**: RPCS3 adds `config/` only on Windows (`fs::get_config_dir(true)`), so on Linux it
 reads `~/.config/rpcs3/patch_config.yml`; we wrote `config/patch_config.yml`, never read there (the game ran unpatched,
 the program believed it patched). `patchinstall.config_file` follows RPCS3; `carry_over` (via `_read_config`, in every

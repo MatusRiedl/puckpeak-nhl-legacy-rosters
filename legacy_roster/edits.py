@@ -426,8 +426,8 @@ def _set_fields(b, prow, fields, changed):
                 changed |= _teams_of(b, prow)
     if fields.get('style') is not None:
         style, kind = int(fields['style']), ratings.style_class(P.get(prow, 'aljv'))
-        if style not in ratings.STYLE_CHOICES[kind]:
-            problems.append(f"player type {ratings.style_label(style)} does not fit his position")
+        if style not in ratings.FREE_STYLES[kind]:
+            problems.append(f"player type {ratings.style_label(style, kind == 'G')} is not a {'goalie' if kind == 'G' else 'skater'}'s")
         else:                   # the lines stay: they go by ratings and position, not by type
             b.set_style(prow, style)
     face = {key: int(fields[key]) for key in faces.FIELDS if fields.get(key) is not None}
@@ -627,27 +627,6 @@ def _team_strategy(b, slot, saved):
         b.log.append(['edits', 'own strategies', b.R.team_name(slot), f"{len(ok)} strategies", ''])
 
 
-def _too_few_without(b, team, leaving):
-    """A plain sentence when `team` can dress 20 now but not without the entry `leaving`, else None. (A team
-    that cannot dress its 20 loses its lines and its captain and alternates, and the save is refused.)"""
-    def count(skip):
-        n = {'G': 0, 'D': 0, 'F': 0}
-        for e in b.entries_on(team):
-            if e != skip:
-                pos = b.P.get(b.prow_of_entry(e), 'aljv')
-                n['G' if pos == 4 else 'D' if pos == 3 else 'F'] += 1
-        return n
-    now, after = count(None), count(leaving)
-    if now['G'] < 2 or now['D'] + now['F'] < 18:
-        return None
-    name = b.R.team_name(team)
-    if after['G'] < 2:
-        return f"{name} would have only {after['G']} goalie. A team needs 2 goalies and 18 skaters"
-    if after['D'] + after['F'] < 18:
-        return f"{name} would have only {after['D'] + after['F']} skaters. A team needs 2 goalies and 18 skaters"
-    return None
-
-
 def _move(b, prow, target, changed, wins=True):
     """Put a player on team `target` (a slot), or release him to the free agents ('FA'). `wins`: his number wins a
     clash; False for a new player without a number of his own, whose record's old number would take a team-mate's
@@ -658,10 +637,6 @@ def _move(b, prow, target, changed, wins=True):
     clubs = [e for e in live.get(pid, []) if U.get(e, 'BSXd') not in L.NATIONAL and U.get(e, 'BSXd') not in L.MIRROR_OF]
     if target != 'FA' and any(U.get(e, 'BSXd') == int(target) for e in clubs):
         return []
-    for e in clubs:
-        problem = _too_few_without(b, U.get(e, 'BSXd'), e)
-        if problem:
-            return [problem]
     if target == 'FA':
         for e in clubs:
             changed.add(U.get(e, 'BSXd'))

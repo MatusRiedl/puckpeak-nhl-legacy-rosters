@@ -1345,6 +1345,8 @@ class Builder:
         R, U, P = self.R, self.U, self.P
         short = {}
         for team in sorted(L.NHL_PRIMARY):
+            if self.players_team(team):     # free editing: a team the player left short stays as he left it
+                continue
             need = self.lineup_needs(team) if self.entries_on(team) else None
             if need:
                 short[team] = need
@@ -2606,6 +2608,19 @@ class Builder:
                              f"{painted} goalies", ''])
 
     # --- contracts -----------------------------------------------------------------
+    def players_team(self, team):
+        """Free editing (pipeline.build sets `free` before contracts()): is `team` the player's to leave as his edits made
+        it? True for an edit-only save; else a team the edits named, or one an edited player is on or was on."""
+        free = getattr(self, 'free', None)
+        if free is True or not free:
+            return bool(free)
+        rows, slots = free
+        if team in slots:
+            return True
+        pids = {self.P.get(r, 'zIBw') for r in rows}
+        return (any(self.pid_of_entry(e) in pids for e in self.entries_on(team))
+                or any(team in self.orig_clubs.get(p, ()) for p in pids))
+
     def repair_lineups(self):
         """The last look at the line-ups, after every step that moves players (contracts() starts with it, so the
         players brought in get their contracts): each team that must dress a legal 20 (verify's line-up rule) and
@@ -2634,7 +2649,7 @@ class Builder:
                 by_team.setdefault(U.get(e, 'BSXd'), []).append(e)
         for slot, key in sorted(slots.items()):
             ents = by_team.get(slot, []) if live is None else self.entries_on(slot)    # (a club mended moves players)
-            if not ents or not lines.lineup_flaws(self, slot, ents):
+            if not ents or not lines.lineup_flaws(self, slot, ents) or self.players_team(slot):
                 continue
             live = self.live_entries() if live is None else live
             self.log.section = LEAGUE_NAMES.get(key, section)

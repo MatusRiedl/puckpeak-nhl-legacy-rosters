@@ -153,7 +153,7 @@ def test_the_card_changes_a_players_type_and_takes_another_players_face(app):
     ed.opened()
     idle(ed)
     s = ed.snapshot()
-    assert [n for n, _ in s['choices']['styles']['D']] == [1, 2, 3, 4]
+    assert [n for n, _ in s['choices']['styles']['D']] == list(range(1, 11))      # free editing: any skater type
     assert dict(s['choices']['styles']['F'])[6] == 'PLY · Playmaker' and s['choices']['skins'][0] == 1
     row = next(r for r in s['rows'] if r['pos'] == 'D')
     ed.pick_player(row['id'])
@@ -180,7 +180,8 @@ def test_the_card_changes_a_players_type_and_takes_another_players_face(app):
     assert s['card']['face_note'].startswith("Same head as") and s['card']['face_pick'] is None
     edit = next(iter(ed.edits.values()))
     assert edit['set']['style'] == int(style) and edit['set']['head'] == other.face['head']
-    assert ed.apply(dict(s['card']['values'], style='7')) == 'error'        # a forward's type on a defenceman
+    assert ed.apply(dict(s['card']['values'], style='11')) == 'error'       # no such type
+    assert ed.apply(dict(s['card']['values'], style='7')) == 'applied'      # a forward's type on a defenceman: free
 
 
 def test_a_card_typed_on_but_not_applied_is_applied_on_save_as_new(app):
@@ -856,7 +857,9 @@ def test_a_goalies_equipment_window_has_the_mask_and_keeps_his_own_mask_picture(
     assert not ed.edits
 
 
-def test_a_move_that_leaves_a_team_without_two_goalies_is_refused_in_plain_words(app):
+def test_a_move_that_leaves_a_team_without_two_goalies_goes_through_with_a_heads_up(app):
+    """Free editing (2026-10-29): the move is the player's choice; the status line warns that the game hangs a game
+    played with that team."""
     _host, _upd, ed, _uni, _sd = app
     ed.opened()
     wait(lambda: ed.snap is not None)
@@ -869,8 +872,11 @@ def test_a_move_that_leaves_a_team_without_two_goalies_is_refused_in_plain_words
     row = next(r for r in ed.snapshot()['rows'] if r['who'] == goalie.who)
     ed.pick_player(row['id'])
     card = ed.snapshot()['card']
-    assert ed.apply(dict(card['values'], team=str(other))) == 'error'
-    assert 'only 1 goalie' in ed.snapshot()['status']['text'] and ed.snapshot()['edits_count'] == 0
+    assert ed.apply(dict(card['values'], team=str(other))) == 'applied'
+    idle(ed)
+    status = ed.snapshot()['status']
+    assert status['text'].startswith("Heads up: ") and '1 goalie' in status['text'] and status['tone'] == 'warn', status
+    assert ed.snapshot()['edits_count'] == 1
 
 
 def test_a_window_that_has_started_the_new_version_closes_even_though_it_was_busy(app, monkeypatch):

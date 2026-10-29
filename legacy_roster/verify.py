@@ -17,6 +17,13 @@ from .tdb import check_chain
 
 FULL_LINEUP = list(range(32)) + list(range(133, 154))     # teams that must dress a legal 20
 TEAM_FLAWS = ('slot twice', 'goalie', 'dressed', 'lineup', 'slots', 'too many', 'entry ids')   # keyed by team id
+# Free editing (owner, 2026-10-29: "allow everything possible that will not really break the roster from loading"): these
+# structure() flaws stop an update when the builder made them (our bug), never when the player's own edits did (`free`
+# in verify). Keyed by team id / by player id. Everything else structure() finds stops every save: 40 per team (a
+# place's id is team * 40 + slot), consecutive place ids, a player listed twice, the copies, the free-agent list.
+FREE_TEAM_FLAWS = ('slot twice', 'goalie', 'dressed', 'lineup', 'slots')
+FREE_PLAYER_FLAWS = ('no contract', 'draft')
+SHORT_GOALIES, SHORT_SKATERS = 2, 18        # a team with fewer hangs its first game when the player plays with it (round 17)
 
 
 _ALL_STAR_SLOTS = {30: 'Seattle Kraken', 31: 'Vegas Golden Knights'}
@@ -48,10 +55,11 @@ def contract_violations(R):
     return bad
 
 
-def style_problems(R, source):
+def style_problems(R, source, free=lambda pid: False):
     """The player types (playerstyle, `sFgQ`): every roster entry carries the type of its player's skater or goalie
     record, and a type the update changed or gave a new player (or a player moved between forward and defence) is one
-    of his kind's (ratings.STYLE_CHOICES; Builder.set_style). What the source already had is not blamed."""
+    of his kind's (ratings.STYLE_CHOICES; Builder.set_style). What the source already had is not blamed, and a player
+    the player's own edits changed (`free(pid)`) may have any type of a skater / of a goalie (ratings.FREE_STYLES)."""
     def records(X):
         out = {}
         for tname in ('yvSd', 'yuHm'):
@@ -74,15 +82,16 @@ def style_problems(R, source):
         style, kind = now.get(pid), ratings.style_class(R.P.get(prow, 'aljv'))
         if style is None or (before.get(pid) == style and kind_before.get(pid) == kind):
             continue
-        if style not in ratings.STYLE_CHOICES[kind]:
+        if style not in (ratings.FREE_STYLES if free(pid) else ratings.STYLE_CHOICES)[kind]:
             out.append(f"{R.name(prow)} has player type {style}, which no {words[kind]} has")
     return out
 
 
-def rating_problems(R, source):
+def rating_problems(R, source, free=lambda pid: False):
     """The ratings and tendencies the full ratings are written into (schema.FULL_RATED, FULL_ASIS; Builder.rate_full):
     every value one the game's own players hold (a rating 0-63, that is 36-99; fighting 0-3, consistency 0-2, paddle
-    down 0-1, the three biases 0-15). A value the source already had for the same player is not blamed."""
+    down 0-1, the three biases 0-15). A value the source already had for the same player is not blamed, and neither is a
+    player the player's own edits changed (`free(pid)`): the fields' own room still holds him."""
     out = []
     for kind, tname in FULL_TABLE.items():
         t, s = R.f[tname], source.f[tname]
@@ -92,6 +101,8 @@ def rating_problems(R, source):
         before = {s.get(i, 'zIBw'): i for i in range(s.cur_rec)}
         for i in range(t.cur_rec):
             pid, j = t.get(i, 'zIBw'), before.get(t.get(i, 'zIBw'))
+            if free(pid):
+                continue
             for tag, name, (lo, hi) in ranges:
                 v = t.get(i, tag)
                 if not lo <= v <= hi and (j is None or s.get(j, tag) != v):
@@ -225,11 +236,12 @@ def structure(R, full_lineup=FULL_LINEUP, mirrors=None):
 NO_MARKER = b'\x00\x00\xff\xff'      # a table header's word at 0x18 when no row was removed last
 
 
-def contract_edit_problems(R, deals, scale):
+def contract_edit_problems(R, deals, scale, free=False):
     """Problems of the contracts the player set by hand ({player row: deal}, real dollars; `scale` the roster's money
     scale): the fields are not that deal, the deal is one the game cannot hold (NHL bounds in an NHL organisation, free
     amounts with another club: contracts.edit_problems), or the player is on no club (contracts.contract_home). The
-    contract's team (cPbu.team) is checked for everyone (contract_violations)."""
+    contract's team (cPbu.team) is checked for everyone (contract_violations). `free` (free editing): only the first; a
+    deal on a player on no club is the player's own choice."""
     scale = contracts.GAME if scale is None else scale
     clubs = contracts.contract_clubs(R) if deals else set()
     out = []
@@ -237,6 +249,8 @@ def contract_edit_problems(R, deals, scale):
         name = R.name(prow)
         if any(R.P.get(prow, f) != v for f, v in contracts.terms(deal, scale).items()):
             out.append(f"{name}: the contract in the roster is not the contract set by hand")
+        if free:
+            continue
         teams = {t for _, t in R.teams_of(prow)}
         home = contracts.contract_home(R.P, prow, teams, clubs)
         if home is None:
@@ -248,7 +262,7 @@ def contract_edit_problems(R, deals, scale):
 
 def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_moves=(), calendar=None, calendar_source=None,
            farm_patch=False, depth=None, money=None, deals=None, crests=None, contract_edits=None, prospects=None,
-           league_calendars=None):
+           league_calendars=None, free=None):
     """Check `built` (bytes of a SYS-DATA) against `source` (the Roster it was built from).
 
     `nhl_players`: the official rosters the build used; when given, every listed player must be
@@ -280,6 +294,12 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     European or CHL club and has a potential inside his growth tier's band (draftclass.problems).
     `league_calendars` ({part: what schedule.apply_league returned}): the club leagues' calendars the update wrote, each
     one the game can play (schedule.check_league); every other league's table stays the source's.
+    `free` (free editing, owner 2026-10-29): what the player's own edits did that only our caution refused and the game
+    plays: True (an edit-only save: everything is the player's) or (player rows, team slots) the edits changed. Those
+    players / teams are not held to a player type of their position, one club, a contract with the team they are on, an
+    NHL contract, a draft that fits together, the rating range or a line-up of 20 (FREE_TEAM_FLAWS, FREE_PLAYER_FLAWS).
+    What would stop the roster loading stays a problem for everyone. info['heads_up'] names the player's teams with fewer
+    than 2 goalies / 18 skaters (the game hangs the first game played with one).
     Returns (problems, info); the save must not be used if there are problems."""
     edited_keys, edited_rows = edited or (set(), set())
     rebuilt = set(rebuilt)
@@ -393,34 +413,38 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
                 if prow not in api_rows and prow not in edited_rows and (depth or {}).get(prow) != t                         and held.get(prow) != t:
                     problems.append(f"{name} still on {L.SLOT_TO_API[t]}")
 
+    mine_pid, mine_team = free_editing(R, source, free)
     mirrors = layout_mirrors(source)       # the build keeps its source's layout: the same copies are checked in both
     now, teams = structure(R, set(FULL_LINEUP) | rebuilt, mirrors)
     before, teams_before = structure(source, mirrors=mirrors)
     problems += [msg for key, msg in now.items()
-                 if key not in before or (key[0] in TEAM_FLAWS and key[1] in rebuilt)]
+                 if (key not in before or (key[0] in TEAM_FLAWS and key[1] in rebuilt))
+                 and not (key[0] in FREE_TEAM_FLAWS and mine_team(key[1]))
+                 and not (key[0] in FREE_PLAYER_FLAWS and mine_pid(key[1]))]
 
     # contracts: cPbu.team = team + 1 must point at a team the player is on (mirror slots count)
     baseline = contract_violations(source)
     for p, (name, t) in contract_violations(R).items():
-        if p not in baseline:
+        if p not in baseline and not mine_pid(p):
             problems.append(f"{name} contracted to team {t} but not on it")
-    # nobody on two different club teams
+    # nobody on two different club teams (unless the player put him there)
     for p in multi_club(R) - multi_club(source):
-        problems.append(f"{R.name(R.p_by_id[p])} is on two club teams")
+        if not mine_pid(p):
+            problems.append(f"{R.name(R.p_by_id[p])} is on two club teams")
     # player types and faces (the Roster editor's Type and Face): only values the game's own players have; a created
     # look only on the records the game's Create Player uses, with its choices, its player listed through the
     # record's own link
-    problems += style_problems(R, source) + faces.problems(R, source) + faces.look_problems(R, source)
+    problems += style_problems(R, source, mine_pid) + faces.problems(R, source) + faces.look_problems(R, source)
     problems += faces.link_problems(R, source)
     # sticks (sticks.team_sticks, the editor): only models the game can draw, or ones the roster already carried
     problems += sticks.problems(R, also=sticks.worn(source))
     # helmets, gloves, skates and goalie gear (equipment.fix_models): the same
     problems += equipment.model_problems(R, also=equipment.worn(source))
     # ratings and tendencies (the full ratings, the estimate, the editor): only values the game's own players hold
-    problems += rating_problems(R, source)
+    problems += rating_problems(R, source, mine_pid)
     if money is not None:
         problems += contracts.problems(R, source, money)
-    problems += contract_edit_problems(R, contract_edits, money)
+    problems += contract_edit_problems(R, contract_edits, money, free=bool(free))
     # NHL rights only of teams the game's Season knows: Seattle's on a roster for the unpatched game crashed it
     problems += contracts.rights_problems(R)
     # contract status: the game shows a contract (Team Rosters' CONT / SAL) only for status 1 (contracts.status_fit)
@@ -438,8 +462,56 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     info = {'entries': U.cur_rec, 'players': P.cur_rec, 'free_agents': R.Q.cur_rec,
             'known_flaws_in_source': len(before), 'thinner_ahl_teams': thinner, 'rebuilt_teams': sorted(rebuilt),
             'empty_national_teams': [_team(R, t) for t in range(133, 154) if not teams[t]['players']],
-            'teams': teams}
+            'teams': teams, 'heads_up': short_teams(R, source, teams, teams_before, mine_team) if free else []}
     return problems, info
+
+
+def free_editing(R, source, free):
+    """(is this player id the player's own?, is this team slot?) for verify's `free`: True = everything; (player rows,
+    team slots) = those players, the given teams and every team such a player is on now or was on in `source`."""
+    if free is True:
+        return (lambda pid: True), (lambda t: True)
+    if not free:
+        return (lambda pid: False), (lambda t: False)
+    rows, slots = free
+    pids = {R.P.get(r, 'zIBw') for r in rows if r < R.P.cur_rec}
+    teams = set(slots)
+    for X in (R, source):
+        U = X.U
+        for i in range(U.cur_rec):
+            if X.link_to_pid.get(U.get(i, 'TWSX')) in pids:
+                teams.add(U.get(i, 'BSXd'))
+    return pids.__contains__, teams.__contains__
+
+
+def short_teams(R, source, teams, teams_before, mine_team):
+    """The player's teams that hold players but fewer than 2 goalies or 18 skaters, as plain sentences: the game hangs
+    the first game the player plays with one (round 17; the engine's line picker waits forever for a player of a kind,
+    docs/notes/autoplay.md). Only a team whose players changed from `source`; national teams, copies, event teams and
+    prospect pools are left out."""
+    from .leagues import pools
+    def goalies(X):
+        out = {}
+        for i in range(X.U.cur_rec):
+            pid = X.link_to_pid.get(X.U.get(i, 'TWSX'))
+            if pid in X.p_by_id and X.P.get(X.p_by_id[pid], 'aljv') == 4:
+                out[X.U.get(i, 'BSXd')] = out.get(X.U.get(i, 'BSXd'), 0) + 1
+        return out
+    now, before = goalies(R), goalies(source)
+    out = []
+    for t in sorted(teams):
+        if (not teams[t]['players'] or not mine_team(t) or t in L.NATIONAL or t in L.MIRROR_OF
+                or t in L.EVENTS or pools.is_pool(R, t)):
+            continue
+        g = now.get(t, 0)
+        skaters = teams[t]['players'] - g
+        if g >= SHORT_GOALIES and skaters >= SHORT_SKATERS:
+            continue
+        if (g, teams[t]['players']) == (before.get(t, 0), (teams_before.get(t) or {}).get('players')):
+            continue
+        out.append(f"{_team(R, t)} has {g} goalie{'' if g == 1 else 's'} and {skaters} skaters: the game hangs if "
+                   "you play a game with them (a team needs 2 goalies and 18 skaters)")
+    return out
 
 
 def career_problems(before, after, allowed=(), sizes=None):

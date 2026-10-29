@@ -206,6 +206,10 @@ def style_name(number, goalie=False):
 # The types each kind of player holds, on the community roster and on the disc's (docs/notes/faces.md): forwards
 # 5-10, defencemen 1-4, goalies 0-2. A type outside his kind's is never written (verify.style_problems).
 STYLE_CHOICES = {'F': (5, 6, 7, 8, 9, 10), 'D': (1, 2, 3, 4), 'G': (0, 1, 2)}
+# The types the player may choose in the Roster editor (owner, 2026-10-29: "player type should not be a limitation"):
+# any skater's type on any skater; a goalie keeps a goalie's (his ratings sit in another table). The builder writes
+# STYLE_CHOICES; verify holds the builder to them and the player's own edits to these.
+FREE_STYLES = {'F': (1, 2, 3, 4, 5, 6, 7, 8, 9, 10), 'D': (1, 2, 3, 4, 5, 6, 7, 8, 9, 10), 'G': (0, 1, 2)}
 
 
 def style_class(pos):

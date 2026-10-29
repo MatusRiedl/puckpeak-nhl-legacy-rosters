@@ -3,6 +3,15 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.90.0 (not released yet)
+
+**Edit your roster freely.** The Roster editor no longer refuses what the game itself plays. Add yourself, move anyone to
+any team, release players, give a forward a defenceman's player type, fill a team to 40: Save keeps it. The program
+only stops a save that would make the game say "The roster seems to be damaged" or crash it, for example a 41st player
+on one team (the game's file holds 40 per team). If your changes leave a team with fewer than 2 goalies or 18 skaters,
+Save still works and one gold line says so: the game hangs when you play a game with that team, so add players before
+you play with it.
+
 ## 0.85.0 (2026-10-28)
 
 **Linux: the game patch now switches on where RPCS3 looks for it.** On Linux (and Mac) RPCS3 reads its list of switched-on
