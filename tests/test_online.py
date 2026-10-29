@@ -153,7 +153,7 @@ def test_setup_asks_before_it_patches_and_then_patches_ticks_the_online_entry_an
     monkeypatch.setattr(patchinstall, 'install_patch', lambda r, titles, **k: calls.append(('patch', titles)))
     monkeypatch.setattr(patchinstall, 'set_online', lambda r, titles, on, **k: calls.append(('online', titles, on)))
     monkeypatch.setattr(patchinstall, 'set_switches', lambda r, titles, intro, login: calls.append(('intro', intro)))
-    monkeypatch.setattr(onlinecfg, 'write_config', lambda r, title, address: calls.append(('config', title, address)))
+    monkeypatch.setattr(onlinecfg, 'write_config', lambda r, title, address, **k: calls.append(('config', title, address)))
     ctl.setup()
     assert calls == [] and len(ctl.update.asked) == 1 and 'game patch' in ' '.join(ctl.update.asked[0][1])   # the question first
     ctl.update.asked[0][3]['yes']()
@@ -168,7 +168,7 @@ def test_setup_of_a_patched_game_asks_nothing_and_does_not_patch_again(tmp_path,
     calls = []
     monkeypatch.setattr(patchinstall, 'install_patch', lambda *a, **k: calls.append('patch'))
     monkeypatch.setattr(patchinstall, 'set_online', lambda r, titles, on, **k: calls.append('online'))
-    monkeypatch.setattr(onlinecfg, 'write_config', lambda r, title, address: calls.append('config'))
+    monkeypatch.setattr(onlinecfg, 'write_config', lambda r, title, address, **k: calls.append('config'))
     ctl.setup()
     wait(lambda: len(calls) == 2 and not ctl.busy)
     assert calls == ['online', 'config'] and ctl.update.asked == []
@@ -803,3 +803,90 @@ def test_hiding_from_the_board_is_kept_and_showing_again_waits_for_a_lobby(serve
     assert host.card['hidden'] is True
     host.poll_once()
     wait(lambda: 'hostplayer' not in server.hidden)
+
+
+class FakeHud:
+    """Stands in for hud.Hud: keeps what the controller told the overlay."""
+    def __init__(self, on_hotkey):
+        self.on_hotkey, self.chats, self.cards, self.started, self.stopped = on_hotkey, [], [], False, False
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+    def chat(self, who, text, hold=6.0):
+        self.chats.append((who, text))
+
+    def result(self, data, hold=9.0):
+        self.cards.append(data)
+
+
+def _with_overlay(ctl, monkeypatch):
+    made = []
+    monkeypatch.setattr(online.hud, 'available', lambda: True)
+    ctl.update.settings = {}
+    ctl.make_hud = lambda on_hotkey: made.append(FakeHud(on_hotkey)) or made[-1]
+    return made
+
+
+def test_the_overlay_shows_only_the_friends_new_lines_and_the_hotkeys_send_the_phrases(server, tmp_path, monkeypatch):
+    server.chat_gap = 0
+    host, guest = _pair(server, tmp_path, monkeypatch)
+    made = _with_overlay(guest, monkeypatch)
+    host.say('before the game')
+    wait(lambda: host.snapshot()['chat'])
+    guest.poll_once()                                   # read before the game starts: never shown over it
+    guest._hud_start()
+    assert made and made[0].started and guest.snapshot()['overlay'] == {'can': True, 'on': True}
+    host.chat_wait = 0
+    host.say('gg')
+    wait(lambda: len(host.snapshot()['chat']) == 2)
+    guest.poll_once()
+    assert made[0].chats == [('HostPlayer', 'gg')]
+    made[0].on_hotkey(0)                                # Ctrl+Shift+F1 in the game
+    wait(lambda: any(c.get('text') == online.PHRASES[0] for c in (guest.lobby or {}).get('chat') or []))
+    guest.poll_once()
+    assert made[0].chats == [('HostPlayer', 'gg')]      # my own line stays in the tab
+    guest.set_overlay(False)
+    assert made[0].stopped and guest.hud is None and guest.update.settings[online.OVERLAY_KEY] is False
+    guest._hud_start()
+    assert len(made) == 1                               # switched off: no overlay at the next start
+
+
+def test_the_overlay_shows_the_result_card_once_when_the_match_is_rated(server, tmp_path, monkeypatch):
+    host = _controller(tmp_path, monkeypatch, 'HostPlayer')
+    made = _with_overlay(host, monkeypatch)
+    _look(host)
+    host.watching, host.baseline, host.started_at = True, online.PENDING, time.time()
+    host._hud_start()
+    _ranks(host)
+    mid = server.play('HostPlayer', 'GuestPlayer', 3, 2, status='waiting')
+    _ranks(host)
+    assert made[0].cards == []                          # waits for the other report: only in the tab
+    server.settle('HostPlayer', mid)
+    server.players['hostplayer']['rating'] += 16
+    for row in server.matches['hostplayer']:
+        if row['id'] == mid:
+            row['delta'] = 16
+    _ranks(host)
+    _ranks(host)
+    assert len(made[0].cards) == 1
+    card = made[0].cards[0]
+    assert (card['sub'], card['rating_from'], card['rating_to']) == ('3 - 2 win', 1000, 1016)
+    host.ended = time.time() - online.WATCH_AFTER - 1
+    host._watch_game()
+    assert made[0].stopped and host.hud is None
+
+
+def test_the_result_card_has_the_bar_a_rank_up_and_placement_games():
+    tiers = [{'name': 'Minor League', 'min': 0}, {'name': 'Rookie', 'min': 1000}, {'name': 'Pro', 'min': 1100}]
+    view = {'result': 'W', 'for': 4, 'against': 2, 'before': 1089, 'rating': 1112, 'tier': 'Pro', 'next_tier': 'Top 6',
+            'next_at': 1200, 'placing': 0, 'status': 'confirmed'}
+    card = online.hud_card(view, tiers)
+    assert (card['sub'], card['band_low'], card['rank_up']) == ('4 - 2 win', 1100, 'Pro')
+    card = online.hud_card(dict(view, result='L', before=1120, rating=1105, status='forfeit'), tiers)
+    assert card['sub'] == 'loss, you left' and 'rank_up' not in card
+    card = online.hud_card(dict(view, placing=3), tiers)
+    assert card['placing'] == 3 and card['placing_of'] == 5 and card['tier'] is None

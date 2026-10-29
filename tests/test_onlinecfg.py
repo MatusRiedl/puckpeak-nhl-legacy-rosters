@@ -195,3 +195,11 @@ def test_the_log_is_followed_a_piece_at_a_time_and_a_new_log_starts_over(tmp_pat
     assert tail.read()['name'] is None
     path.write_bytes(b'\xc2\xb7 0 RPCS3 v0.0.34 again\n')                       # RPCS3 started again: a shorter, new log
     assert tail.read() == onlinecfg.log_state('RPCS3 v0.0.34')
+
+
+def test_borderless_fullscreen_changes_only_the_vulkan_line():
+    text = ("Video:\r\n  Renderer: Vulkan\r\n  Vulkan:\r\n    Adapter: Some GPU\r\n    Exclusive Fullscreen Mode: Automatic\r\n"
+            "    Use Re-BAR for GPU uploads: true\r\n  Write Color Buffers: false\r\n")
+    out = onlinecfg.borderless_config(text)
+    assert out == text.replace('Exclusive Fullscreen Mode: Automatic', 'Exclusive Fullscreen Mode: Disable')
+    assert onlinecfg.borderless_config("Video:\n  Renderer: Vulkan\n") == "Video:\n  Renderer: Vulkan\n"

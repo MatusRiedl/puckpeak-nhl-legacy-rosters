@@ -580,6 +580,9 @@ class Api:
     def online_hide(self, hidden):
         self._online.set_hidden(bool(hidden))
 
+    def online_overlay(self, on):
+        self._online.set_overlay(bool(on))
+
     def online_ranks(self):
         self._online.refresh_ranks(board=True)
 

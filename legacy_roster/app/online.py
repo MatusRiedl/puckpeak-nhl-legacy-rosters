@@ -23,7 +23,7 @@ import threading
 import time
 import urllib.parse
 
-from .. import datasource, gamepatch, lobby, onlinecfg, patchinstall, savedata
+from .. import datasource, gamepatch, hud, lobby, onlinecfg, patchinstall, savedata
 from ..roster import Roster
 from ..stock import StockError
 from . import jobs
@@ -51,6 +51,7 @@ PATCH_DIFFERS = "Plays with game patch {theirs}; you have {mine}. Update the pro
 PATCH_HINT = "You and your friend have different game patch versions. Update the program to the newest version, then press Ready."
 PATCH_NEEDED = "Online play needs the game patch. Press Set up online."
 HIDDEN_KEY = 'online_hidden'           # settings: the player keeps his name off the public leaderboard
+OVERLAY_KEY = 'online_overlay'         # settings: partner chat and the result over the game (Windows; default on)
 CHAT_LENGTH = 140                       # the server keeps 30 lines of at most 140 characters
 CHAT_GAP = 1.0                          # seconds the Send button rests after a line (the server takes one each 0.7 s)
 PHRASES = ["Good game", "Rematch?", "Nice one!", "Unlucky", "One sec", "Ready?"]
@@ -102,8 +103,14 @@ COUNTDOWN = 3
 
 
 class OnlineController:
-    def __init__(self, host, update, poll=POLL, autopoll=True, list_poll=LIST_POLL):
+    def __init__(self, host, update, poll=POLL, autopoll=True, list_poll=LIST_POLL, make_hud=None):
         self.host, self.update = host, update
+        # make_hud(on_hotkey) -> the overlay over the game (hud.Hud); None: the real one, only when the controller polls
+        # by itself (tests that do not poll never open windows)
+        self.make_hud = make_hud
+        self.hud = None
+        self._chat_seen = 0             # seq of the newest chat line seen: the overlay shows only lines after it
+        self._hud_shown = None          # id of the match whose result card the overlay showed
         self.lock = threading.RLock()
         self.poll_every, self.autopoll, self.list_every = poll, autopoll, list_poll
         self.shown = False
@@ -180,6 +187,7 @@ class OnlineController:
         self._stop_list_timer()
         self._stop_ranks_timer()
         self._clear_start()
+        self._hud_stop()
         code, who = self.code, self.account
         if code and who:
             try:
@@ -579,6 +587,7 @@ class OnlineController:
                 self.lobby, self.code = answer, answer.get('code')
             self.server = True
         self.changed()
+        self._hud_chat()
         if answer.get('state') == 'starting':
             self._start_game()
         if self.watching and time.time() - self.ranks_at >= WATCH_POLL:
@@ -908,6 +917,7 @@ class OnlineController:
             return
         if newest and newest['id'] != self.baseline and newest['id'] not in self.results_seen:
             self.result = newest
+            self._hud_card()
 
     def result_view(self):
         """The result window's words and numbers (None when there is nothing to show)."""
@@ -973,6 +983,9 @@ class OnlineController:
             final = self.result and self.result.get('status') not in ('waiting',)
             if self.ended and (final or time.time() - self.ended > WATCH_AFTER):
                 self.watching = False
+            stop = not self.watching
+        if stop:
+            self._hud_stop()
 
     def _arm_ranks(self, delay=None):
         """The ranks are read every RANKS_POLL seconds while the tab shows, every WATCH_POLL while a game of a lobby runs."""
@@ -1003,6 +1016,80 @@ class OnlineController:
                 'me': me if me and me not in rows[:BOARD_ROWS] else None, 'highlights': board.get('highlights') or [],
                 'placement': board.get('placement') or 5, 'hidden': self.hidden(), 'tab': self.ranks_tab}
 
+    # --- the overlay over the game (Windows; legacy_roster/hud) -------------------------------------------------------------
+    def overlay(self):
+        """Partner chat and the result card over the game: the player's switch (default on), on Windows only."""
+        settings = getattr(self.update, 'settings', None)
+        on = settings.get(OVERLAY_KEY, True) if isinstance(settings, dict) else True
+        return bool(on) and hud.available()
+
+    def set_overlay(self, on):
+        """The "Show chat and results over the game" switch: kept in settings; a game running now gets or loses it at once."""
+        settings = getattr(self.update, 'settings', None)
+        if isinstance(settings, dict):
+            settings[OVERLAY_KEY] = bool(on)
+            S.save(settings)
+        if not on:
+            self._hud_stop()
+        elif self.watching and not self.ended:
+            self._hud_start()
+        self.changed()
+
+    def _hud_start(self):
+        """The overlay for the game just started (its chat begins after the lines already read)."""
+        with self.lock:
+            if self.hud is not None or not self.overlay():
+                return
+            factory = self.make_hud or (self._real_hud if self.autopoll else None)
+            if factory is None:
+                return
+            self.hud = factory(self._hotkey)
+            self._hud_shown = None
+            started = self.hud
+        started.start()
+
+    @staticmethod
+    def _real_hud(on_hotkey):
+        return hud.Hud(hud.emulator_rect, on_hotkey=on_hotkey, hotkeys=hud.PHRASE_KEYS)
+
+    def _hud_stop(self):
+        with self.lock:
+            gone, self.hud = self.hud, None
+        if gone is not None:
+            gone.stop()
+
+    def _hotkey(self, index):
+        """Ctrl+Shift+F1..F6 in the game: the six phrases, in the order of the tab's buttons."""
+        if 0 <= index < len(PHRASES):
+            self.say(PHRASES[index])
+
+    def _hud_chat(self):
+        """The friend's new chat lines go over the game (mine stay in the tab)."""
+        with self.lock:
+            lines = (self.lobby or {}).get('chat') or []
+            new = [line for line in lines if line.get('seq', 0) > self._chat_seen]
+            if lines:
+                self._chat_seen = max([self._chat_seen] + [line.get('seq', 0) for line in lines])
+            shown = self.hud
+            me = self.account
+        if shown is None:
+            return
+        for line in new:
+            if line.get('name') != me and line.get('text'):
+                shown.chat(line.get('name') or 'Friend', line['text'])
+
+    def _hud_card(self):
+        """(lock held) The result card over the game, once, when the new match is rated (a match that waits for the other
+        report, or counts for nothing, stays in the tab's result window)."""
+        row = self.result
+        if self.hud is None or not row or row['id'] == self._hud_shown or row.get('delta') is None:
+            return
+        view = self.result_view()
+        if view is None or view.get('rating') is None:
+            return
+        self._hud_shown = row['id']
+        self.hud.result(hud_card(view, (self.board or {}).get('tiers'), (self.board or {}).get('placement') or 5))
+
     # --- the game ----------------------------------------------------------------------------------------------------
     def _start_game(self):
         """Both are Ready: start RPCS3 into the game (not again for the same lobby, and not when a game is open)."""
@@ -1028,7 +1115,7 @@ class OnlineController:
         try:
             if self.roster:
                 savedata.boot_first(rpcs3.savedata, self.roster['folder'])      # the game loads it by itself at boot
-            config = onlinecfg.write_config(rpcs3, title, self._address())
+            config = onlinecfg.write_config(rpcs3, title, self._address(), borderless=self.overlay())
             self.by_itself = patchinstall.auto_start(rpcs3, title)
             if self.by_itself:      # for this start only; _read_log unticks it as soon as the game has booted
                 patchinstall.set_online_start(rpcs3, [title], True)
@@ -1042,6 +1129,7 @@ class OnlineController:
                 raise OSError("RPCS3 does not say where your copy of the game is. Start the game once from RPCS3's list.")
             flags = getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
             savedata.launch(args, cwd=rpcs3.launch_dir(), close_fds=True, creationflags=flags)
+            self._hud_start()
         except (OSError, patchinstall.PatchError) as err:
             self._untick_start()
             with self.lock:
@@ -1171,4 +1259,30 @@ class OnlineController:
                     'public': self.public, 'open': self.rows(), 'open_error': self.open_error,
                     'progress': PROGRESS, 'why': self.why(), 'no_account': NO_ACCOUNT, 'launched': bool(self.launched),
                     'ended': bool(self.ended), 'chat': self.chat(), 'chat_wait': time.time() < self.chat_wait,
-                    'phrases': PHRASES, 'ranks': self.ranks_view(), 'result': self.result_view()}
+                    'phrases': PHRASES, 'ranks': self.ranks_view(), 'result': self.result_view(),
+                    'overlay': {'can': hud.available(), 'on': self.overlay()}}
+
+
+def hud_card(view, tiers=None, placement=5):
+    """The overlay's result card (hud.anim.Result's data) from OnlineController.result_view() of a rated match; `tiers` the
+    board's [{name, min}] (for the bar's low end and a rank-up), `placement` the games before a rank shows."""
+    won = view.get('result') == 'W'
+    score = f"{view['for']} - {view['against']} " if view.get('for') is not None and view.get('against') is not None else ''
+    data = {'title': 'Final', 'sub': score + ('win' if won else 'loss'), 'rating_from': view['before'],
+            'rating_to': view['rating'], 'tier': view.get('tier'), 'next_name': view.get('next_tier'),
+            'next_at': view.get('next_at')}
+    if view.get('status') == 'forfeit':
+        data['sub'] = 'win, your friend left' if won else 'loss, you left'
+    if view.get('placing'):
+        data.update(tier=None, placing=view['placing'], placing_of=placement)
+        return data
+    steps = sorted((t['min'], t['name']) for t in tiers or [] if t.get('min') is not None)
+
+    def tier_at(rating):
+        return next((name for low, name in reversed(steps) if rating >= low), None)
+    low = next((m for m, name in steps if name == view.get('tier')), None)
+    if low is not None:
+        data['band_low'] = low
+    if steps and view['rating'] > view['before'] and tier_at(view['rating']) != tier_at(view['before']):
+        data['rank_up'] = tier_at(view['rating'])
+    return data

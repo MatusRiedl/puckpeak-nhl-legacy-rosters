@@ -123,6 +123,24 @@ def blit_config(text):
     return newline.join(lines) + (newline if text.endswith('\n') else '')
 
 
+def borderless_config(text):
+    """`text` (a config.yml) with Vulkan's "Exclusive Fullscreen Mode" set to Disable (RPCS3's "Prefer borderless"): the
+    overlay over the game (legacy_roster/hud, a layered window) does not show over exclusive fullscreen. Only that line of the
+    Vulkan block changes; a config without the block is left as it is (RPCS3 then uses its own default)."""
+    newline = '\r\n' if '\r\n' in text else '\n'
+    lines = text.splitlines()
+    vulkan = next((i for i, line in enumerate(lines) if line.rstrip() == '  Vulkan:'), None)
+    if vulkan is None:
+        return text
+    for i in range(vulkan + 1, len(lines)):
+        if not lines[i].startswith('    '):
+            break
+        if lines[i].partition(':')[0] == '    Exclusive Fullscreen Mode':
+            lines[i] = '    Exclusive Fullscreen Mode: Disable'
+            return newline.join(lines) + (newline if text.endswith('\n') else '')
+    return text
+
+
 def config_dir(rpcs3):
     """Where the app's own config goes: the program's folder, except for the Flatpak RPCS3, which cannot see it: there it goes
     into the Flatpak's own folder (the same path inside and outside the sandbox)."""
@@ -148,11 +166,14 @@ def log_path(rpcs3, posix=os.name != 'nt'):
     return max(there, key=os.path.getmtime) if there else places[0]
 
 
-def write_config(rpcs3, title, address):
+def write_config(rpcs3, title, address, borderless=False):
     """Write the app's own config for booting `title` online (the player's config for the game with the Net block set) to
-    online/config_<TITLE>.yml in the program's folder. Returns its path. The player's own files are not touched."""
+    online/config_<TITLE>.yml in the program's folder. Returns its path. The player's own files are not touched.
+    `borderless`: fullscreen as a borderless window (the overlay over the game, borderless_config)."""
     path = os.path.join(config_dir(rpcs3), f'config_{title}.yml')
     text = blit_config(net_config(base_config(rpcs3, title), address))
+    if borderless:
+        text = borderless_config(text)
     with open(path + '.tmp', 'w', encoding='utf-8', newline='') as f:
         f.write(text)
     os.replace(path + '.tmp', path)

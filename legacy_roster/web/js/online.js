@@ -39,6 +39,10 @@ function YouCard({ s }) {
       ${r && html`<div class="row on-actions"><${Toggle} on=${!r.hidden} label="Show me on the leaderboard"
         onChange=${(on) => call('online_hide', !on)}/><span class="lab">Show me on the leaderboard</span>
         <span class="small-note">${r.hidden ? 'Others see you as "Hidden player".' : 'Your RPCN name, rank and matches are public.'}</span></div>`}
+      ${s.overlay && s.overlay.can && html`<div class="row on-actions"><${Toggle} on=${s.overlay.on}
+        label="Show chat and results over the game" onChange=${(on) => call('online_overlay', on)}/>
+        <span class="lab">Show chat and results over the game</span>
+        <span class="small-note">${s.overlay.on ? 'In the game, Ctrl+Shift+F1 to F6 send the six phrases.' : 'Off: chat and results only show here.'}</span></div>`}
     </div>
   <//>`;
 }
