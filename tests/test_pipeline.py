@@ -317,15 +317,28 @@ def find(R, first, last):
 
 
 def test_free_agents_are_players_who_can_still_sign(built, data):
-    """Nobody on the free-agent list would retire; last season's unsigned NHL players are on it
-    (testers, 0.7.0: retired free agents stayed, Reimer was missing)."""
+    """Nobody on the free-agent list would retire; last season's unsigned NHL players under 38 are on it
+    (testers, 0.7.0: retired free agents stayed, Reimer was missing), the ones of 38 and over retired
+    (testers, 0.85.0: Kopitar and Toews signed in Be a Pro; owner, 2026-10-28)."""
     R, b = Roster(built.data), built.builder
     fa = {R.link_to_pid.get(R.Q.get(k, 'TWSX')) for k in range(R.Q.cur_rec)}
     assert not [R.name(R.p_by_id[p]) for p in fa if b.would_retire(p)]
-    for first, last in (('James', 'Reimer'), ('Jonathan', 'Toews'), ('Jonathan', 'Quick')):
+    for first, last in (('Gustav', 'Nyquist'),):
         assert any(R.P.get(r, 'game_id') in fa for r in find(R, first, last)), last
+    for first, last in (('Anze', 'Kopitar'), ('Jonathan', 'Toews'), ('Jonathan', 'Quick'), ('James', 'Reimer')):
+        rows = find(R, first, last)
+        assert not [r for r in rows if R.P.get(r, 'game_id') in fa or R.teams_of(r)], last
     unsigned = [p for p in data.nhl_last if not p['team']]
     assert unsigned and any(r[1] == 'free agent added' for r in built.log)
+
+
+def test_a_younger_player_on_the_retired_list_retires(built, data):
+    """The data pack's list (`retired`, tools/retired.json) retires an unsigned player under 38 too."""
+    b = built.builder
+    nyquist = next(p for p in b.last_season_people if p['last'] == 'Nyquist')
+    assert id(nyquist) not in b.retired_people(data)
+    listed = Data(season_year=data.season_year, retired=[{'first': 'Gustav', 'last': 'Nyquist', 'birth': [1989, 9, 1]}])
+    assert id(nyquist) in b.retired_people(listed)
 
 
 def test_players_get_their_real_draft(built):

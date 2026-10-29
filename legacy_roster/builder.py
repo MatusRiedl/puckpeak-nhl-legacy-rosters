@@ -34,7 +34,7 @@ class Data:
 
     def __init__(self, nhl_players=None, ratings_list=None, iihf=None, season_year=2026, leagues=None, nhl_logos=None,
                  nhl_last=None, drafts=None, schedule=None, calendar=None, contracts=None, ratings_full=None,
-                 league_schedules=None, real_lines=None, club_lines=None, equipment=None):
+                 league_schedules=None, real_lines=None, club_lines=None, equipment=None, retired=None):
         self.nhl_players = nhl_players or []   # flat list, see datasource.flatten_nhl()
         self.ratings_list = ratings_list           # [{'name','team','position','birth','ovr','attrs'}] or None
         self.ratings_full = ratings_full                # the full ratings (data pack part `ratings_full`), with the ratings step
@@ -43,6 +43,7 @@ class Data:
         self.leagues = leagues or {}           # club leagues: {'liiga': {'teams': [{'slot', 'players', ...}]}}
         self.nhl_logos = nhl_logos or {}       # NHL.com team code -> logo link (photos and logos)
         self.nhl_last = nhl_last or []         # who played in the NHL last season; 'team' None: unsigned now
+        self.retired = retired or []           # who announced his retirement [{'first', 'last', 'birth'}] (data pack part `retired`)
         self.drafts = drafts or []             # NHL draft picks (draft.py)
         self.schedule = schedule or []         # the season's games [date, home code, away code] (schedule.py)
         self.calendar = calendar               # which way to write them (schedule.VARIANTS), None: the default
@@ -59,6 +60,8 @@ LINK_LIMIT = 16000      # player link ids from here up are the game's own
 # a free agent or a player leaving his team retires at this age when he did not play in the NHL last
 # season and no league lists him (the game's own roster: stock.RETIRE_AGE)
 FA_RETIRE_AGE = 35
+# an unsigned player of last season retires at this age (born season_year - 38 or earlier; owner, 2026-10-28: Kopitar, Toews)
+UNSIGNED_RETIRE_AGE = 38
 FREE_AGENTS = "Free agents"     # the part of the list of changes for retired and unsigned free agents
 
 
@@ -287,7 +290,13 @@ class Builder:
             self.records_of.setdefault(self.identity(r), []).append(r)
         # who played in the NHL last season (never retired; the unsigned ones are free agents)
         self.last_season_people = match(R, [dict(p, birth=tuple(p['birth'])) for p in data.nhl_last])
+        self.gone_people = self.retired_people(data)
+        self.last_season_people = [p for p in self.last_season_people if id(p) not in self.gone_people]
         self.last_season = {self.P.get(p['row'], 'zIBw') for p in self.last_season_people if p['row'] is not None}
+        # who retired although he played last season (retired_people): retires like an old free agent, whatever his age
+        self.gone = {self.P.get(p['row'], 'zIBw') for p in self.gone_people.values() if p['row'] is not None}
+        self.gone |= {self.P.get(p['row'], 'zIBw') for p in match(R, [dict(p, birth=tuple(p['birth'])) for p in data.retired])
+                      if p['row'] is not None and self.P.get(p['row'], 'zIBw') not in self.last_season}
         self.listed_rows = set()    # records the club leagues list (reserve_listed): never retired
         self.league_rows = set()    # of them, the ones a club league lists (not an IIHF squad)
         self.league_names = set()   # (first, last) of everyone a club league lists, matched to a record or not
@@ -500,13 +509,25 @@ class Builder:
             self.fa_links.append(self.U.get(e, 'TWSX'))
         return True
 
+    def retired_people(self, data):
+        """{id(entry): entry} of last season's players (last_season_people) who retired: unsigned now and on the
+        data pack's list (`retired`) or UNSIGNED_RETIRE_AGE or older (Kopitar, Toews, Quick; Nyquist at 37 stays a
+        free agent)."""
+        listed = {(norm(p['first']), norm(p['last']), tuple(p['birth'])) for p in data.retired}
+        return {id(p): p for p in self.last_season_people if not p.get('team')
+                and ((norm(p['first']), norm(p['last']), tuple(p['birth'])) in listed
+                     or p['birth'][0] <= data.season_year - UNSIGNED_RETIRE_AGE)}
+
     def would_retire(self, pid):
         """Is this player old enough to retire (retire_age) and nobody's player any more? Not when
         he played in the NHL last season (an unsigned veteran is a free agent: Reimer), is on an
-        NHL.com roster, is listed by a club league, or was placed in this run."""
+        NHL.com roster, is listed by a club league, or was placed in this run. Someone who retired
+        (gone: the data pack's list, or unsigned at UNSIGNED_RETIRE_AGE) retires whatever his age."""
         prow = self.R.p_by_id.get(pid)
         if prow is None or pid in self.last_season or pid in self.api_pids or prow in self.listed_rows                 or pid in self.under_contract:
             return False
+        if pid in self.gone:
+            return pid not in self.attached
         return real_birth_year(self.P, prow, self.stale_years) <= self.data.season_year - self.retire_age and pid not in self.attached
 
     def retires(self, pid, force=False):
@@ -753,7 +774,8 @@ class Builder:
                 continue
             age = self.data.season_year - real_birth_year(self.P, prow, self.stale_years)
             if self.retires(pid):
-                self.log.append(['FA', 'free agent retired', R.name(prow), f"{age}, not in the NHL last season", ''])
+                why = 'retired after last season' if pid in self.gone else 'not in the NHL last season'
+                self.log.append(['FA', 'free agent retired', R.name(prow), f"{age}, {why}", ''])
         self.log.section = section
 
     def add_unsigned(self):

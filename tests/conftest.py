@@ -51,7 +51,7 @@ def data(pack):
     """The bundled pack only (its NHL snapshot instead of live rosters): fully reproducible."""
     return Data(nhl_players=datasource.flatten_nhl(pack['nhl']), ratings_list=pack['ratings_list'],
                 iihf=pack['iihf'], season_year=pack['season'], nhl_last=pack.get('nhl_last'),
-                drafts=pack.get('drafts'), contracts=pack.get('contracts'))
+                drafts=pack.get('drafts'), contracts=pack.get('contracts'), retired=pack.get('retired'))
 
 
 @pytest.fixture(scope='session')

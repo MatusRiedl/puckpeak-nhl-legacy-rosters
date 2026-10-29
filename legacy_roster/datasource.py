@@ -358,6 +358,7 @@ def gather(R, steps, pack, progress=None, offline=False, fresh=False):
                 leagues={k: v for k, v in pack.get('leagues', {}).items() if k in steps},
                 nhl_logos=pack.get('nhl_logos') if pipeline.NHL in steps else None,
                 nhl_last=pack.get('nhl_last') if pipeline.NHL in steps else None,
+                retired=pack.get('retired') if pipeline.NHL in steps else None,
                 contracts=pack.get('contracts') if pipeline.NHL in steps else None,
                 real_lines=pack.get('lines') if pipeline.NHL in steps else None,
                 equipment=equipment_part(pack) if pipeline.NHL in steps else None,

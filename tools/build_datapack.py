@@ -27,6 +27,8 @@ The pack holds everything the updater does not fetch live:
     contracts    the real 2026-27 NHL contracts (--refresh contracts [--db FILE]; legacy_roster/contracts.py)
     ratings_full the current ratings, player types and tendencies of every player, all leagues
                  (--refresh ratings_full [--db FILE], no network)
+    retired      players who announced their retirement, kept by hand in tools/retired.json (copied on every build;
+                 NHL.com marks no retirement); the unsigned of last season aged 38+ retire without it (builder)
     equipment    the real sock tuck, pants, tape and neck guard of the NHL's and AHL's players, as raw numbers
                  (--refresh equipment [--db FILE], no network; `datasource.equipment_part`)
     club_lines   the clubs' real lines outside the NHL, per club slot: the Extraliga's match line-ups (--refresh
@@ -97,6 +99,7 @@ SCHEDULES = {'liiga': lambda season: liiga.schedule(season), 'extraliga': lambda
              'whl': functools.partial(hockeytech.schedule, client='whl')}
 CACHE = os.path.join(ROOT, 'tools', 'cache')
 OUT =os.path.join(ROOT, 'legacy_roster', 'data', 'datapack.json.gz')
+RETIRED = os.path.join(ROOT, 'tools', 'retired.json')
 SLOTS = os.path.join(ROOT, 'tools', 'club_slots.json')
 SEASON = 2026
 MIN_FULL_RATINGS = 300          # fewer fully rated players means the ratings parser broke (Oct 2026: 373)
@@ -411,6 +414,11 @@ def main():
             label = {'nhl_last': "NHL.com: last season's players", 'drafts': f"NHL drafts since {FIRST_DRAFT}",
                      'schedule': f"NHL.com schedule {SEASON}-{(SEASON + 1) % 100:02d}"}[key]
             pack['sources'][key] = {'label': label, 'date': file_date(cache), 'count': len(pack[key])}
+
+    # players who announced their retirement (kept by hand: NHL.com marks none)
+    with open(RETIRED, encoding='utf-8') as f:
+        pack['retired'] = [{'first': p['first'], 'last': p['last'], 'birth': p['birth']} for p in json.load(f)['players']]
+    pack['sources']['retired'] = {'label': "Retired players", 'date': file_date(RETIRED), 'count': len(pack['retired'])}
 
     # the NHL teams' real lines, worked out from their last five games (providers/nhl_lines.py; slots hold NHL.com ids)
     cache = os.path.join(CACHE, 'lines.json')

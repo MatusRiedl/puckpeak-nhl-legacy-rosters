@@ -1,0 +1,6 @@
+{
+  "_note": "Players who announced their retirement, kept by hand (NHL.com marks no retirement: its isActive is false for every unsigned player). Copied into the data pack's part `retired` by tools/build_datapack.py on every build. Unsigned players of last season aged 38+ retire without being listed here (builder.UNSIGNED_RETIRE_AGE); list the younger ones. first / last as NHL.com writes them, birth [year, month, day].",
+  "players": [
+    {"first": "Anze", "last": "Kopitar", "birth": [1987, 8, 24]}
+  ]
+}
