@@ -667,6 +667,7 @@ class UniformsController:
                     ed.teams[str(slot)] = team
                 else:
                     ed.teams.pop(str(slot), None)
+                ed.looks_touched.add(slot)      # its files go in (or back to the game's own) with the next Save
             ed._edits_saved(players=False)
             ed.changed()
 

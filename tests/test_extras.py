@@ -176,7 +176,7 @@ def update_pictures(r, monkeypatch, tmp_path, looks_on, ice_on, own):
         looks.Look(art, None, (), '', None, (), centre=centre(art)) for art in (7, 22, 30)])
     wrote = {'looks': 0, 'ice': 0}
 
-    def fake_install_looks(rpcs3, title, made, say, also=(), look_pack=None):
+    def fake_install_looks(rpcs3, title, made, say, also=(), look_pack=None, only=None):
         writer = install._Writer([rpcs3.game_folder(title)])
         wanted = set()
         for m in made:

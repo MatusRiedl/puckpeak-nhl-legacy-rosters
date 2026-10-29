@@ -524,3 +524,58 @@ def test_a_pack_kits_menu_picture_is_the_packs_own_and_the_recoloured_chassis_on
     assert plain_files[looks.PREVIEW.format(s=1, a=27, v=3)] == light                   # ... as the light kit has today
     assert {k: v for k, v in plain_files.items() if 'jerseys/' not in k} == \
         {k: v for k, v in files.items() if 'jerseys/' not in k}                         # the 3D files do not change
+
+
+def test_path_art_reads_the_art_id_of_every_file_a_look_writes():
+    for template in (looks.JERSEY, looks.PANT, looks.SOCK, looks.CENTRE, looks.ICE_PICTURE, looks.DECAL, looks.PREVIEW):
+        assert looks.path_art(template.format(s=1, a=23, v=4)) == 23, template
+    assert looks.path_art("rendering/puck/puck_900_cm.rpsgl") == 900
+    assert looks.path_art("fe/ion/artassets/playerheads/p1/p1.big") is None
+
+
+def test_looks_teams_names_the_teams_with_jerseys_ice_or_a_crest_picture():
+    from legacy_roster import pipeline
+    teams = {'5': {'uniforms': {'colours': {'primary': '#ff0000'}}}, '7': {'ice': {'arena': 'X'}}, '8': {'full': 'Name'},
+             '230': {'kit': {'crest': 'file:C:/a.png'}}, '231': {'kit': {'crest': 'logo:3'}}}
+    assert pipeline.looks_teams(teams) == {5, 7, 230}
+    assert pipeline.looks_teams(None) == frozenset()
+
+
+def test_the_editors_save_puts_in_the_edited_teams_look_and_leaves_other_teams_files(disc, base_dir, tmp_path, monkeypatch):
+    """Testers of 0.85.0: jerseys and ice chosen in the Roster editor did not reach the game on Save (only an update with
+    the photos put them in). Save now installs the edited teams' looks alone (a full install takes 18 minutes); another
+    team's files stay, and a team set back to the game's own gets the game's files back (rule 10)."""
+    from legacy_roster import layout as L
+    from legacy_roster import pipeline
+    from legacy_roster.editor import model
+    from legacy_roster.roster import Roster
+    raw = open(os.path.join(base_dir, 'SYS-DATA'), 'rb').read()
+    R = Roster(raw)
+    edm, tor = L.API_TO_SLOT['EDM'], L.API_TO_SLOT['TOR']
+    found, title = _fake_rpcs3(tmp_path, monkeypatch)
+    game = found.game_folder(title)
+    tor_variant = looks.roster_versions(R, tor)[-1][0]
+    other = [m for m in looks.looks_from(R, {tor: {'uniforms': {'colours': {'primary': '#00ff00'},
+                                                                'versions': {str(tor_variant): 'colours'}}}}, {}, {})
+             if m.art == looks.team_art(R, tor)[0]]
+    looks.install_looks(found, title, other, lambda msg: None)        # an earlier update's Toronto look
+    tor_files = [os.path.join(game, *p.split('/')) for p in looks.look_paths(other[0])]
+    assert tor_files and all(os.path.exists(f) for f in tor_files)
+
+    variant = looks.roster_versions(R, edm)[-1][0]
+    teams = {str(edm): {'uniforms': {'colours': {'primary': '#ff00ff'}, 'versions': {str(variant): 'colours'}}}}
+    pics = pipeline.Pictures(found, title, [title], own_only=True, looks_for=pipeline.looks_teams(teams),
+                             season_looks=False)
+    built = model.apply_edits(raw, {}, teams, 2026, art=pics)
+    assert not built.problems
+    art, n, _noted = pics.put_in(built, lambda msg: None)
+    jersey = os.path.join(game, 'rendering', 'jersey', f'texlib_1_{looks.team_art(R, edm)[0]}_{variant}.rpsgl')
+    assert n == 1 and os.path.exists(jersey)
+    assert all(os.path.exists(f) for f in tor_files)                  # Toronto's files are left as they were
+
+    pics = pipeline.Pictures(found, title, [title], own_only=True, looks_for={edm}, season_looks=False)
+    built = model.apply_edits(raw, {}, {}, 2026, art=pics)           # Edmonton set back to the game's own
+    pics.put_in(built, lambda msg: None)
+    assert not os.path.exists(jersey)                                 # the game's own file is back (there was none)
+    assert all(os.path.exists(f) for f in tor_files)
+    install.remove(lambda msg: None)

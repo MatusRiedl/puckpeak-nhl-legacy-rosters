@@ -39,10 +39,12 @@ each the pack's, the game's own, made from the colours (style 1 on the shared la
 Jerseys belong to an art id, not a slot: a team sharing its art id with a lower slot (the Winter Classic, EASHL and Top
 Prospects teams) is changed at that slot (`jersey_owner`).
 """
+import functools
 import hashlib
 import json
 import math
 import os
+import re
 from collections import namedtuple
 
 from .. import layout as L
@@ -1815,7 +1817,8 @@ def with_club_defaults(R, slot, e, team, logo_links):
     return dict(e, uniforms=mine, ice=ice)
 
 
-def looks_from(R, edits_by_slot, logo_links, nhl_logos, pack=None, cache=None, look_pack=None, skipped=None, no_ice=None):
+def looks_from(R, edits_by_slot, logo_links, nhl_logos, pack=None, cache=None, look_pack=None, skipped=None, no_ice=None,
+               only=None):
     """The looks to install: Utah, Seattle and Vegas as the update makes them, every team of any league the player gave a
     look in the Roster editor (edits.json 'uniforms' / 'ice', see edits.py; only where `editable`) and every team the
     look pack `look_pack` (this season's jerseys, art/lookpack.py) has. `R` is the new roster; `logo_links` {slot: logo link}.
@@ -1823,7 +1826,8 @@ def looks_from(R, edits_by_slot, logo_links, nhl_logos, pack=None, cache=None, l
     made from the colours). A team of the pack that cannot have its kits goes into `skipped` as (slot, why); a club
     outside the NHL whose new centre ice the game would not show at its home games (own_ice) keeps the game's own and goes
     into `no_ice` as (slot, why). The player's own picture on a centre ice several teams share (ice_group: the national
-    teams, the DEL, EASHL) is a look of its own at that file's art id, with nothing but the ice."""
+    teams, the DEL, EASHL) is a look of its own at that file's art id, with nothing but the ice. `only`: the slots to make
+    (the Roster editor's Save: the teams the player gave a look), None: every one."""
     out, shared = [], {}
     in_pack = set(look_pack.teams) if look_pack is not None else set()
     edited = {s for s in edits_by_slot if editable(R, s) is None}
@@ -1831,6 +1835,8 @@ def looks_from(R, edits_by_slot, logo_links, nhl_logos, pack=None, cache=None, l
     owners = centre_owners(R) if any(s not in NHL for s in in_pack | edited | clubs) else {}
     for slot in sorted(set(NEW_TEAMS) | {s for s in edited | in_pack if s in NHL}) + \
             sorted(s for s in edited | in_pack | clubs if s not in NHL):
+        if only is not None and slot not in only:
+            continue
         team = pack_team(R, slot, look_pack)
         if team is not None and team.why and skipped is not None:
             skipped.append((slot, team.why))
@@ -1898,11 +1904,31 @@ def _look_digest(look):
                    look.style)
 
 
-def install_looks(rpcs3, title_id, looks, say=print, also=(), look_pack=None):
+def path_art(key):
+    """The art id in the path of a file a look writes (JERSEY, PANT, SOCK, CENTRE, ICE_PICTURE, DECAL, PREVIEW, the club art's
+    extra files), or None for a path of another kind."""
+    for pattern in _art_patterns():
+        found = pattern.match(key)
+        if found:
+            return int(found.group(1))
+    return None
+
+
+@functools.lru_cache(maxsize=1)
+def _art_patterns():
+    out = []
+    for template in (JERSEY, PANT, SOCK, CENTRE, ICE_PICTURE, DECAL, PREVIEW, clubart.NAME) + tuple(clubart.EXTRA):
+        text = re.escape(template).replace(r'\{a\}', r'(\d+)')
+        out.append(re.compile('^' + text.replace(r'\{s\}', r'\d+').replace(r'\{v\}', r'\d+') + '$'))
+    return out
+
+
+def install_looks(rpcs3, title_id, looks, say=print, also=(), look_pack=None, only=None):
     """Make the files of `looks` from the player's disc and write them into the game folder(s) (RPCS3 closed), with kept
     copies of anything replaced and the manifest "Restore the game's own pictures" uses. Returns how many files were
     written; a look that is installed already is skipped, and a file an earlier run wrote that no look wants any more
-    is put back as the game had it. `look_pack`: the pack's pictures, for looks with pack kits."""
+    is put back as the game had it. `look_pack`: the pack's pictures, for looks with pack kits. `only` (art ids): `looks` are
+    those teams' alone, so only their files are put back (path_art); None: `looks` are every team's."""
     from . import install
     from .lab import Disc
     install.check(rpcs3, title_id)
@@ -1928,7 +1954,8 @@ def install_looks(rpcs3, title_id, looks, say=print, also=(), look_pack=None):
                 written += 1
             writer.save()
         for key in writer.stale('looks:', wanted):                   # chosen "the game's own" since the last time
-            writer.drop(tuple(key.split('/')))
+            if only is None or path_art(key) in only:
+                writer.drop(tuple(key.split('/')))
     finally:
         writer.save()
     return written

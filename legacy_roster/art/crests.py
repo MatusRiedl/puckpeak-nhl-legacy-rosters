@@ -231,12 +231,15 @@ def crest_digest(art, logo, colours):
     return f"{CRESTS_DRAWING}:{art}:{pic}:" + ','.join('%02x%02x%02x' % c for c in colours)
 
 
-def crests_from(R, logo_links, pack=None, cache=None, skipped=None, pictures=None):
+def crests_from(R, logo_links, pack=None, cache=None, skipped=None, pictures=None, only=None):
     """[(art id, logo picture, colours)] to install for roster `R`; `logo_links` {slot: logo link}, `pictures` {slot: the
-    player's own crest picture} (wins). A team whose logo cannot be had goes into `skipped` as (slot, why)."""
+    player's own crest picture} (wins). A team whose logo cannot be had goes into `skipped` as (slot, why). `only`: these
+    slots alone (the Roster editor's Save), None: every one."""
     from .looks import team_logo
     out = []
     for slot, art, colours in crest_teams(R, pictures):
+        if only is not None and slot not in only:
+            continue
         link = (pictures or {}).get(slot) or logo_links.get(slot)
         if not link:
             if skipped is not None:
@@ -250,10 +253,11 @@ def crests_from(R, logo_links, pack=None, cache=None, skipped=None, pictures=Non
     return out
 
 
-def install_crests(rpcs3, title_id, crests, say=print, also=()):
+def install_crests(rpcs3, title_id, crests, say=print, also=(), only=None):
     """Make the files of `crests` (crests_from) from the player's disc and write them into the game folder(s) (RPCS3
     closed), with the manifest "Restore the game's own pictures" uses. A crest installed already is skipped; files of a
-    crest no longer wanted are taken away. Returns how many files were written."""
+    crest no longer wanted are taken away (`only` (art ids): only these arts' files; None: every one). Returns how many
+    files were written."""
     from . import install
     from .lab import Disc
     install.check(rpcs3, title_id)
@@ -273,8 +277,10 @@ def install_crests(rpcs3, title_id, crests, say=print, also=()):
                 writer.write(tuple(inner.split('/')), data, source)
                 written += 1
         wanted.update(p for art, _l, _c in crests for p in crest_paths(art))
+        scope = None if only is None else {p for art in only if logo_number(art) is not None for p in crest_paths(art)}
         for key in writer.stale('crests:', wanted):
-            writer.drop(tuple(key.split('/')))
+            if scope is None or key in scope:
+                writer.drop(tuple(key.split('/')))
     finally:
         writer.save()
     if written:

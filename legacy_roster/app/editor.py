@@ -23,7 +23,7 @@ import threading
 
 from .. import datasource, edits, faces, gamepatch, pipeline, ratings, savedata
 from .. import layout as L
-from ..art import looks, portraits
+from ..art import looks, parts, portraits
 from ..art.install import ArtError
 from ..editor import card as C
 from ..editor import model
@@ -93,6 +93,8 @@ class EditorController:
         self.lock = threading.RLock()
         update.editor = self
         self.uniforms = None            # the Jerseys and ice controller (app/uniforms.py), once there is one
+        self.looks_touched = set()      # slots whose jerseys / ice / kit the Jerseys tab changed since the last Save put
+                                        # pictures in: a team set back to the game's own has no edit left to say so
         self.equipment = None           # the Equipment controller (app/equipment.py)
         self.edits = edits.load()
         self.teams = edits.load_teams()
@@ -1341,10 +1343,13 @@ class EditorController:
             in_place = upd.in_place(source)
             targets = [source.title_id] if in_place else upd.save_targets(source) or [source.title_id]
             mine, teams = self._picture_edits()
+            looks_for = pipeline.looks_teams(teams) | frozenset(self.looks_touched)
+            touched = set(self.looks_touched)
             rpcs3, raw, season = upd.rpcs3, self.raw_bytes, self.season
-            # the player's own pictures go into the game with the roster (photos and logos off too), RPCS3 closed
-            pictures = (portraits.mine(mine, teams) and rpcs3 is not None and not rpcs3.plain
-                        and not savedata.running_rpcs3())
+            # the player's own pictures (and the jerseys, ice and crests of the teams he gave them) go into the game with
+            # the roster, photos and logos off too, RPCS3 closed
+            own = portraits.mine(mine, teams) or bool(looks_for)
+            pictures = own and rpcs3 is not None and not rpcs3.plain and not savedata.running_rpcs3()
             if (in_place or pictures) and upd.busy:
                 self.set_status("The Update tab is working. Save when it is done.", 'bad')
                 return
@@ -1358,8 +1363,9 @@ class EditorController:
                 except savedata.RosterFull as err:
                     self.set_status(str(err), 'bad')
                     return
-            later = (" Your own pictures go into the game when you save with RPCS3 closed."
-                     if portraits.mine(mine, teams) and not pictures and rpcs3 is not None and not rpcs3.plain else "")
+            later = (" Your own pictures, jerseys and ice go into the game when you save with RPCS3 closed."
+                     if own and not pictures and rpcs3 is not None and not rpcs3.plain else "")
+            season_looks = parts.LOOKS in upd.parts_on()
 
             def with_pictures():
                 """The roster to save and the pictures that go in after it (None: the shown roster as it is)."""
@@ -1367,7 +1373,8 @@ class EditorController:
                     return built, None, None
                 title = next((t for t in targets if rpcs3.game_disc(t)), targets[0])
                 try:
-                    pics = pipeline.Pictures(rpcs3, title, targets, own_only=True)
+                    pics = pipeline.Pictures(rpcs3, title, targets, own_only=True, looks_for=looks_for,
+                                             season_looks=season_looks)
                 except ArtError as err:
                     return built, None, str(err)
                 rebuilt = model.apply_edits(raw, mine, teams, season, art=pics)
@@ -1377,10 +1384,13 @@ class EditorController:
                 return rebuilt, pics, None
 
             def put_in(result, pics, note):
+                """(what _picture_status says about the pictures, how many teams' jerseys and ice went in)."""
                 if pics is None:
-                    return note
-                art = pics.put_in(result, lambda msg: None)[0]
-                return art
+                    return note, 0
+                art, look_teams, _noted = pics.put_in(result, lambda msg: None)
+                with self.lock:
+                    self.looks_touched -= touched
+                return art, look_teams
 
             self.saving_pictures = pictures
             if in_place:
@@ -1397,14 +1407,14 @@ class EditorController:
                         self.saving_pictures = False
 
                 def done(r):
-                    (slot, backup, changed), _report, art = r
+                    (slot, backup, changed), _report, (art, look_teams) = r
                     later_ = later + heads_up(built, " ")
                     self.set_status((f"Updated \"{slot.name}\" ({slot.folder}, {slot.region})"
                                      + (f"; the old roster is kept in {backup}" if backup else "")
                                      + ". In the game: start it; if it is not the roster in use, Customize > Save/Load/Delete > "
                                      "Load > Rosters.") if changed else "Nothing to save: the roster is the same.",
                                     'good')
-                    self._picture_status(art, later_)
+                    self._picture_status(art, later_, look_teams)
                     self.session, self.session_teams, self.source = set(), set(), None       # read it again
                     self.name_touched = False
                     self.after_busy = self._rescan
@@ -1422,11 +1432,11 @@ class EditorController:
                     self.saving_pictures = False
 
             def done(r):
-                slots, _report, art = r
+                slots, _report, (art, look_teams) = r
                 where = " and ".join(f"{s.folder}, {s.region}" for s in slots)
                 self.set_status(f"Saved as \"{slots[0].name}\" ({where}). In the game: Customize > Save/Load/Delete > "
                                 "Load > Rosters.", 'good')
-                self._picture_status(art, later + heads_up(built, " "))
+                self._picture_status(art, later + heads_up(built, " "), look_teams)
                 self._open_saved(slots[0].folder)
             self._work("Saving...", job, done)
 
@@ -1452,12 +1462,17 @@ class EditorController:
         else:
             name = savedata.clean_name(typed_name or savedata.default_name())
         mine, teams = self._picture_edits()
-        rpcs3 = upd.rpcs3
+        rpcs3, parts_on = upd.rpcs3, upd.parts_on()
+        touched = set(self.looks_touched)
 
         def job():
-            return pipeline.update(rpcs3.savedata, source.folder, [], name, None, my_edits=mine or None,
-                                   team_edits=teams or None, targets=targets, in_place=in_place,
-                                   rpcs3=None if rpcs3.plain else rpcs3)
+            r = pipeline.update(rpcs3.savedata, source.folder, [], name, None, my_edits=mine or None,
+                                team_edits=teams or None, targets=targets, in_place=in_place,
+                                rpcs3=None if rpcs3.plain else rpcs3, art_parts=parts_on, also_looks=touched)
+            if r.slot is not None and r.own_pictures and not isinstance(r.art, str):
+                with self.lock:
+                    self.looks_touched -= touched
+            return r
 
         def done(r):
             if r.slot is None:
@@ -1476,14 +1491,16 @@ class EditorController:
             else:
                 self.set_status(f"Saved as \"{r.slot.name}\" ({r.saved_where()}). In the game: Customize > "
                                 "Save/Load/Delete > Load > Rosters.", 'good')
-            self._picture_status(r.art if r.own_pictures else None, heads_up(r.build, " "))
+            self._picture_status(r.art if r.own_pictures else None, heads_up(r.build, " "),
+                                 r.look_teams if r.own_pictures and not isinstance(r.art, str) else 0)
             if not in_place:
                 self._open_saved(r.slot.folder)
         self._work("Saving...", job, done)
 
     def _picture_edits(self):
         """The edits a Save applies: this visit's, and the earlier edits of players in this roster that have a photo,
-        and of teams with a logo (their pictures go into the game on Save too; before, only an update put them in)."""
+        and of teams with a logo, jerseys, a centre ice or a custom kit (Jerseys & ice; their pictures go into the game on
+        Save too, with the colours, arena and kit they set; before, only an update put them in)."""
         mine = {k: v for k, v in self.edits.items() if k in self.session}
         teams = {k: v for k, v in self.teams.items() if k in self.session_teams}
         snapshot = self.view[1] if self.view else None
@@ -1494,19 +1511,25 @@ class EditorController:
             if e.get('photo') and key not in mine and who in here:
                 mine.setdefault(who, {'photo': e['photo']})     # the photo alone, under the name he has now
         for key, e in self.teams.items():
-            if e.get('logo') and key not in teams:
-                teams[key] = {'logo': e['logo']}
+            if key in teams:
+                continue
+            kept = {k: e[k] for k in ('logo', 'uniforms', 'ice', 'kit') if e.get(k)}
+            if kept:
+                teams[key] = kept
         return mine, teams
 
-    def _picture_status(self, art, later=""):
-        """The status line after a Save, with a word about the player's own pictures."""
+    def _picture_status(self, art, later="", look_teams=0):
+        """The status line after a Save, with a word about the player's own pictures and the jerseys and ice of the
+        `look_teams` teams he gave them."""
         text, tone = self.status
         if isinstance(art, str):
             text, tone = text + " Your own pictures were not installed: " + art, 'warn'
-        elif art:
-            written, already, failed = art
+        elif art or look_teams:
+            written, already, failed = art or (0, 0, 0)
             if written or already:
                 text += " Your own pictures are in the game now."
+            if look_teams:
+                text += f" Jerseys and ice of {look_teams} team{'s' if look_teams > 1 else ''} are in the game now."
             if failed:
                 text, tone = text + f" {failed} of your pictures could not be made: pick another photo.", 'warn'
         self.set_status(text + later, tone if not later else 'warn')
