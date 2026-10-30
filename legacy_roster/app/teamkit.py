@@ -4,8 +4,8 @@ The game draws these teams like teams made in Create a Team (custom_kit.py, lab 
 create-a-team logos (or a picture of the player's own on one of them), a jersey design for home and away, pants, socks
 and numbers out of the game's few, and the colours of every piece. The window shows the game's own Create a Team pictures
 and keeps what the player sets in edits.json (`teams[slot]['kit']`, edits.py), merged with what was kept before: only
-"Undo all for this team" drops it. Three team colours paint every piece at once ("Paint everything"); then each piece can
-be set by itself, home and away. The centre ice of a custom team shows its crest.
+"Undo all for this team" drops it. Three team colours paint every piece the player has not set by itself as they are
+typed ("Paint everything" also starts those pieces again); each piece can be set by itself, home and away. The centre ice of a custom team shows its crest.
 """
 import io
 import re
@@ -102,6 +102,9 @@ class TeamKit:
         self.typed[i] = str(text or '')
         if K.rgb(text):
             self.valid[i] = K.rgb(text)
+            # kept as the team colours at once (before, only "Paint everything" kept them and a Save lost what was
+            # typed); the pieces set one by one stay on top
+            self.kit['colours'] = [_hex(c) for c in self.team()]
         return True
 
     def team(self):

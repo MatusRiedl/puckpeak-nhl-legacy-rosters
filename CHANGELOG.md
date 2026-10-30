@@ -3,6 +3,19 @@
 What changed in each version, for players. Developers: details in [AGENTS.md](AGENTS.md)
 ("Current state") and [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## 0.91.0 (2026-10-30)
+
+**Your own players are saved again.** A player made in the game's Create Player (or with another tool) could stop every
+save with "head 20300 is not one of Create Player's head shapes". The game has 24 created heads, and its menu shows 15
+of them; the program knew only those 15. Now every head the game has is fine, and anything your roster already had
+(a head, a skin colour, a player's link, a team's logo or farm team) never stops a save.
+
+**Contracts you set yourself are not checked against the program's limits.** The Roster editor's contract changes were
+already free; a second check could still refuse them. It no longer does.
+
+**Custom team colours stay.** Team colours typed on a custom team's kit (Coachella Valley, Henderson and the other custom
+teams) are kept when you save, also without pressing "Paint everything". A piece you set by itself keeps its colour.
+
 ## 0.90.0 (2026-10-29)
 
 **Edit your roster freely.** The Roster editor no longer refuses what the game itself plays. Add yourself, move anyone to

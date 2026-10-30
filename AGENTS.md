@@ -202,6 +202,17 @@ wording (`progress.py`).
 
 ## Current state
 
+**Version 0.91.0 (2026-10-30, hotfix, owner: "support all the heads ... dont limit the save or hinder the editing"):** a
+tester's own player (Create Player record) wore head 20300, one of the game's 24 created heads but not one of the menu's
+15, and `faces.look_problems` refused every save. Now `faces.CREATED_HEADS` (all 24, or the roster's `vuqu` rows) are
+accepted, and what the source already held is never blamed: created head, skin vs tone (`look_problems`), Create Player
+links (`link_problems`), art ids 20073 / 20081 and farm teams (`verify`; 900 / 901 still follow the patch). The player's
+own edited deals skip `contracts.problems` (`free=mine_pid`; `contract_edit_problems` already allowed them). The Look
+window still offers only the 15 (owner: no editor change now). Also the custom-team kit keeps typed team colours without
+"Paint everything" (`app/teamkit.py`). Audit of every value check: docs/notes/free-editing.md. Not touched (lab first):
+strategy values above the menu, draft-class tiers 8-9, forward types 1-4 for the builder. Test
+`test_created_looks.py::test_a_created_head_off_the_menu_that_the_roster_had_is_saved`.
+
 **Version 0.90.0 (2026-10-29, released with the owner's go-ahead: commit 6c8956c, tag `v0.90.0`, GitHub release with
 `PuckPeakLegacyUpdater.exe`, the Linux tar.gz (Ubuntu / Fedora / Arch boxes passed) and `SHA256SUMS.txt`; the game server
 and the data pack were updated the same day; plan docs/plans/transient-marinating-curry.md, PLAN.md top):** Phase 0 **free editing** done: `verify(free=)` drops `FREE_TEAM_FLAWS` / `FREE_PLAYER_FLAWS`,

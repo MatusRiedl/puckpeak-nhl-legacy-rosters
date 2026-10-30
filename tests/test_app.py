@@ -677,6 +677,26 @@ def test_a_custom_teams_look_and_a_shared_ice_are_kept_for_the_whole_group(app, 
     assert s['crest']['value'] == 'mine' and uni.team_kit.kit['pieces']['11/1'][0] == '#c81414'
     uni.undo()                                      # the window is open: everything kept for the team goes
     assert 'kit' not in (ed.teams.get('234') or {})
+    # team colours typed without "Paint everything" are kept too (a tester's colours went back at every Save), and a
+    # piece set by itself stays set
+    s = pick(234)
+    uni.kit('side', 1)
+    uni.kit('zone', 9, 2, '#00ff00')
+    uni.apply()
+    s = pick(234)
+    assert not s['dirty']
+    uni.kit('colour', 1, '#d51836')
+    s = uni.snapshot()
+    assert s['dirty'] and s['team'][1]['hex'] == '#d51836'
+    stripe = next(p for p in s['pieces'] if p['piece'] == 9)['zones']
+    assert stripe[1]['hex'] == '#00ff00'                                    # set by itself: not repainted
+    uni.kit('colour', 2, 'not a colour')                                    # cannot be read: the kept one stays
+    uni.apply()
+    kit = ed.teams['234']['kit']
+    assert kit['colours'][1] == '#d51836' and kit['pieces']['9/1'][1] == '#00ff00'
+    s = pick(234)
+    assert s['team'][1]['text'] == '#d51836'
+    uni.undo()
     # the national teams share one ice: a picture set at Canada is shown at Finland, and saved there it moves
     s = pick(135)
     host.pick = str(tmp_path / 'ice.png')

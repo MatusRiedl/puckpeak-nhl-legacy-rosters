@@ -29,6 +29,7 @@ LOOK_TABLE = 'Vzjq'             # customfacetable, a row per reserved record
 CUSTOM_HEADS = range(20000, 22000)
 # the menu's Head Shape 1-15 (the skin tone does not change it); all 24 heads 20050-21200 are in `vuqu`
 SHAPES = (21200, 21050, 20900, 20700, 20500, 21100, 20050, 21150, 20650, 20950, 20850, 20400, 20350, 20200, 20150)
+CREATED_HEADS = range(20050, 21201, 50)     # every created head the game can draw, the menu's 15 and 9 more (20300 ...)
 TONE_SKIN = (1, 1, 1, 1, 2, 2, 3, 3, 4, 4, 4, 4, 6, 9, 9, 10)     # Skin Tone 1-16 -> cPbu skincolor
 COLOURS = ((5, "Black"), (0, "Blonde"), (2, "Brown"), (1, "Dirty Blonde"), (3, "Light Brown"), (4, "Red"))
 # key -> (customfacetable field or None: on the player record, the menu's choices in its order as (number, the game's
@@ -236,16 +237,17 @@ def look_words(look):
 def link_problems(R, source):
     """verify()'s check of the Create Player records' links (`exhibitionplayers`): each keeps the game's own (table 1,
     number = game id), and no other link names one of them, as with the game's own Create Player. A new career copies
-    the created look only of a player listed through his own link (lab round 45: an ordinary link gave a blue head)."""
+    the created look only of a player listed through his own link (lab round 45: an ordinary link gave a blue head).
+    A link the source already had is not blamed."""
     def links(roster):
         C = roster.C
         return [(C.get(i, 'qEfv'), C.get(i, 'BERR'), C.get(i, 'qFky')) for i in range(C.cur_rec)]
+    had = set(links(source))
     own = {pid for link, kind, pid in links(R) if pid in RESERVED and link == pid and kind == 1}
     out = [f"the game's own link of Create Player record {pid} is gone"
-           for pid in sorted({pid for link, kind, pid in links(source) if pid in RESERVED and link == pid and kind == 1}
-                             - own)]
+           for pid in sorted({pid for link, kind, pid in had if pid in RESERVED and link == pid and kind == 1} - own)]
     for link, kind, pid in links(R):
-        if pid in RESERVED and (link, kind) != (pid, 1):
+        if pid in RESERVED and (link, kind) != (pid, 1) and (link, kind, pid) not in had:
             prow = R.p_by_id.get(pid)
             who = R.name(prow) if prow is not None else f"Create Player record {pid}"
             out.append(f"{who}: listed through link {link}, not the game's own link of his record")
@@ -253,24 +255,33 @@ def link_problems(R, source):
 
 
 def look_problems(R, source):
-    """verify()'s check of created looks: a created head only on a reserved record, one of the menu's shapes, with a
-    skin colour that fits its tone; customfacetable keeps its rows (one per reserved record) and every changed row holds
-    the game's choices. What the source already had is not blamed."""
+    """verify()'s check of created looks: a created head only on a reserved record, one of the created heads the game
+    can draw (all of CREATED_HEADS, not only the menu's 15 SHAPES: a roster the game or another tool saved may wear the
+    others), with a skin colour that fits its tone; customfacetable keeps its rows (one per reserved record) and every
+    changed row holds the game's choices. What the source already had is not blamed."""
     out = []
     P = R.P
-    old_heads = {source.P.get(i, 'zIBw'): source.P.get(i, 'DaPp') for i in range(source.P.cur_rec)}
+    old = {source.P.get(i, 'zIBw'): (source.P.get(i, 'DaPp'), source.P.get(i, 'QDTK')) for i in range(source.P.cur_rec)}
+    old_tones = {}
+    if LOOK_TABLE in source.f.tables:
+        W = source.f[LOOK_TABLE]
+        old_tones = {W.get(i, 'qFky'): W.get(i, 'xohz') for i in range(W.cur_rec)}
+    drawable = (heads(R) & set(CUSTOM_HEADS)) or set(CREATED_HEADS)
     for prow in range(P.cur_rec):
         pid, head = P.get(prow, 'zIBw'), P.get(prow, 'DaPp')
         if head not in CUSTOM_HEADS:
             continue
+        was_head, was_skin = old.get(pid, (None, None))
         if not is_reserved(P, prow):
-            if old_heads.get(pid) != head:
+            if was_head != head:
                 out.append(f"{R.name(prow)}: a created head ({head}) on a record the game's Create Player does not use")
-        elif head not in SHAPES:
-            out.append(f"{R.name(prow)}: head {head} is not one of Create Player's head shapes")
+        elif head not in drawable:
+            if was_head != head:
+                out.append(f"{R.name(prow)}: head {head} is not one of the game's created heads")
         elif (row := look_row(R, prow)) is not None:
             tone = R.f[LOOK_TABLE].get(row, 'xohz')
-            if tone >= len(TONE_SKIN) or P.get(prow, 'QDTK') != TONE_SKIN[tone]:
+            same = (was_head, was_skin, old_tones.get(pid - RESERVED.start)) == (head, P.get(prow, 'QDTK'), tone)
+            if not same and (tone >= len(TONE_SKIN) or P.get(prow, 'QDTK') != TONE_SKIN[tone]):
                 out.append(f"{R.name(prow)}: skin colour {P.get(prow, 'QDTK')} does not fit skin tone {tone + 1}")
     if LOOK_TABLE not in R.f.tables or LOOK_TABLE not in source.f.tables:
         return out

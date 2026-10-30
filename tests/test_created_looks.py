@@ -171,6 +171,36 @@ def test_verify_refuses_a_created_head_off_the_create_player_records(built, made
     assert any(p.startswith("customfacetable row 179: Hairstyle 1") for p in problems)
 
 
+def test_a_created_head_off_the_menu_that_the_roster_had_is_saved(built, data):
+    """A tester's own player (the game's Create Player, or another tool) wore head 20300: one of the game's 24 created
+    heads but not one of the menu's 15. Editing him was refused; what the roster already had is never blamed."""
+    R = Roster(built.data)
+    P = R.P
+    prow = faces.free_reserved(R, False)[0]
+    P.set(prow, 'PedH', 'Tester')
+    P.set(prow, 'RMbQ', 'Ownplayer')
+    P.set(prow, 'NYKk', 1)
+    P.set(prow, 'DaPp', 20300)
+    P.set(prow, 'QDTK', 9)              # not the colour of his row's tone either
+    assert 20300 in faces.heads(R) and 20300 not in faces.SHAPES
+    old = R.f.build()
+    makar = find(R, 'Cale Makar')
+    res = pipeline.build(old, data, steps=[], my_edits={edits.who_of(P, makar): {'label': 'Cale Makar',
+                                                                                 'set': {'first': 'Kale'}}})
+    assert res.ok, res.problems[:5]
+    A = Roster(res.data)
+    assert find(A, 'Kale Makar') is not None
+    tess = find(A, 'Tester Ownplayer')
+    assert A.P.get(tess, 'DaPp') == 20300 and A.P.get(tess, 'QDTK') == 9
+    # every created head the game draws is fine; a head it lacks is still refused when this program puts it there
+    assert set(faces.CREATED_HEADS) <= faces.heads(R)
+    A.P.set(tess, 'DaPp', 21000)
+    assert not any('head 21000' in p for p in verify.verify(A.f.build(), Roster(old))[0])
+    A.P.set(tess, 'DaPp', 20025)
+    assert "Tester Ownplayer: head 20025 is not one of the game's created heads" in verify.verify(A.f.build(),
+                                                                                              Roster(old))[0]
+
+
 def test_a_created_head_is_never_a_set_head(built, data):
     R = Roster(built.data)
     makar = find(R, 'Cale Makar')

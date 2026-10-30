@@ -393,12 +393,12 @@ def misplaced(deals, players):
     return out
 
 
-def problems(R, source, scale):
+def problems(R, source, scale, free=lambda pid: False):
     """What is wrong with the deals the update wrote or moved (a player's contract fields differ from the source's):
     on an NHL team a cap hit outside LOWEST..MAXIMUM, on any other club one above MAXIMUM; a deal without seasons on an
     NHL team, or one that lost its seasons (the game's own roster has club players with a cap hit and no seasons; a money
     scale change moves their cap hit); an extension with years but no money or the other way round. Payrolls over the
-    cap are allowed (the game asks the GM to fix them)."""
+    cap are allowed (the game asks the GM to fix them). `free(pid)`: the player's own edits, not blamed (rule 3)."""
     def deal(X, prow):
         return tuple(X.P.get(prow, f) for f in FIELDS)
     before = {source.P.get(i, 'zIBw'): deal(source, i) for i in range(source.P.cur_rec)}
@@ -409,7 +409,7 @@ def problems(R, source, scale):
         where = L.SLOT_TO_API.get(t) if t in L.NHL_PRIMARY else R.team_name(t)
         for _, prow, name, *_ in R.team_roster(t):
             was = before.get(R.P.get(prow, 'zIBw')) if prow is not None else None
-            if prow is None or prow in seen or deal(R, prow) == was:
+            if prow is None or prow in seen or deal(R, prow) == was or free(R.P.get(prow, 'zIBw')):
                 continue
             seen.add(prow)
             cap, years, ext_years, ext_cap = (R.P.get(prow, f) for f in ('dhKk', 'GDhI', 'IrlK', 'IzRv'))

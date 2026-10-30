@@ -324,19 +324,24 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
                 continue
             problems.append(f"{_team(R, t)} changed league")
     # the art ids Coachella Valley and Henderson get (layout.OWN_ART) belong to them alone: another team with one would
-    # show their logo and jerseys
+    # show their logo and jerseys (one the source already had there is not blamed)
     for t in range(T.cur_rec):
         art = T.get(t, 'artid')
-        if art in L.OWN_ART.values() and L.OWN_ART.get(t) != art:
+        if art in L.OWN_ART.values() and L.OWN_ART.get(t) != art and source.T.get(t, 'artid') != art:
             problems.append(f"{_team(R, t)} has art id {art}, which is kept for another team")
         if art in L.CLUB_ART.values() and (L.CLUB_ART.get(t) != art or not farm_patch):     # 900 / 901: the patched game only
             problems.append(f"{_team(R, t)} has art id {art}, which only Coachella Valley / Henderson have in the patched game")
     # an NHL team's farm team (ttOk.ahlaffiliate, slot + 1) is an AHL club of slots 32-61 that serves no other NHL team
     # (the AHL step pairs them by the list's organisations, clubs.pair_farms)
+    # (what the source already had is not blamed)
     farms = {n: T.get(n, gamepatch.AFFILIATE) - 1 for n in range(30) if T.get(n, gamepatch.AFFILIATE)}
-    problems += [f"{_team(R, n)} names slot {f} as its farm team" for n, f in farms.items() if not 32 <= f < 62]
+    farms_before = {n: source.T.get(n, gamepatch.AFFILIATE) - 1 for n in range(30)
+                    if source.T.get(n, gamepatch.AFFILIATE)}
+    problems += [f"{_team(R, n)} names slot {f} as its farm team" for n, f in farms.items()
+                 if not 32 <= f < 62 and farms_before.get(n) != f]
     problems += [f"farm team {_team(R, f)} serves {list(farms.values()).count(f)} NHL teams"
-                 for f in sorted(set(farms.values())) if list(farms.values()).count(f) > 1]
+                 for f in sorted(set(farms.values()))
+                 if list(farms.values()).count(f) > max(1, list(farms_before.values()).count(f))]
     # the custom teams' looks (the Roster editor's kit, custom_kit.py): designs the game draws, logos it has, its colour
     # table's rows as they were, a crest picture on one team only
     problems += custom_kit.problems(R, source, crests)
@@ -443,7 +448,7 @@ def verify(built, source, nhl_players=None, rebuilt=(), edited=None, league_move
     # ratings and tendencies (the full ratings, the estimate, the editor): only values the game's own players hold
     problems += rating_problems(R, source, mine_pid)
     if money is not None:
-        problems += contracts.problems(R, source, money)
+        problems += contracts.problems(R, source, money, mine_pid)
     problems += contract_edit_problems(R, contract_edits, money, free=bool(free))
     # NHL rights only of teams the game's Season knows: Seattle's on a roster for the unpatched game crashed it
     problems += contracts.rights_problems(R)
